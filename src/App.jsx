@@ -2,6 +2,7 @@
 import MagicBento from "./MagicBento";
 
 const STORAGE_KEY = "caredrop-dashboard-v2";
+const REQUEST_STORAGE_KEY = "caredrop-feedback-v1";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 const FLASHCARD_SET_SIZE = 10;
 const QUIZ_SET_SIZE = 10;
@@ -26,6 +27,9 @@ const C = {
   muted: "#6B7280",
   faint: "#9CA3AF",
   pill: "#F0EDE6",
+  panelNeutral: "#F7F4EE",
+  panelNeutralDark: "#D9D2C7",
+  panelNeutralAlt: "#FBF8F3",
 };
 
 const SEED_QUESTION_BANK = {
@@ -621,6 +625,19 @@ function loadPersisted() {
   }
 }
 
+function loadRequestPersisted() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(REQUEST_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
 async function postJson(path, payload) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 45000);
@@ -896,9 +913,9 @@ function Flashcard({ card, idx, total, onRate }) {
                 heading: "Question",
                 body: card.question,
                 footer: "Tap to reveal answer",
-                background: C.surface,
-                borderColor: C.border,
-                accentColor: C.faint,
+                background: C.panelNeutralAlt,
+                borderColor: C.panelNeutralDark,
+                accentColor: "#85796A",
                 extra: null,
               },
               {
@@ -906,17 +923,17 @@ function Flashcard({ card, idx, total, onRate }) {
                 heading: "Answer",
                 body: card.answer,
                 footer: null,
-                background: `linear-gradient(135deg, ${C.accentLight} 0%, #fff 100%)`,
-                borderColor: C.accentMid,
-                accentColor: C.accent,
+                background: `linear-gradient(135deg, ${C.panelNeutral} 0%, #fff 100%)`,
+                borderColor: "#CFC5B7",
+                accentColor: "#6C6255",
                 extra: (
                   <div
                     style={{
                       marginTop: 16,
                       padding: 14,
                       borderRadius: 14,
-                      background: "#FAFBF8",
-                      border: `1.5px solid ${C.border}`,
+                      background: "#FFFFFF",
+                      border: `1.5px solid ${C.panelNeutralDark}`,
                       fontSize: 13,
                       lineHeight: 1.65,
                       color: C.muted,
@@ -1117,6 +1134,213 @@ function AIPanel({
   );
 }
 
+function RequestModal({
+  open,
+  onClose,
+  requestType,
+  setRequestType,
+  requestName,
+  setRequestName,
+  requestMessage,
+  setRequestMessage,
+  onSubmit,
+  requestHistory,
+  requestStatus,
+}) {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(26, 26, 26, 0.36)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 18,
+        zIndex: 120,
+      }}
+    >
+      <div
+        style={{
+          width: "min(560px, 100%)",
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 22,
+          boxShadow: "0 20px 50px rgba(15, 23, 42, 0.18)",
+          padding: 22,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>Report or Request</div>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginTop: 4 }}>
+              Send a bug report, topic request, or fix request. Right now this is saved inside the app so you can keep track of what was submitted.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              border: `1px solid ${C.border}`,
+              background: C.surface,
+              borderRadius: 10,
+              padding: "8px 10px",
+              cursor: "pointer",
+              fontWeight: 700,
+              color: C.muted,
+            }}
+          >
+            Close
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
+              Request Type
+            </label>
+            <select
+              value={requestType}
+              onChange={(event) => setRequestType(event.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: `1px solid ${C.border}`,
+                background: "#FBFAF7",
+                fontSize: 13,
+                outline: "none",
+              }}
+            >
+              {["Bug Report", "Topic Request", "Feature Request", "Content Fix", "General Feedback"].map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
+              Name
+            </label>
+            <input
+              value={requestName}
+              onChange={(event) => setRequestName(event.target.value)}
+              placeholder="Optional name"
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: `1px solid ${C.border}`,
+                background: "#FBFAF7",
+                fontSize: 13,
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
+            Message
+          </label>
+          <textarea
+            value={requestMessage}
+            onChange={(event) => setRequestMessage(event.target.value)}
+            placeholder="Describe what should be added, fixed, or improved..."
+            style={{
+              width: "100%",
+              minHeight: 130,
+              padding: "12px 14px",
+              borderRadius: 14,
+              border: `1px solid ${C.border}`,
+              background: "#FBFAF7",
+              fontSize: 14,
+              lineHeight: 1.65,
+              resize: "vertical",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+        </div>
+
+        {requestStatus ? (
+          <div
+            style={{
+              padding: "10px 12px",
+              borderRadius: 12,
+              background: C.accentLight,
+              border: `1px solid ${C.accentMid}`,
+              fontSize: 13,
+              lineHeight: 1.6,
+            }}
+          >
+            {requestStatus}
+          </div>
+        ) : null}
+
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 12, color: C.muted }}>
+            Recent requests saved here: <strong>{requestHistory.length}</strong>
+          </div>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={!requestMessage.trim()}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 12,
+              border: "none",
+              background: requestMessage.trim() ? C.accent : C.border,
+              color: requestMessage.trim() ? "#fff" : C.muted,
+              fontWeight: 700,
+              cursor: requestMessage.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            Submit Request
+          </button>
+        </div>
+
+        {requestHistory.length ? (
+          <div
+            style={{
+              borderTop: `1px solid ${C.border}`,
+              paddingTop: 14,
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.muted }}>Recent Request History</div>
+            {requestHistory.slice(0, 3).map((entry) => (
+              <div
+                key={entry.id}
+                style={{
+                  border: `1px solid ${C.border}`,
+                  background: "#FBFAF7",
+                  borderRadius: 14,
+                  padding: 12,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{entry.type}</div>
+                  <div style={{ fontSize: 11, color: C.faint }}>{new Date(entry.createdAt).toLocaleString()}</div>
+                </div>
+                <div style={{ fontSize: 12, color: C.text, lineHeight: 1.6 }}>{entry.message}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function SavedSessionCard({ session, onOpen, onDelete }) {
   const itemCount = session.questions?.length || session.cards?.length || 0;
 
@@ -1189,6 +1413,7 @@ export default function App() {
   const width = useWindowWidth();
   const persisted = loadPersisted();
   const legacySavedSessions = persisted?.savedQuizSessions || [];
+  const persistedRequests = loadRequestPersisted();
   const [subject, setSubject] = useState(persisted?.subject || "Pharmacology");
   const [difficulty, setDifficulty] = useState(persisted?.difficulty || "All");
   const [topicFilter, setTopicFilter] = useState(persisted?.topicFilter || "");
@@ -1226,6 +1451,12 @@ export default function App() {
   );
   const [filterWeakOnly, setFilterWeakOnly] = useState(persisted?.filterWeakOnly || false);
   const [metricHover, setMetricHover] = useState("");
+  const [requestModalOpen, setRequestModalOpen] = useState(false);
+  const [requestType, setRequestType] = useState("Bug Report");
+  const [requestName, setRequestName] = useState("");
+  const [requestMessage, setRequestMessage] = useState("");
+  const [requestStatus, setRequestStatus] = useState("");
+  const [requestHistory, setRequestHistory] = useState(persistedRequests);
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
   const usedFlashcardQuestionsRef = useRef(usedFlashcardQuestions);
@@ -1307,6 +1538,14 @@ export default function App() {
     summaryText,
     filterWeakOnly,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(REQUEST_STORAGE_KEY, JSON.stringify(requestHistory));
+  }, [requestHistory]);
 
   const studyText = buildStudyText(noteText, uploadedText);
   const hasCustomSource = Boolean(studyText);
@@ -1449,6 +1688,7 @@ export default function App() {
 
       setFlashcards(deck);
       setCardIdx(0);
+      setMode("flashcard");
       setFlashcardSessionRatings({});
       setFlashcardSessionSubmitted(false);
       markFlashcardsAsUsed(deck);
@@ -1780,6 +2020,15 @@ export default function App() {
     loadLocalFlashcardSet("Fresh local flashcards loaded after reset.");
   }
 
+  function removeUploadedSource() {
+    setUploadedFileName("");
+    setUploadedText("");
+    setUploadState("idle");
+    setUploadError("");
+    setSummaryText(noteText.trim() ? buildLocalSummary(noteText) : "Paste notes or upload a document to generate a reviewer summary.");
+    setStatusMessage("Attached file was removed. You can upload a new one anytime.");
+  }
+
   async function handleIncomingFile(file) {
     if (!file) {
       return;
@@ -1844,6 +2093,26 @@ export default function App() {
   function handleDragLeave(event) {
     event.preventDefault();
     setDragActive(false);
+  }
+
+  function submitRequest() {
+    if (!requestMessage.trim()) {
+      return;
+    }
+
+    const entry = {
+      id: uid(),
+      type: requestType,
+      name: requestName.trim(),
+      message: requestMessage.trim(),
+      createdAt: new Date().toISOString(),
+    };
+
+    setRequestHistory((prev) => [entry, ...prev].slice(0, 20));
+    setRequestStatus("Request saved in the app. You can keep tracking recent submissions from this panel.");
+    setRequestName("");
+    setRequestMessage("");
+    setRequestType("Bug Report");
   }
 
   const bentoItems = [
@@ -2529,10 +2798,10 @@ export default function App() {
                     <div
                       key={quizItem.id}
                       style={{
-                        background: "#FBFAF7",
+                        background: C.panelNeutralAlt,
                         borderRadius: 18,
                         padding: 22,
-                        border: `1.5px solid ${C.border}`,
+                        border: `1.5px solid ${C.panelNeutralDark}`,
                         animation: "caredropFadeSlide 0.24s ease",
                       }}
                     >
@@ -2561,12 +2830,12 @@ export default function App() {
                           ? "#ECFDF5"
                           : showFeedback && selected && !correct
                             ? "#FFF1F2"
-                            : C.surface;
+                            : C.panelNeutralAlt;
                         const borderColor = showFeedback && correct
                           ? "#10B981"
                           : showFeedback && selected && !correct
                             ? "#F43F5E"
-                            : C.border;
+                            : C.panelNeutralDark;
 
                         return (
                           <button
@@ -2597,7 +2866,7 @@ export default function App() {
                           marginTop: 16,
                           borderRadius: 18,
                           padding: 18,
-                          background: currentCorrect ? "#ECFDF5" : "#FFF1F2",
+                          background: currentCorrect ? "#F3FBF6" : "#FFF6F6",
                           border: `1px solid ${currentCorrect ? "#10B981" : "#F43F5E"}`,
                         }}
                       >
@@ -2630,7 +2899,7 @@ export default function App() {
                               padding: 14,
                               borderRadius: 14,
                               background: "#FFFFFF",
-                              border: `1px solid ${C.border}`,
+                              border: `1px solid ${C.panelNeutralDark}`,
                             }}
                           >
                             <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 8 }}>
@@ -2725,8 +2994,8 @@ export default function App() {
                           marginTop: 16,
                           borderRadius: 18,
                           padding: 18,
-                          background: C.blueLight,
-                          border: `1px solid #BFDBFE`,
+                          background: C.panelNeutral,
+                          border: `1px solid ${C.panelNeutralDark}`,
                         }}
                       >
                         <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>
@@ -2822,6 +3091,44 @@ export default function App() {
                   <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
                     {uploadedFileName || "No file uploaded yet."}
                   </div>
+                  {uploadedFileName ? (
+                    <div style={{ marginTop: 10, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+                      <label
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: 10,
+                          background: C.surface,
+                          border: `1px solid ${C.border}`,
+                          color: C.text,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Replace File
+                        <input
+                          type="file"
+                          accept=".doc,.docx,.pdf,.jpg,.jpeg,.png,.webp,.txt"
+                          onChange={handleFileUpload}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={removeUploadedSource}
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: 10,
+                          border: `1px solid ${C.red}`,
+                          background: C.redLight,
+                          color: C.red,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Remove File
+                      </button>
+                    </div>
+                  ) : null}
                   <div style={{ marginTop: 6, fontSize: 12, color: C.faint }}>
                     Supported: DOC, DOCX, PDF, JPG, JPEG, PNG, WEBP, TXT
                   </div>
@@ -2997,6 +3304,44 @@ export default function App() {
       >
         CareDrop | subject-focused flashcards and quizzes with Gemini support
       </footer>
+
+      <button
+        type="button"
+        onClick={() => {
+          setRequestStatus("");
+          setRequestModalOpen(true);
+        }}
+        style={{
+          position: "fixed",
+          right: 18,
+          bottom: 18,
+          zIndex: 90,
+          border: "none",
+          borderRadius: 999,
+          background: C.accent,
+          color: "#fff",
+          padding: "12px 16px",
+          fontWeight: 800,
+          boxShadow: "0 14px 26px rgba(45, 106, 79, 0.28)",
+          cursor: "pointer",
+        }}
+      >
+        Request or Report
+      </button>
+
+      <RequestModal
+        open={requestModalOpen}
+        onClose={() => setRequestModalOpen(false)}
+        requestType={requestType}
+        setRequestType={setRequestType}
+        requestName={requestName}
+        setRequestName={setRequestName}
+        requestMessage={requestMessage}
+        setRequestMessage={setRequestMessage}
+        onSubmit={submitRequest}
+        requestHistory={requestHistory}
+        requestStatus={requestStatus}
+      />
     </div>
   );
 }
