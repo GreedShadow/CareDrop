@@ -212,6 +212,98 @@ function buildLocalSummary(text) {
   return parts.map((line, index) => `${index + 1}. ${line}`).join("\n");
 }
 
+function sentenceSplit(text) {
+  return String(text || "")
+    .replace(/\r/g, " ")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 24);
+}
+
+function extractKeywords(text) {
+  const stopWords = new Set([
+    "about", "after", "again", "because", "before", "between", "during", "every", "focus",
+    "their", "there", "these", "those", "under", "which", "while", "would", "nurse", "nursing",
+    "patient", "review", "question", "answer", "notes",
+  ]);
+
+  return uniqueBy(
+    normalize(text)
+      .split(/\s+/)
+      .filter((word) => word.length > 4 && !stopWords.has(word)),
+    (word) => word
+  );
+}
+
+function inferDifficulty(text) {
+  const target = String(text || "").toLowerCase();
+
+  if (["priority", "first", "best", "initial", "critical", "unsafe", "shock", "airway", "delegate", "severe"].some((word) => target.includes(word))) {
+    return "hard";
+  }
+
+  if (["assess", "monitor", "teaching", "intervention", "medication", "warning", "management"].some((word) => target.includes(word))) {
+    return "medium";
+  }
+
+  return "easy";
+}
+
+function inferSubject(text) {
+  const target = String(text || "").toLowerCase();
+
+  if (/(drug|medication|dose|digoxin|insulin|heparin|warfarin|morphine|antibiotic)/.test(target)) return "Pharmacology";
+  if (/(postpartum|pregnan|labor|fetus|fundus|lochia|newborn|maternity)/.test(target)) return "Maternal & Newborn";
+  if (/(child|infant|pediatric|adolescent|bronchiolitis|epiglottitis)/.test(target)) return "Pediatrics";
+  if (/(therapeutic|suicid|depression|hallucination|psychi|mental health|lithium|haloperidol)/.test(target)) return "Psychiatric Nursing";
+  if (/(community|prevention|immunization|public health|barangay|dengue|tuberculosis|dots)/.test(target)) return "Community Health";
+  if (/(delegate|uap|staff|leadership|management|assignment|incident)/.test(target)) return "Leadership & Management";
+  if (/(surgery|shock|respiratory|cardiac|electrolyte|thyroid|embol|hypoglycemia|med-surg)/.test(target)) return "Medical-Surgical";
+  return "Fundamentals";
+}
+
+function inferTopic(text, fallbackKeyword = "general review") {
+  const target = String(text || "").toLowerCase();
+  const match = target.match(
+    /(airway|breathing|circulation|infection control|patient safety|assessment|delegation|shock|respiratory|cardiac|newborn|postpartum|dehydration|therapeutic communication|prevention|dengue|tuberculosis|medication safety|anticoagulants|opioids|electrolytes|disaster nursing)/
+  );
+
+  return (match?.[0] || fallbackKeyword || "general review").trim();
+}
+
+function buildCustomEntries(text, selectedSubject) {
+  const sentences = sentenceSplit(text).slice(0, 48);
+  const keywords = extractKeywords(text);
+
+  return uniqueBy(
+    sentences.map((sentence, index) => {
+      const inferredSubject = selectedSubject && selectedSubject !== "Mixed Review" ? selectedSubject : inferSubject(sentence);
+      const keyword = keywords[index % Math.max(keywords.length, 1)] || inferTopic(sentence);
+
+      return {
+        q: `What nursing point should you remember about ${keyword} from these notes?`,
+        a: sentence,
+        difficulty: inferDifficulty(sentence),
+        topic: inferTopic(sentence, keyword),
+        subject: inferredSubject,
+      };
+    }),
+    (entry) => `${entry.subject}-${normalize(entry.q)}-${normalize(entry.a)}`
+  );
+}
+
+function matchesStudyFilter(entry, subject, difficulty, topic) {
+  const matchesSubject = subject === "Mixed Review" ? true : entry.subject === subject;
+  const matchesDifficulty = difficulty === "All" ? true : entry.difficulty === difficulty;
+  const matchesTopic = topic
+    ? `${entry.topic || ""} ${entry.q || entry.prompt || ""} ${entry.a || entry.answer || ""} ${entry.rationale || ""}`
+        .toLowerCase()
+        .includes(topic.toLowerCase())
+    : true;
+
+  return matchesSubject && matchesDifficulty && matchesTopic;
+}
+
 function toFlashcard(entry, subject) {
   return {
     id: `${subject}-${normalize(entry.q)}`,
@@ -231,33 +323,35 @@ function getAllEntries() {
   );
 }
 
-function getFilteredEntries(subject, difficulty, topic) {
-  const source =
-    subject === "Mixed Review"
-      ? getAllEntries()
-      : (QUESTION_BANK[subject] || []).map((entry) => ({ ...entry, subject }));
-
-  return source.filter((entry) => {
-    const matchesDifficulty = difficulty === "All" ? true : entry.difficulty === difficulty;
-    const matchesTopic = topic
-      ? `${entry.topic} ${entry.q} ${entry.a}`.toLowerCase().includes(topic.toLowerCase())
-      : true;
-    return matchesDifficulty && matchesTopic;
-  });
+function getExactEntries(sourceEntries, subject, difficulty, topic) {
+  return sourceEntries.filter((entry) => matchesStudyFilter(entry, subject, difficulty, topic));
 }
 
-function buildFlashcardCandidates(subject, difficulty, topic) {
-  const pools = [
-    getFilteredEntries(subject, difficulty, topic),
-    getFilteredEntries(subject, difficulty, ""),
-    getFilteredEntries(subject, "All", topic),
-    getFilteredEntries(subject, "All", ""),
-    getFilteredEntries("Mixed Review", difficulty, topic),
-    getFilteredEntries("Mixed Review", "All", ""),
+function buildFlashcardVariants(entry) {
+  const subject = entry.subject;
+  const baseId = `${subject}-${normalize(entry.q)}`;
+  const topic = entry.topic || "general review";
+  const answer = entry.a;
+  const rationale = entry.a;
+  const notes = `Focus area: ${topic}.`;
+  const prompts = [
+    entry.q,
+    `In ${subject}, what should you remember about ${topic}?`,
+    `Board recall: what is the safest nursing takeaway for ${topic}?`,
+    `What clue from ${subject} review points to ${topic}?`,
   ];
 
   return uniqueBy(
-    pools.flat().map((entry) => toFlashcard(entry, entry.subject)),
+    prompts.map((prompt, index) => ({
+      id: `${baseId}-card-${index + 1}`,
+      subject,
+      difficulty: entry.difficulty || "medium",
+      topic,
+      question: prompt,
+      answer,
+      rationale,
+      notes,
+    })),
     (item) => item.id
   );
 }
@@ -271,6 +365,10 @@ function buildQuizVariants(entry) {
     },
     {
       prompt: `A nursing student is reviewing ${entry.topic}. Which response is correct?`,
+      rationale: entry.a,
+    },
+    {
+      prompt: `Which clue best supports the correct nursing action for ${entry.topic} in ${entry.subject}?`,
       rationale: entry.a,
     },
   ];
@@ -297,27 +395,14 @@ function buildDistractors(correctAnswer, pool) {
   return shuffle([correctAnswer, ...distractors]).slice(0, 4);
 }
 
-function buildLocalQuizFallback(subject, difficulty, topic, count, usedPrompts = []) {
-  const allEntries = getAllEntries();
-  const exactDifficultyEntries = difficulty === "All"
-    ? allEntries
-    : allEntries.filter((entry) => entry.difficulty === difficulty);
-  const prioritized = uniqueBy(
-    [
-      ...getFilteredEntries(subject, difficulty, topic),
-      ...getFilteredEntries(subject, difficulty, ""),
-      ...(difficulty === "All" ? getFilteredEntries(subject, "All", topic) : []),
-      ...(difficulty === "All" ? getFilteredEntries(subject, "All", "") : []),
-      ...getFilteredEntries("Mixed Review", difficulty, topic),
-      ...(difficulty === "All" ? allEntries : exactDifficultyEntries),
-    ],
-    (entry) => `${entry.subject}-${normalize(entry.q)}`
-  );
+function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count, usedPrompts = []) {
+  const prioritized = shuffle(getExactEntries(sourceEntries, subject, difficulty, topic));
+  const distractorPool = prioritized.length ? prioritized : getExactEntries(sourceEntries, subject, difficulty, topic);
 
   const questions = [];
 
   for (const entry of prioritized) {
-    for (const variant of buildQuizVariants(entry)) {
+    for (const variant of shuffle(buildQuizVariants(entry))) {
       const normalizedPrompt = normalize(variant.prompt);
       if (!normalizedPrompt || usedPrompts.includes(normalizedPrompt)) {
         continue;
@@ -330,7 +415,7 @@ function buildLocalQuizFallback(subject, difficulty, topic, count, usedPrompts =
         topic: entry.topic,
         prompt: variant.prompt,
         correctAnswer: entry.a,
-        options: buildDistractors(entry.a, allEntries),
+        options: buildDistractors(entry.a, distractorPool),
         rationale: variant.rationale,
         notes: `Topic focus: ${entry.topic}.`,
         userAnswer: null,
@@ -345,7 +430,7 @@ function buildLocalQuizFallback(subject, difficulty, topic, count, usedPrompts =
   return questions;
 }
 
-function sanitizeFlashcards(cards, subject, topic, usedIds, allowRepeat) {
+function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRepeat) {
   return uniqueBy(
     (Array.isArray(cards) ? cards : []).map((card) => {
       const nextSubject = card.subject || subject || "Mixed Review";
@@ -367,11 +452,24 @@ function sanitizeFlashcards(cards, subject, topic, usedIds, allowRepeat) {
     (card) =>
       card.question &&
       card.answer &&
+      matchesStudyFilter(
+        {
+          subject: card.subject,
+          difficulty: card.difficulty,
+          topic: card.topic,
+          q: card.question,
+          a: card.answer,
+          rationale: card.rationale,
+        },
+        subject,
+        difficulty,
+        topic
+      ) &&
       (allowRepeat ? true : !usedIds.includes(card.id))
   );
 }
 
-function sanitizeQuizQuestions(questions, subject, topic, usedPrompts, allowRepeat) {
+function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompts, allowRepeat) {
   return uniqueBy(
     (Array.isArray(questions) ? questions : []).map((item) => {
       const prompt = String(item.prompt || item.question || "").trim();
@@ -400,7 +498,24 @@ function sanitizeQuizQuestions(questions, subject, topic, usedPrompts, allowRepe
     const valid = item.prompt && item.correctAnswer && item.options.length >= 4;
     const notUsed = allowRepeat ? true : !usedPrompts.includes(normalize(item.prompt));
     const includesCorrect = item.options.some((option) => normalize(option) === normalize(item.correctAnswer));
-    return valid && notUsed && includesCorrect;
+    return (
+      valid &&
+      notUsed &&
+      includesCorrect &&
+      matchesStudyFilter(
+        {
+          subject: item.subject,
+          difficulty: item.difficulty,
+          topic: item.topic,
+          prompt: item.prompt,
+          answer: item.correctAnswer,
+          rationale: item.rationale,
+        },
+        subject,
+        difficulty,
+        topic
+      )
+    );
   });
 }
 
@@ -527,32 +642,57 @@ function selectSessionItems(pool, size, usedKeys, recentKeys, keySelector) {
     ? []
     : distinctPool.filter((item) => !nextUsed.includes(keySelector(item)));
   const selected = [];
+  const targetSize = Math.max(size, 1);
 
-  function take(candidates) {
+  function takeDistinct(candidates) {
     for (const item of shuffle(candidates)) {
       const key = keySelector(item);
       if (selected.some((selectedItem) => keySelector(selectedItem) === key)) {
         continue;
       }
       selected.push(item);
-      if (selected.length >= Math.min(size, distinctPool.length)) {
+      if (selected.length >= targetSize || selected.length >= distinctPool.length) {
         return;
       }
     }
   }
 
-  take(unseen.filter((item) => !nextRecent.includes(keySelector(item))));
-  if (selected.length < Math.min(size, distinctPool.length)) {
-    take(unseen);
+  takeDistinct(unseen.filter((item) => !nextRecent.includes(keySelector(item))));
+  if (selected.length < Math.min(targetSize, distinctPool.length)) {
+    takeDistinct(unseen);
   }
-  if (selected.length < Math.min(size, distinctPool.length)) {
-    take(distinctPool.filter((item) => !nextRecent.includes(keySelector(item))));
+  if (selected.length < Math.min(targetSize, distinctPool.length)) {
+    takeDistinct(distinctPool.filter((item) => !nextRecent.includes(keySelector(item))));
   }
-  if (selected.length < Math.min(size, distinctPool.length)) {
-    take(distinctPool);
+  if (selected.length < Math.min(targetSize, distinctPool.length)) {
+    takeDistinct(distinctPool);
   }
 
-  return selected.slice(0, Math.min(size, distinctPool.length));
+  if (selected.length >= targetSize) {
+    return selected.slice(0, targetSize);
+  }
+
+  while (selected.length < targetSize) {
+    const recycledPool = shuffle(distinctPool);
+
+    for (const item of recycledPool) {
+      const previous = selected[selected.length - 1];
+      if (previous && distinctPool.length > 1 && keySelector(previous) === keySelector(item)) {
+        continue;
+      }
+
+      selected.push(item);
+      if (selected.length >= targetSize) {
+        return selected;
+      }
+    }
+
+    if (distinctPool.length === 1) {
+      selected.push(distinctPool[0]);
+    }
+  }
+
+  return selected.slice(0, targetSize);
 }
 
 function Badge({ label, color = "gray" }) {
@@ -1021,6 +1161,11 @@ export default function App() {
 
   const studyText = buildStudyText(noteText, uploadedText);
   const hasCustomSource = Boolean(studyText);
+  const customEntries = useMemo(
+    () => (hasCustomSource ? buildCustomEntries(studyText, subject) : []),
+    [hasCustomSource, studyText, subject]
+  );
+  const activeEntries = customEntries.length ? customEntries : getAllEntries();
 
   const weakCardIds = useMemo(
     () =>
@@ -1067,7 +1212,10 @@ export default function App() {
   }
 
   function buildLocalFlashcardSet() {
-    let candidates = buildFlashcardCandidates(subject, difficulty, topicFilter);
+    let candidates = uniqueBy(
+      getExactEntries(activeEntries, subject, difficulty, topicFilter).flatMap((entry) => buildFlashcardVariants(entry)),
+      (card) => card.id
+    );
 
     if (filterWeakOnly) {
       candidates = candidates.filter((card) => weakCardIds.includes(card.id));
@@ -1128,6 +1276,7 @@ export default function App() {
       const aiCards = sanitizeFlashcards(
         data.cards,
         subject,
+        difficulty,
         topicFilter,
         usedFlashcardIdsRef.current,
         hasCustomSource
@@ -1171,8 +1320,9 @@ export default function App() {
         excludeQuestions: hasCustomSource ? [] : usedQuizPromptsRef.current,
       });
 
-      const aiQuestions = sanitizeQuizQuestions(data.questions, subject, topicFilter, [], true);
+      const aiQuestions = sanitizeQuizQuestions(data.questions, subject, difficulty, topicFilter, [], true);
       const fallback = buildLocalQuizFallback(
+        activeEntries,
         subject,
         difficulty,
         topicFilter,
@@ -1210,6 +1360,7 @@ export default function App() {
       }
     } catch (error) {
       const fallbackPool = buildLocalQuizFallback(
+        activeEntries,
         subject,
         difficulty,
         topicFilter,
