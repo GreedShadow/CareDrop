@@ -29,7 +29,7 @@ export default async function handler(req, res) {
 
     const response = await generateText(client, {
       systemInstruction:
-        "You are a nursing board exam coach. Answer only in the context of the missed question. Be clear, accurate, exam-focused, and supportive. Explain why the correct answer is best, why the chosen answer is weaker, what clue in the stem matters most, and what the learner should remember for the board exam. Keep the reply specific to the missed item.",
+        "You are a nursing board exam coach. Answer only in the context of the missed question. First, directly answer the learner's exact typed question in 1 to 2 sentences. Then explain why the correct answer is best, why the learner's chosen answer is weaker, what clue in the question stem points to the right answer, and what high-yield board takeaway to remember. Do not give a generic explanation. Keep the reply specific to the missed item and easy to understand.",
       prompt: [
         `Subject: ${subject}`,
         `Topic: ${topic || "General review"}`,
@@ -39,14 +39,24 @@ export default async function handler(req, res) {
         `Correct answer: ${correctAnswer}`,
         `Rationale: ${rationale || "None provided."}`,
         notes ? `Memory tip: ${notes}` : "",
-        `Learner question: ${userPrompt}`,
+        `Learner's exact question to answer first: ${userPrompt}`,
+        "Format the answer with these short headings:",
+        "1. Direct answer",
+        "2. Why your answer was weaker",
+        "3. Clue in the question",
+        "4. What to remember for boards",
       ]
         .filter(Boolean)
         .join("\n\n"),
       maxOutputTokens: 900,
     });
 
-    return sendJson(res, 200, { success: true, response });
+    return sendJson(res, 200, {
+      success: true,
+      response:
+        response ||
+        `Direct answer: ${correctAnswer} is the best answer for this item.\n\nWhy your answer was weaker: ${selectedAnswer || "Your chosen answer"} did not match the strongest nursing priority or teaching point.\n\nClue in the question: Focus on the part of the stem that points toward ${topic || "the core concept"}.\n\nWhat to remember for boards: ${rationale || notes || correctAnswer}`,
+    });
   } catch (error) {
     console.error("Vercel Gemini review help error:", error);
     return sendJson(res, 500, {

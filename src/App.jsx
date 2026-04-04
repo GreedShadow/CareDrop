@@ -1441,7 +1441,10 @@ export default function App() {
         difficulty: quizItem?.difficulty || difficulty,
       });
 
-      setAiResponse(data.response || "No response returned.");
+      setAiResponse(
+        data.response ||
+          "The AI did not return a full explanation, but the correct answer and rationale above are still the best review guide for this item."
+      );
       setQuestion("");
     } catch (error) {
       setApiError(
