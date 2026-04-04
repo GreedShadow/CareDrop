@@ -1,4 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { MessageCircleMore, Minus, X } from "lucide-react";
+
 const STORAGE_KEY = "caredrop-dashboard-v2";
 const REQUEST_STORAGE_KEY = "caredrop-feedback-v1";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
@@ -1219,7 +1221,7 @@ function SidebarNavButton({ active, label, hint, onClick, badge }) {
   );
 }
 
-function SubjectTab({ active, label, meta, onClick }) {
+function SubjectTab({ active, label, onClick }) {
   return (
     <button
       type="button"
@@ -1237,9 +1239,6 @@ function SubjectTab({ active, label, meta, onClick }) {
       }}
     >
       <div style={{ fontSize: 14, fontWeight: 800 }}>{label}</div>
-      <div style={{ fontSize: 11, marginTop: 4, color: active ? "rgba(255,255,255,0.72)" : "#92A0B5" }}>
-        {meta}
-      </div>
     </button>
   );
 }
@@ -1323,6 +1322,7 @@ function AnalyticsCard({ title, children, footer }) {
 function RequestModal({
   open,
   onClose,
+  onDiscard,
   requestType,
   setRequestType,
   requestName,
@@ -1372,21 +1372,46 @@ function RequestModal({
               Send a bug report, topic request, or fix request. When the feedback inbox is configured, this goes to your central GitHub-backed request inbox.
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              border: `1px solid ${C.border}`,
-              background: C.surface,
-              borderRadius: 10,
-              padding: "8px 10px",
-              cursor: "pointer",
-              fontWeight: 700,
-              color: C.muted,
-            }}
-          >
-            Close
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              title="Minimize"
+              style={{
+                width: 36,
+                height: 36,
+                border: `1px solid ${C.border}`,
+                background: C.surface,
+                borderRadius: 10,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: C.muted,
+              }}
+            >
+              <Minus size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={onDiscard}
+              title="Discard and close"
+              style={{
+                width: 36,
+                height: 36,
+                border: `1px solid ${C.border}`,
+                background: C.surface,
+                borderRadius: 10,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: C.muted,
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -1739,6 +1764,14 @@ export default function App() {
         ratings,
         sessions,
         reviewSessions,
+        flashcards,
+        cardIdx,
+        flashcardSessionRatings,
+        flashcardSessionSubmitted,
+        quiz,
+        quizIdx,
+        quizSubmitted,
+        showFeedback,
         usedFlashcardIds,
         usedFlashcardQuestions,
         usedQuizPrompts,
@@ -1759,6 +1792,14 @@ export default function App() {
     ratings,
     sessions,
     reviewSessions,
+    flashcards,
+    cardIdx,
+    flashcardSessionRatings,
+    flashcardSessionSubmitted,
+    quiz,
+    quizIdx,
+    quizSubmitted,
+    showFeedback,
     usedFlashcardIds,
     usedFlashcardQuestions,
     usedQuizPrompts,
@@ -1770,6 +1811,22 @@ export default function App() {
     summaryText,
     filterWeakOnly,
   ]);
+
+  useEffect(() => {
+    if (persisted?.flashcards?.length) {
+      setFlashcards(persisted.flashcards);
+      setCardIdx(clamp(Number(persisted.cardIdx || 0), 0, Math.max(persisted.flashcards.length - 1, 0)));
+      setFlashcardSessionRatings(persisted.flashcardSessionRatings || {});
+      setFlashcardSessionSubmitted(Boolean(persisted.flashcardSessionSubmitted));
+    }
+
+    if (persisted?.quiz?.length) {
+      setQuiz(persisted.quiz);
+      setQuizIdx(clamp(Number(persisted.quizIdx || 0), 0, Math.max(persisted.quiz.length - 1, 0)));
+      setQuizSubmitted(Boolean(persisted.quizSubmitted));
+      setShowFeedback(Boolean(persisted.showFeedback));
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1840,6 +1897,7 @@ export default function App() {
   const reviewSessionAverage = reviewSessions.length
     ? Math.round(reviewSessions.reduce((total, session) => total + Number(session.score || 0), 0) / reviewSessions.length)
     : 0;
+  const hasRequestDraft = Boolean(requestName.trim() || requestMessage.trim() || requestStatus);
 
   useEffect(() => {
     setAiResponse("");
@@ -1850,6 +1908,13 @@ export default function App() {
     setApiError("");
     setStatusMessage("");
     setUploadError("");
+  }
+
+  function clearRequestDraft() {
+    setRequestType("Bug Report");
+    setRequestName("");
+    setRequestMessage("");
+    setRequestStatus("");
   }
 
   function markFlashcardsAsUsed(deck) {
@@ -2382,9 +2447,8 @@ export default function App() {
       );
     } finally {
       setRequestLoading(false);
-      setRequestName("");
-      setRequestMessage("");
-      setRequestType("Bug Report");
+      clearRequestDraft();
+      setRequestModalOpen(false);
     }
   }
 
@@ -2617,8 +2681,7 @@ export default function App() {
               </div>
             </div>
             <div style={{ fontSize: 13, color: "rgba(228,235,246,0.8)", textAlign: width < 880 ? "left" : "right" }}>
-              <div>{hasCustomSource ? "Focused reviewer mode" : "Standard review mode"}</div>
-              <div style={{ marginTop: 6 }}>{gentlePush}</div>
+              <div>{gentlePush}</div>
             </div>
           </div>
 
@@ -2658,12 +2721,6 @@ export default function App() {
               key={value}
               active={subject === value}
               label={value}
-              meta={`${
-                (value === "Mixed Review"
-                  ? activeEntries
-                  : activeEntries.filter((entry) => entry.subject === value)
-                ).filter((entry) => (difficulty === "All" ? true : entry.difficulty === difficulty)).length
-              } ${difficulty === "All" ? "items" : difficulty}`}
               onClick={() => setSubject(value)}
             />
           ))}
@@ -3823,18 +3880,48 @@ export default function App() {
           borderRadius: 999,
           background: C.accent,
           color: "#fff",
-          padding: "12px 16px",
-          fontWeight: 800,
+          width: 52,
+          height: 52,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
           boxShadow: "0 14px 26px rgba(45, 106, 79, 0.28)",
           cursor: "pointer",
         }}
+        title="Open request or report form"
+        aria-label="Open request or report form"
       >
-        Request or Report
+        <MessageCircleMore size={22} />
       </button>
+
+      {hasRequestDraft && !requestModalOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            right: 18,
+            bottom: 78,
+            zIndex: 89,
+            padding: "8px 12px",
+            borderRadius: 999,
+            background: "#FFF9EC",
+            border: `1px solid ${C.amber}`,
+            color: C.amber,
+            fontSize: 12,
+            fontWeight: 700,
+            boxShadow: "0 12px 24px rgba(231, 111, 0, 0.12)",
+          }}
+        >
+          Draft saved
+        </div>
+      ) : null}
 
       <RequestModal
         open={requestModalOpen}
         onClose={() => setRequestModalOpen(false)}
+        onDiscard={() => {
+          clearRequestDraft();
+          setRequestModalOpen(false);
+        }}
         requestType={requestType}
         setRequestType={setRequestType}
         requestName={requestName}

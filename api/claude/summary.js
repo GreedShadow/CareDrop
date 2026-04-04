@@ -21,8 +21,8 @@ export default async function handler(req, res) {
 
     const summary = await generateText(client, {
       systemInstruction:
-        "You create concise nursing study summaries. Return plain text only. Use 5 to 8 numbered lines. Focus on safety, prioritization, assessment, and high-yield recall points.",
-      prompt: `Summarize these nursing notes into a quick reviewer:\n\n${notes}`,
+        "You create concise PRC NLE nursing study summaries. Return plain text only. Use 5 to 8 numbered lines. Focus on safety, prioritization, assessment, and high-yield recall points. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules or doses.",
+      prompt: `Summarize these nursing notes into a quick reviewer for a Philippine nursing board-review learner:\n\n${notes}`,
       maxOutputTokens: 700,
     });
 

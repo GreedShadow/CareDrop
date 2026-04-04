@@ -60,11 +60,12 @@ export default async function handler(req, res) {
 
     const parsed = await generateJson(client, {
       systemInstruction:
-        `You generate nursing flashcards from notes. Create exactly ${count} concise, board-focused cards. Respect the requested subject, topic, and difficulty boundaries.`,
+        `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt.`,
       prompt: [
-        "Build nursing study cards for a learner.",
+        "Build nursing study cards for a learner preparing for the Philippine PRC Nurse Licensure Examination.",
         difficultyInstruction,
         context,
+        "Keep the cards practical, safety-focused, and framed for board-review recall in the Philippines.",
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the cards fresh and distinct.",

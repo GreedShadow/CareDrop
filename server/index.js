@@ -130,8 +130,8 @@ app.post("/api/claude/summary", async (req, res) => {
 
     const summary = await generateText(client, {
       systemInstruction:
-        "You create concise nursing study summaries. Return plain text only. Use 5 to 8 numbered lines. Focus on safety, prioritization, assessment, and high-yield recall points.",
-      prompt: `Summarize these nursing notes into a quick reviewer:\n\n${notes}`,
+        "You create concise PRC NLE nursing study summaries. Return plain text only. Use 5 to 8 numbered lines. Focus on safety, prioritization, assessment, and high-yield recall points. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules or doses.",
+      prompt: `Summarize these nursing notes into a quick reviewer for a Philippine nursing board-review learner:\n\n${notes}`,
       maxOutputTokens: 700,
     });
 
@@ -168,11 +168,12 @@ app.post("/api/claude/cards", async (req, res) => {
 
     const parsed = await generateJson(client, {
       systemInstruction:
-        `You generate nursing flashcards from notes. Create exactly ${count} concise, board-focused cards.`,
+        `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt.`,
       prompt: [
-        "Build nursing study cards for a learner.",
+        "Build nursing study cards for a learner preparing for the Philippine PRC Nurse Licensure Examination.",
         difficultyInstruction,
         context,
+        "Keep the cards practical, safety-focused, and framed for board-review recall in the Philippines.",
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the cards fresh and distinct.",
@@ -236,11 +237,12 @@ app.post("/api/claude/quiz", async (req, res) => {
 
     const parsed = await generateJson(client, {
       systemInstruction:
-        "You generate nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale.",
+        "You generate PRC NLE-style nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.",
       prompt: [
-        `Generate ${count} nursing quiz questions.`,
+        `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
         difficultyInstruction,
         context,
+        "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the questions fresh and not repetitive.",
@@ -307,7 +309,7 @@ app.post("/api/claude/review-help", async (req, res) => {
 
     const response = await generateText(client, {
       systemInstruction:
-        "You are a nursing board exam coach. Answer only in the context of the missed question. First, directly answer the learner's exact typed question in 1 to 2 sentences. Then explain why the correct answer is best, why the learner's chosen answer is weaker, what clue in the question stem points to the right answer, and what high-yield board takeaway to remember. Do not give a generic explanation. Keep the reply specific to the missed item and easy to understand.",
+        "You are a PRC NLE nursing board exam coach. Answer only in the context of the missed question. First, directly answer the learner's exact typed question in 1 to 2 sentences. Then explain why the correct answer is best, why the learner's chosen answer is weaker, what clue in the question stem points to the right answer, and what high-yield board takeaway to remember. Keep the reply specific to the missed item, easy to understand, and aligned with Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community health content and PNDF-aware medication context when relevant. Do not invent country-specific rules or doses.",
       prompt: [
         `Subject: ${subject}`,
         `Topic: ${topic || "General review"}`,
@@ -318,6 +320,7 @@ app.post("/api/claude/review-help", async (req, res) => {
         `Rationale: ${rationale || "None provided."}`,
         notes ? `Memory tip: ${notes}` : "",
         `Learner's exact question to answer first: ${userPrompt}`,
+        "Frame the explanation for a Philippine nursing board-review learner.",
         "Format the answer with these short headings:",
         "1. Direct answer",
         "2. Why your answer was weaker",

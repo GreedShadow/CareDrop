@@ -66,11 +66,12 @@ export default async function handler(req, res) {
 
     const parsed = await generateJson(client, {
       systemInstruction:
-        "You generate nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries.",
+        "You generate PRC NLE-style nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.",
       prompt: [
-        `Generate ${count} nursing quiz questions.`,
+        `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
         difficultyInstruction,
         context,
+        "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the questions fresh and not repetitive.",
