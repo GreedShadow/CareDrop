@@ -680,6 +680,41 @@ async function postJson(path, payload) {
   return data;
 }
 
+async function getJson(path) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+  let response;
+
+  try {
+    response = await fetch(apiUrl(path), {
+      method: "GET",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    window.clearTimeout(timeoutId);
+    if (error.name === "AbortError") {
+      throw new Error("The request timed out. Please try again.");
+    }
+    throw new Error("Network error. Check the backend connection and try again.");
+  }
+
+  window.clearTimeout(timeoutId);
+  const rawText = await response.text();
+  let data;
+
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    throw new Error("Server returned an invalid response.");
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || "Request failed.");
+  }
+
+  return data;
+}
+
 async function uploadFileForExtraction(file) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 120000);
@@ -1146,6 +1181,8 @@ function RequestModal({
   onSubmit,
   requestHistory,
   requestStatus,
+  requestLoading,
+  requestConfigured,
 }) {
   if (!open) {
     return null;
@@ -1181,7 +1218,7 @@ function RequestModal({
           <div>
             <div style={{ fontSize: 18, fontWeight: 800 }}>Report or Request</div>
             <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginTop: 4 }}>
-              Send a bug report, topic request, or fix request. Right now this is saved inside the app so you can keep track of what was submitted.
+              Send a bug report, topic request, or fix request. When the feedback inbox is configured, this goes to your central GitHub-backed request inbox.
             </div>
           </div>
           <button
@@ -1275,8 +1312,8 @@ function RequestModal({
             style={{
               padding: "10px 12px",
               borderRadius: 12,
-              background: C.accentLight,
-              border: `1px solid ${C.accentMid}`,
+              background: requestConfigured ? C.accentLight : C.amberLight,
+              border: `1px solid ${requestConfigured ? C.accentMid : C.amber}`,
               fontSize: 13,
               lineHeight: 1.6,
             }}
@@ -1285,6 +1322,21 @@ function RequestModal({
           </div>
         ) : null}
 
+        <div
+          style={{
+            padding: "10px 12px",
+            borderRadius: 12,
+            background: requestConfigured ? C.accentLight : C.pill,
+            border: `1px solid ${requestConfigured ? C.accentMid : C.border}`,
+            fontSize: 12,
+            color: requestConfigured ? C.accent : C.muted,
+          }}
+        >
+          {requestConfigured
+            ? "Central inbox is active. New requests are being sent to the site handler."
+            : "Central inbox is not configured yet. Requests will fall back to local device storage until the GitHub feedback token is added."}
+        </div>
+
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ fontSize: 12, color: C.muted }}>
             Recent requests saved here: <strong>{requestHistory.length}</strong>
@@ -1292,18 +1344,18 @@ function RequestModal({
           <button
             type="button"
             onClick={onSubmit}
-            disabled={!requestMessage.trim()}
+            disabled={!requestMessage.trim() || requestLoading}
             style={{
               padding: "10px 16px",
               borderRadius: 12,
               border: "none",
-              background: requestMessage.trim() ? C.accent : C.border,
-              color: requestMessage.trim() ? "#fff" : C.muted,
+              background: requestMessage.trim() && !requestLoading ? C.accent : C.border,
+              color: requestMessage.trim() && !requestLoading ? "#fff" : C.muted,
               fontWeight: 700,
-              cursor: requestMessage.trim() ? "pointer" : "not-allowed",
+              cursor: requestMessage.trim() && !requestLoading ? "pointer" : "not-allowed",
             }}
           >
-            Submit Request
+            {requestLoading ? "Submitting..." : "Submit Request"}
           </button>
         </div>
 
@@ -1327,10 +1379,17 @@ function RequestModal({
                   padding: 12,
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{entry.type}</div>
-                  <div style={{ fontSize: 11, color: C.faint }}>{new Date(entry.createdAt).toLocaleString()}</div>
-                </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{entry.type}</div>
+                    <div style={{ fontSize: 11, color: C.faint }}>{new Date(entry.createdAt).toLocaleString()}</div>
+                  </div>
+                {entry.url ? (
+                  <div style={{ fontSize: 11, color: C.accent, marginBottom: 6 }}>
+                    <a href={entry.url} target="_blank" rel="noreferrer" style={{ color: C.accent }}>
+                      Open request #{entry.number}
+                    </a>
+                  </div>
+                ) : null}
                 <div style={{ fontSize: 12, color: C.text, lineHeight: 1.6 }}>{entry.message}</div>
               </div>
             ))}
@@ -1457,6 +1516,8 @@ export default function App() {
   const [requestMessage, setRequestMessage] = useState("");
   const [requestStatus, setRequestStatus] = useState("");
   const [requestHistory, setRequestHistory] = useState(persistedRequests);
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [requestConfigured, setRequestConfigured] = useState(false);
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
   const usedFlashcardQuestionsRef = useRef(usedFlashcardQuestions);
@@ -1546,6 +1607,20 @@ export default function App() {
 
     window.localStorage.setItem(REQUEST_STORAGE_KEY, JSON.stringify(requestHistory));
   }, [requestHistory]);
+
+  useEffect(() => {
+    async function loadCentralRequests() {
+      try {
+        const data = await getJson("/api/feedback");
+        setRequestHistory(Array.isArray(data.requests) ? data.requests : []);
+        setRequestConfigured(Boolean(data.configured));
+      } catch {
+        setRequestConfigured(false);
+      }
+    }
+
+    loadCentralRequests();
+  }, []);
 
   const studyText = buildStudyText(noteText, uploadedText);
   const hasCustomSource = Boolean(studyText);
@@ -2095,24 +2170,51 @@ export default function App() {
     setDragActive(false);
   }
 
-  function submitRequest() {
+  async function submitRequest() {
     if (!requestMessage.trim()) {
       return;
     }
 
-    const entry = {
+    const fallbackEntry = {
       id: uid(),
       type: requestType,
-      name: requestName.trim(),
+      submittedBy: requestName.trim() || "Anonymous",
       message: requestMessage.trim(),
       createdAt: new Date().toISOString(),
+      state: "local",
+      url: "",
     };
 
-    setRequestHistory((prev) => [entry, ...prev].slice(0, 20));
-    setRequestStatus("Request saved in the app. You can keep tracking recent submissions from this panel.");
-    setRequestName("");
-    setRequestMessage("");
-    setRequestType("Bug Report");
+    setRequestLoading(true);
+    setRequestStatus("");
+
+    try {
+      const data = await postJson("/api/feedback", {
+        type: requestType,
+        name: requestName.trim(),
+        message: requestMessage.trim(),
+        appContext: `Submitted from CareDrop | subject=${subject} | difficulty=${difficulty} | topic=${topicFilter || "none"}`,
+      });
+
+      setRequestHistory((prev) => [data.request, ...prev].slice(0, 20));
+      setRequestConfigured(true);
+      setRequestStatus(
+        data.request?.url
+          ? `Request submitted to the central inbox. Issue #${data.request.number} was created.`
+          : "Request submitted to the central inbox."
+      );
+    } catch (error) {
+      setRequestHistory((prev) => [fallbackEntry, ...prev].slice(0, 20));
+      setRequestConfigured(false);
+      setRequestStatus(
+        `${error.message || "Central request inbox is not configured yet."} The request was saved locally on this device for now.`
+      );
+    } finally {
+      setRequestLoading(false);
+      setRequestName("");
+      setRequestMessage("");
+      setRequestType("Bug Report");
+    }
   }
 
   const bentoItems = [
@@ -3341,6 +3443,8 @@ export default function App() {
         onSubmit={submitRequest}
         requestHistory={requestHistory}
         requestStatus={requestStatus}
+        requestLoading={requestLoading}
+        requestConfigured={requestConfigured}
       />
     </div>
   );

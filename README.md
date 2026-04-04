@@ -6,8 +6,9 @@ Nursing Study Buddy with local study tools plus Gemini-powered summaries, flashc
 
 1. Copy `.env.example` to `.env`
 2. Add your Gemini API key
-3. Run `npm install`
-4. Run `npm run dev`
+3. Optional for central request inbox: add a GitHub token plus `GITHUB_FEEDBACK_REPO`
+4. Run `npm install`
+5. Run `npm run dev`
 
 ## Features
 
@@ -16,3 +17,4 @@ Nursing Study Buddy with local study tools plus Gemini-powered summaries, flashc
 - Gemini summaries, flashcards, and quizzes
 - Saved review sessions
 - Non-repeating AI sessions unless notes are provided
+- Central request/report inbox through GitHub Issues when configured

@@ -7,6 +7,7 @@ import express from "express";
 import multer from "multer";
 import { buildStudyContext, generateJson, generateText, model, requireClient } from "./ai-utils.js";
 import { extractFileText, SUPPORTED_EXTENSIONS } from "./extract-utils.js";
+import { createFeedbackRequest, listFeedbackRequests } from "./feedback-utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +46,38 @@ app.get("/api/health", (_req, res) => {
     model,
     configured: Boolean(process.env.GEMINI_API_KEY),
   });
+});
+
+app.get("/api/feedback", async (_req, res) => {
+  try {
+    const payload = await listFeedbackRequests();
+    return res.json({
+      success: true,
+      ...payload,
+    });
+  } catch (error) {
+    console.error("Feedback list error:", error);
+    return jsonError(res, 500, error.message || "Failed to load feedback requests.");
+  }
+});
+
+app.post("/api/feedback", async (req, res) => {
+  try {
+    const created = await createFeedbackRequest({
+      type: String(req.body?.type || "General Feedback"),
+      name: String(req.body?.name || "").trim(),
+      message: String(req.body?.message || "").trim(),
+      appContext: String(req.body?.appContext || "Submitted from CareDrop request modal."),
+    });
+
+    return res.json({
+      success: true,
+      request: created,
+    });
+  } catch (error) {
+    console.error("Feedback create error:", error);
+    return jsonError(res, 500, error.message || "Failed to submit the feedback request.");
+  }
 });
 
 app.post("/api/extract", upload.single("file"), async (req, res) => {
