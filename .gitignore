@@ -1,5 +1,9 @@
 node_modules/
 dist/
 .env
+.env.local
+.DS_Store
 npm-debug.log*
-.vite/
+yarn-debug.log*
+yarn-error.log*
+coverage/
