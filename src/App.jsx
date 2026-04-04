@@ -3813,30 +3813,33 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <AuthScreen
-        width={width}
-        authMode={authMode}
-        setAuthMode={setAuthMode}
-        authName={authName}
-        setAuthName={setAuthName}
-        authEmail={authEmail}
-        setAuthEmail={setAuthEmail}
-        authPassword={authPassword}
-        setAuthPassword={setAuthPassword}
-        authConfirmPassword={authConfirmPassword}
-        setAuthConfirmPassword={setAuthConfirmPassword}
-        termsAccepted={termsAccepted}
-        setTermsAccepted={setTermsAccepted}
-        onOpenTerms={() => setTermsModalOpen(true)}
-        cloudSyncReady={cloudSyncReady}
-        authNotice={authNotice}
-        onDismissNotice={() => setAuthNotice(null)}
-        authError={authError}
-        authLoading={authLoading}
-        forgotPasswordLoading={forgotPasswordLoading}
-        onSubmit={handleAuthSubmit}
-        onForgotPassword={handleForgotPassword}
-      />
+      <>
+        <AuthScreen
+          width={width}
+          authMode={authMode}
+          setAuthMode={setAuthMode}
+          authName={authName}
+          setAuthName={setAuthName}
+          authEmail={authEmail}
+          setAuthEmail={setAuthEmail}
+          authPassword={authPassword}
+          setAuthPassword={setAuthPassword}
+          authConfirmPassword={authConfirmPassword}
+          setAuthConfirmPassword={setAuthConfirmPassword}
+          termsAccepted={termsAccepted}
+          setTermsAccepted={setTermsAccepted}
+          onOpenTerms={() => setTermsModalOpen(true)}
+          cloudSyncReady={cloudSyncReady}
+          authNotice={authNotice}
+          onDismissNotice={() => setAuthNotice(null)}
+          authError={authError}
+          authLoading={authLoading}
+          forgotPasswordLoading={forgotPasswordLoading}
+          onSubmit={handleAuthSubmit}
+          onForgotPassword={handleForgotPassword}
+        />
+        <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
+      </>
     );
   }
 
@@ -5469,7 +5472,6 @@ export default function App() {
         requestLoading={requestLoading}
         requestConfigured={requestConfigured}
       />
-      <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
     </div>
   );
 }
