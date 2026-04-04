@@ -2522,7 +2522,7 @@ export default function App() {
           </span>
         </div>
         <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>
-          Focused nursing review workspace
+          Review workspace
         </div>
       </nav>
 
@@ -2536,23 +2536,20 @@ export default function App() {
           gap: 20,
         }}
       >
-        {(apiError || statusMessage) ? (
+        {apiError ? (
           <div
             style={{
               ...panelStyle,
               padding: 16,
-              borderColor: apiError ? C.red : C.accentMid,
-              background: apiError ? C.redLight : C.accentLight,
-              opacity: apiError ? 1 : statusFading ? 0 : 1,
-              transform: apiError ? "translateY(0)" : statusFading ? "translateY(-6px)" : "translateY(0)",
-              transition: "opacity 0.8s ease, transform 0.8s ease",
+              borderColor: C.red,
+              background: C.redLight,
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 800, color: apiError ? C.red : C.accent }}>
-              {apiError ? "Action Needed" : "Status"}
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.red }}>
+              Action Needed
             </div>
             <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.7, color: C.text }}>
-              {apiError || statusMessage}
+              {apiError}
             </div>
             {apiError && apiError.includes("Render") ? (
               <div style={{ marginTop: 8, fontSize: 12, color: C.muted }}>
@@ -2620,7 +2617,7 @@ export default function App() {
               </div>
             </div>
             <div style={{ fontSize: 13, color: "rgba(228,235,246,0.8)", textAlign: width < 880 ? "left" : "right" }}>
-              <div>{hasCustomSource ? "Focused reviewer mode" : "Expanded core bank mode"}</div>
+              <div>{hasCustomSource ? "Focused reviewer mode" : "Standard review mode"}</div>
               <div style={{ marginTop: 6 }}>{gentlePush}</div>
             </div>
           </div>
@@ -2674,12 +2671,12 @@ export default function App() {
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {[
-            ["dashboard", "Dashboard"],
-            ["flashcard", "Flashcards"],
-            ["quiz", "Quiz"],
-            ["notes", "Notes & Upload"],
-            ["history", "Review History"],
-          ].map(([key, label]) => (
+            ["dashboard", "Dashboard", ""],
+            ["flashcard", "Flashcards", flashcards.length ? `${flashcards.length}` : `${FLASHCARD_SET_SIZE}`],
+            ["quiz", "Quiz", quiz.length ? `${quiz.length}` : `${QUIZ_SET_SIZE}`],
+            ["notes", "Notes & Upload", hasCustomSource ? "Live" : ""],
+            ["history", "Review History", reviewSessions.length ? `${reviewSessions.length}` : ""],
+          ].map(([key, label, count]) => (
             <button
               key={key}
               onClick={() => setMode(key)}
@@ -2694,7 +2691,22 @@ export default function App() {
                 cursor: "pointer",
               }}
             >
-              {label}
+              <span>{label}</span>
+              {count ? (
+                <span
+                  style={{
+                    marginLeft: 8,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: mode === key ? "rgba(255,255,255,0.16)" : "#EEF3FA",
+                    color: mode === key ? "#fff" : "#355E8A",
+                    fontSize: 11,
+                    fontWeight: 800,
+                  }}
+                >
+                  {count}
+                </span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -3767,6 +3779,34 @@ export default function App() {
       >
         CareDrop | subject-focused flashcards and quizzes with Gemini support
       </footer>
+
+      {statusMessage ? (
+        <div
+          style={{
+            position: "fixed",
+            right: 18,
+            bottom: 82,
+            zIndex: 95,
+            maxWidth: 360,
+            padding: "12px 14px",
+            borderRadius: 14,
+            border: `1px solid ${C.accentMid}`,
+            background: C.accentLight,
+            color: C.text,
+            boxShadow: "0 16px 30px rgba(45, 106, 79, 0.16)",
+            opacity: statusFading ? 0 : 1,
+            transform: statusFading ? "translateY(12px)" : "translateY(0)",
+            transition: "opacity 0.8s ease, transform 0.8s ease",
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.accent, marginBottom: 4 }}>
+            Success
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+            {statusMessage}
+          </div>
+        </div>
+      ) : null}
 
       <button
         type="button"
