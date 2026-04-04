@@ -1,12 +1,39 @@
 import { sendJson, readJsonBody } from "../utils.js";
 import {
   buildStudyContext,
-  callClaude,
-  extractTextContent,
+  generateJson,
   model,
-  parseJsonResponse,
   requireClient,
-} from "../../server/claude-utils.js";
+} from "../../server/ai-utils.js";
+
+const quizSchema = {
+  type: "object",
+  properties: {
+    questions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          subject: { type: "string" },
+          difficulty: { type: "string", enum: ["easy", "medium", "hard"] },
+          topic: { type: "string" },
+          prompt: { type: "string" },
+          correctAnswer: { type: "string" },
+          options: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 4,
+            maxItems: 4,
+          },
+          rationale: { type: "string" },
+          notes: { type: "string" },
+        },
+        required: ["subject", "difficulty", "topic", "prompt", "correctAnswer", "options", "rationale", "notes"],
+      },
+    },
+  },
+  required: ["questions"],
+};
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -16,7 +43,7 @@ export default async function handler(req, res) {
   try {
     const client = requireClient();
     if (!client) {
-      return sendJson(res, 500, { success: false, error: "Missing ANTHROPIC_API_KEY in server environment." });
+      return sendJson(res, 500, { success: false, error: "Missing GEMINI_API_KEY in server environment." });
     }
 
     const body = await readJsonBody(req);
@@ -37,34 +64,28 @@ export default async function handler(req, res) {
         ? "Use a balanced mix of easy, medium, and hard questions."
         : `Every question must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
 
-    const response = await callClaude(client, {
-      model,
-      max_tokens: 3600,
-      system:
-        'You generate nursing multiple-choice quizzes. Return only valid JSON matching this shape: {"questions":[{"subject":"string","difficulty":"easy|medium|hard","topic":"string","prompt":"string","correctAnswer":"string","options":["string","string","string","string"],"rationale":"string","notes":"string"}]}. Each question must have four distinct options, one clearly best answer, and board-style rationale. Respect the requested subject, topic, and difficulty boundaries.',
-      messages: [
-        {
-          role: "user",
-          content: [
-            `Generate ${count} nursing quiz questions.`,
-            difficultyInstruction,
-            context,
-            excludeQuestions.length
-              ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
-              : "Make the questions fresh and not repetitive.",
-          ].join("\n\n"),
-        },
-      ],
+    const parsed = await generateJson(client, {
+      systemInstruction:
+        "You generate nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries.",
+      prompt: [
+        `Generate ${count} nursing quiz questions.`,
+        difficultyInstruction,
+        context,
+        excludeQuestions.length
+          ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
+          : "Make the questions fresh and not repetitive.",
+      ].join("\n\n"),
+      schema: quizSchema,
+      maxOutputTokens: 3600,
     });
 
-    const parsed = parseJsonResponse(extractTextContent(response.content));
     const questions = Array.isArray(parsed?.questions) ? parsed.questions.slice(0, count) : [];
     return sendJson(res, 200, { success: true, questions });
   } catch (error) {
-    console.error("Vercel Claude quiz error:", error);
+    console.error("Vercel Gemini quiz error:", error);
     return sendJson(res, 500, {
       success: false,
-      error: error.message || "Failed to generate Claude quiz questions.",
+      error: error.message || "Failed to generate Gemini quiz questions.",
     });
   }
 }

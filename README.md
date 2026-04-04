@@ -1,11 +1,11 @@
 # CareDrop
 
-Nursing Study Buddy with local study tools plus Claude-powered summaries, flashcards, and quizzes.
+Nursing Study Buddy with local study tools plus Gemini-powered summaries, flashcards, and quizzes.
 
 ## Setup
 
 1. Copy `.env.example` to `.env`
-2. Add your Anthropic API key
+2. Add your Gemini API key
 3. Run `npm install`
 4. Run `npm run dev`
 
@@ -13,6 +13,6 @@ Nursing Study Buddy with local study tools plus Claude-powered summaries, flashc
 
 - Subject and topic-focused study sessions
 - Local flashcards and quiz flow
-- Claude summaries, flashcards, and quizzes
+- Gemini summaries, flashcards, and quizzes
 - Saved review sessions
 - Non-repeating AI sessions unless notes are provided

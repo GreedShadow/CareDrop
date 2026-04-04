@@ -2,18 +2,17 @@ import "dotenv/config";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import Anthropic from "@anthropic-ai/sdk";
 import cors from "cors";
 import express from "express";
 import multer from "multer";
-import { extractFileText, SUPPORTED_EXTENSIONS, withTimeout } from "./extract-utils.js";
+import { buildStudyContext, generateJson, generateText, model, requireClient } from "./ai-utils.js";
+import { extractFileText, SUPPORTED_EXTENSIONS } from "./extract-utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
 const port = Number(process.env.PORT || 3001);
-const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
 const allowedOrigin = process.env.ALLOWED_ORIGIN?.split(",").map((value) => value.trim()).filter(Boolean);
 
 const app = express();
@@ -31,11 +30,6 @@ app.use(
 );
 app.use(express.json({ limit: "3mb" }));
 
-function requireClient() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  return apiKey ? new Anthropic({ apiKey }) : null;
-}
-
 function jsonError(res, status, error, extra = {}) {
   return res.status(status).json({
     success: false,
@@ -44,58 +38,12 @@ function jsonError(res, status, error, extra = {}) {
   });
 }
 
-function extractTextContent(content) {
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter((block) => block?.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
-}
-
-function parseJsonResponse(text) {
-  const trimmed = String(text || "").trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const match = trimmed.match(/\{[\s\S]*\}/);
-    if (!match) {
-      return null;
-    }
-    return JSON.parse(match[0]);
-  }
-}
-
-function buildStudyContext({ notes, subject, topic }) {
-  const parts = [];
-
-  if (subject && subject !== "Mixed Review") {
-    parts.push(`Subject focus: ${subject}`);
-  }
-  if (topic) {
-    parts.push(`Topic focus: ${topic}`);
-  }
-  if (notes) {
-    parts.push(`Use these uploaded notes as the primary study source:\n${notes}`);
-  }
-
-  return parts.join("\n\n").trim();
-}
-
-async function callClaude(client, options, timeoutMs = 45000) {
-  return withTimeout(client.messages.create(options), timeoutMs, "The AI request timed out. Please try again.");
-}
-
 app.get("/api/health", (_req, res) => {
   res.json({
     success: true,
     ok: true,
     model,
-    configured: Boolean(process.env.ANTHROPIC_API_KEY),
+    configured: Boolean(process.env.GEMINI_API_KEY),
   });
 });
 
@@ -139,7 +87,7 @@ app.post("/api/claude/summary", async (req, res) => {
   try {
     const client = requireClient();
     if (!client) {
-      return jsonError(res, 500, "Missing ANTHROPIC_API_KEY in server environment.");
+      return jsonError(res, 500, "Missing GEMINI_API_KEY in server environment.");
     }
 
     const notes = String(req.body?.notes || "").trim();
@@ -147,23 +95,17 @@ app.post("/api/claude/summary", async (req, res) => {
       return jsonError(res, 400, "Notes are required.");
     }
 
-    const response = await callClaude(client, {
-      model,
-      max_tokens: 700,
-      system:
+    const summary = await generateText(client, {
+      systemInstruction:
         "You create concise nursing study summaries. Return plain text only. Use 5 to 8 numbered lines. Focus on safety, prioritization, assessment, and high-yield recall points.",
-      messages: [
-        {
-          role: "user",
-          content: `Summarize these nursing notes into a quick reviewer:\n\n${notes}`,
-        },
-      ],
+      prompt: `Summarize these nursing notes into a quick reviewer:\n\n${notes}`,
+      maxOutputTokens: 700,
     });
 
-    return res.json({ success: true, summary: extractTextContent(response.content) });
+    return res.json({ success: true, summary });
   } catch (error) {
-    console.error("Claude summary error:", error);
-    return jsonError(res, 500, error.message || "Failed to generate Claude summary.");
+    console.error("Gemini summary error:", error);
+    return jsonError(res, 500, error.message || "Failed to generate Gemini summary.");
   }
 });
 
@@ -171,7 +113,7 @@ app.post("/api/claude/cards", async (req, res) => {
   try {
     const client = requireClient();
     if (!client) {
-      return jsonError(res, 500, "Missing ANTHROPIC_API_KEY in server environment.");
+      return jsonError(res, 500, "Missing GEMINI_API_KEY in server environment.");
     }
 
     const notes = String(req.body?.notes || "").trim();
@@ -185,31 +127,46 @@ app.post("/api/claude/cards", async (req, res) => {
       return jsonError(res, 400, "Provide notes, a subject, or a topic focus.");
     }
 
-    const response = await callClaude(client, {
-      model,
-      max_tokens: 2200,
-      system:
-        `You generate nursing flashcards from notes. Return only valid JSON matching this shape: {"cards":[{"subject":"string","difficulty":"easy|medium|hard","question":"string","answer":"string","rationale":"string","notes":"string","topic":"string"}]}. Create exactly ${count} concise, board-focused cards.`,
-      messages: [
-        {
-          role: "user",
-          content: [
-            "Build nursing study cards for a learner.",
-            context,
-            excludeQuestions.length
-              ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
-              : "Make the cards fresh and distinct.",
-          ].join("\n\n"),
+    const parsed = await generateJson(client, {
+      systemInstruction:
+        `You generate nursing flashcards from notes. Create exactly ${count} concise, board-focused cards.`,
+      prompt: [
+        "Build nursing study cards for a learner.",
+        context,
+        excludeQuestions.length
+          ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
+          : "Make the cards fresh and distinct.",
+      ].join("\n\n"),
+      schema: {
+        type: "object",
+        properties: {
+          cards: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                subject: { type: "string" },
+                difficulty: { type: "string", enum: ["easy", "medium", "hard"] },
+                question: { type: "string" },
+                answer: { type: "string" },
+                rationale: { type: "string" },
+                notes: { type: "string" },
+                topic: { type: "string" },
+              },
+              required: ["subject", "difficulty", "question", "answer", "rationale", "notes", "topic"],
+            },
+          },
         },
-      ],
+        required: ["cards"],
+      },
+      maxOutputTokens: 2200,
     });
 
-    const parsed = parseJsonResponse(extractTextContent(response.content));
     const cards = Array.isArray(parsed?.cards) ? parsed.cards.slice(0, count) : [];
     return res.json({ success: true, cards });
   } catch (error) {
-    console.error("Claude cards error:", error);
-    return jsonError(res, 500, error.message || "Failed to generate Claude study cards.");
+    console.error("Gemini cards error:", error);
+    return jsonError(res, 500, error.message || "Failed to generate Gemini study cards.");
   }
 });
 
@@ -217,7 +174,7 @@ app.post("/api/claude/quiz", async (req, res) => {
   try {
     const client = requireClient();
     if (!client) {
-      return jsonError(res, 500, "Missing ANTHROPIC_API_KEY in server environment.");
+      return jsonError(res, 500, "Missing GEMINI_API_KEY in server environment.");
     }
 
     const notes = String(req.body?.notes || "").trim();
@@ -237,32 +194,53 @@ app.post("/api/claude/quiz", async (req, res) => {
         ? "Use a balanced mix of easy, medium, and hard questions."
         : `Every question must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
 
-    const response = await callClaude(client, {
-      model,
-      max_tokens: 3600,
-      system:
-        'You generate nursing multiple-choice quizzes. Return only valid JSON matching this shape: {"questions":[{"subject":"string","difficulty":"easy|medium|hard","topic":"string","prompt":"string","correctAnswer":"string","options":["string","string","string","string"],"rationale":"string","notes":"string"}]}. Each question must have four distinct options, one clearly best answer, and board-style rationale.',
-      messages: [
-        {
-          role: "user",
-          content: [
-            `Generate ${count} nursing quiz questions.`,
-            difficultyInstruction,
-            context,
-            excludeQuestions.length
-              ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
-              : "Make the questions fresh and not repetitive.",
-          ].join("\n\n"),
+    const parsed = await generateJson(client, {
+      systemInstruction:
+        "You generate nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale.",
+      prompt: [
+        `Generate ${count} nursing quiz questions.`,
+        difficultyInstruction,
+        context,
+        excludeQuestions.length
+          ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
+          : "Make the questions fresh and not repetitive.",
+      ].join("\n\n"),
+      schema: {
+        type: "object",
+        properties: {
+          questions: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                subject: { type: "string" },
+                difficulty: { type: "string", enum: ["easy", "medium", "hard"] },
+                topic: { type: "string" },
+                prompt: { type: "string" },
+                correctAnswer: { type: "string" },
+                options: {
+                  type: "array",
+                  items: { type: "string" },
+                  minItems: 4,
+                  maxItems: 4,
+                },
+                rationale: { type: "string" },
+                notes: { type: "string" },
+              },
+              required: ["subject", "difficulty", "topic", "prompt", "correctAnswer", "options", "rationale", "notes"],
+            },
+          },
         },
-      ],
+        required: ["questions"],
+      },
+      maxOutputTokens: 3600,
     });
 
-    const parsed = parseJsonResponse(extractTextContent(response.content));
     const questions = Array.isArray(parsed?.questions) ? parsed.questions.slice(0, count) : [];
     return res.json({ success: true, questions });
   } catch (error) {
-    console.error("Claude quiz error:", error);
-    return jsonError(res, 500, error.message || "Failed to generate Claude quiz questions.");
+    console.error("Gemini quiz error:", error);
+    return jsonError(res, 500, error.message || "Failed to generate Gemini quiz questions.");
   }
 });
 
@@ -270,7 +248,7 @@ app.post("/api/claude/review-help", async (req, res) => {
   try {
     const client = requireClient();
     if (!client) {
-      return jsonError(res, 500, "Missing ANTHROPIC_API_KEY in server environment.");
+      return jsonError(res, 500, "Missing GEMINI_API_KEY in server environment.");
     }
 
     const userPrompt = String(req.body?.userPrompt || "").trim();
@@ -287,34 +265,28 @@ app.post("/api/claude/review-help", async (req, res) => {
       return jsonError(res, 400, "The wrong-answer review request is incomplete.");
     }
 
-    const response = await callClaude(client, {
-      model,
-      max_tokens: 900,
-      system:
+    const response = await generateText(client, {
+      systemInstruction:
         "You are a nursing board exam coach. Answer only in the context of the missed question. Be clear, accurate, exam-focused, and supportive. Explain why the correct answer is best and why the chosen answer is weaker when relevant. Keep the reply concise but helpful.",
-      messages: [
-        {
-          role: "user",
-          content: [
-            `Subject: ${subject}`,
-            `Topic: ${topic || "General review"}`,
-            `Difficulty: ${difficulty}`,
-            `Question: ${question}`,
-            `Chosen answer: ${selectedAnswer || "No answer recorded"}`,
-            `Correct answer: ${correctAnswer}`,
-            `Rationale: ${rationale || "None provided."}`,
-            notes ? `Memory tip: ${notes}` : "",
-            `Learner question: ${userPrompt}`,
-          ]
-            .filter(Boolean)
-            .join("\n\n"),
-        },
-      ],
+      prompt: [
+        `Subject: ${subject}`,
+        `Topic: ${topic || "General review"}`,
+        `Difficulty: ${difficulty}`,
+        `Question: ${question}`,
+        `Chosen answer: ${selectedAnswer || "No answer recorded"}`,
+        `Correct answer: ${correctAnswer}`,
+        `Rationale: ${rationale || "None provided."}`,
+        notes ? `Memory tip: ${notes}` : "",
+        `Learner question: ${userPrompt}`,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      maxOutputTokens: 900,
     });
 
-    return res.json({ success: true, response: extractTextContent(response.content) });
+    return res.json({ success: true, response });
   } catch (error) {
-    console.error("Claude review help error:", error);
+    console.error("Gemini review help error:", error);
     return jsonError(res, 500, error.message || "Failed to generate the AI explanation.");
   }
 });
