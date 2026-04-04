@@ -34,6 +34,32 @@ export async function generateText(client, { systemInstruction, prompt, maxOutpu
   return String(response.text || "").trim();
 }
 
+export async function generateMultipartText(
+  client,
+  { systemInstruction, parts, maxOutputTokens = 2048 },
+  timeoutMs = 45000
+) {
+  const response = await withTimeout(
+    client.models.generateContent({
+      model,
+      contents: [
+        {
+          role: "user",
+          parts,
+        },
+      ],
+      config: {
+        systemInstruction,
+        maxOutputTokens,
+      },
+    }),
+    timeoutMs,
+    "The AI request timed out. Please try again."
+  );
+
+  return String(response.text || "").trim();
+}
+
 export async function generateJson(
   client,
   { systemInstruction, prompt, schema, maxOutputTokens = 3072 },

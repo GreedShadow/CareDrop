@@ -119,6 +119,7 @@ app.post("/api/claude/cards", async (req, res) => {
     const notes = String(req.body?.notes || "").trim();
     const subject = String(req.body?.subject || "Mixed Review");
     const topic = String(req.body?.topic || "").trim();
+    const difficulty = String(req.body?.difficulty || "medium");
     const count = Math.max(6, Math.min(24, Number(req.body?.count || 10)));
     const excludeQuestions = Array.isArray(req.body?.excludeQuestions) ? req.body.excludeQuestions.slice(0, 120) : [];
     const context = buildStudyContext({ notes, subject, topic });
@@ -127,11 +128,17 @@ app.post("/api/claude/cards", async (req, res) => {
       return jsonError(res, 400, "Provide notes, a subject, or a topic focus.");
     }
 
+    const difficultyInstruction =
+      difficulty === "mixed"
+        ? "Use a balanced mix of easy, medium, and hard flashcards."
+        : `Every flashcard must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
+
     const parsed = await generateJson(client, {
       systemInstruction:
         `You generate nursing flashcards from notes. Create exactly ${count} concise, board-focused cards.`,
       prompt: [
         "Build nursing study cards for a learner.",
+        difficultyInstruction,
         context,
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`

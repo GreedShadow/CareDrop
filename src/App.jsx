@@ -28,7 +28,7 @@ const C = {
   pill: "#F0EDE6",
 };
 
-const QUESTION_BANK = {
+const SEED_QUESTION_BANK = {
   Fundamentals: [
     { q: "What is the first priority when a patient suddenly becomes unresponsive?", a: "Assess responsiveness, call for help, and check airway, breathing, and circulation. Start CPR if no pulse is present.", difficulty: "easy", topic: "basic life support" },
     { q: "Why is hand hygiene the single most important nursing intervention?", a: "It breaks the chain of infection and prevents transmission of pathogens between patients, staff, and surfaces.", difficulty: "easy", topic: "infection control" },
@@ -40,6 +40,9 @@ const QUESTION_BANK = {
     { q: "Why should side rails not be used as a routine restraint alternative?", a: "Improper use can increase injury risk and does not replace ongoing fall-prevention assessment.", difficulty: "medium", topic: "safety" },
     { q: "What is the purpose of the nursing process?", a: "It provides a systematic method for assessment, diagnosis, planning, implementation, and evaluation of care.", difficulty: "easy", topic: "nursing process" },
     { q: "What is the best first action when a sterile field becomes contaminated?", a: "Recognize the break in sterile technique and replace the contaminated field or item before continuing.", difficulty: "medium", topic: "sterile technique" },
+    { q: "A patient develops sudden stridor after a procedure. What is the nurse's priority response?", a: "Treat it as an airway emergency, call for immediate help, support oxygenation, and prepare for rapid airway intervention.", difficulty: "hard", topic: "airway emergency" },
+    { q: "Which finding most strongly suggests sepsis is progressing to instability?", a: "Worsening mental status, hypotension, tachycardia, and poor perfusion together suggest possible septic shock and need urgent escalation.", difficulty: "hard", topic: "sepsis recognition" },
+    { q: "During triage, which patient should be assessed first: chest pain, fever, or stable post-op discomfort?", a: "The patient with possible life-threatening compromise such as chest pain suggestive of acute coronary syndrome should be assessed first.", difficulty: "hard", topic: "triage priority" },
   ],
   Pharmacology: [
     { q: "What is the priority assessment before administering digoxin?", a: "Check the apical pulse for 1 full minute and hold if it is below the ordered parameter. Also review potassium because hypokalemia increases toxicity risk.", difficulty: "medium", topic: "cardiac drugs" },
@@ -127,6 +130,88 @@ const QUESTION_BANK = {
   ],
 };
 
+const BANK_ITEMS_PER_BUCKET = 21;
+const BUCKET_DIFFICULTIES = ["easy", "medium", "hard"];
+const QUESTION_LEAD_INS = [
+  "Board recall:",
+  "Focused review:",
+  "Nursing priority check:",
+];
+const QUESTION_TEMPLATES = [
+  (entry) => entry.q,
+  (entry, subject) => `Which statement is most accurate about ${entry.topic} in ${subject}?`,
+  (entry, subject) => `A patient scenario highlights ${entry.topic}. What should the nurse remember first in ${subject}?`,
+  (entry, subject) => `What is the safest nursing takeaway for ${entry.topic} in ${subject}?`,
+  (entry, subject) => `Which clue most strongly points to the correct response for ${entry.topic} in ${subject}?`,
+  (entry, subject, difficulty) => `For a ${difficulty} ${subject} review item about ${entry.topic}, which response is best?`,
+  (entry, subject) => `During review of ${subject}, what key principle should be tied to ${entry.topic}?`,
+  (entry, subject) => `If ${entry.topic} appears in a ${subject} question stem, what answer should come to mind?`,
+];
+const ANSWER_REMINDERS = [
+  (entry, subject) => `Board focus: connect ${entry.topic} to the safest nursing priority in ${subject}.`,
+  (entry, subject, difficulty) => `Review clue: this is the ${difficulty} takeaway the stem is pointing toward in ${subject}.`,
+  (entry) => `Memory hook: if the item is really about ${entry.topic}, this is the answer to anchor first.`,
+];
+
+function normalizeSeedKey(text) {
+  return String(text || "").toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
+}
+
+function buildExpandedQuestion(entry, subject, difficulty, variantIndex) {
+  const leadIn = QUESTION_LEAD_INS[Math.floor(variantIndex / QUESTION_TEMPLATES.length) % QUESTION_LEAD_INS.length];
+  const template = QUESTION_TEMPLATES[variantIndex % QUESTION_TEMPLATES.length];
+  return `${leadIn} ${template(entry, subject, difficulty)}`.trim();
+}
+
+function buildExpandedAnswer(entry, subject, difficulty, variantIndex) {
+  const reminder = ANSWER_REMINDERS[variantIndex % ANSWER_REMINDERS.length];
+  return `${entry.a} ${reminder(entry, subject, difficulty)}`.trim();
+}
+
+function buildExpandedBank(seedBank, targetPerBucket = BANK_ITEMS_PER_BUCKET) {
+  const bank = {};
+
+  for (const [subject, entries] of Object.entries(seedBank)) {
+    bank[subject] = [];
+
+    for (const difficulty of BUCKET_DIFFICULTIES) {
+      const seeds = entries.filter((entry) => entry.difficulty === difficulty);
+      const bucket = [];
+      const seen = new Set();
+
+      if (!seeds.length) {
+        continue;
+      }
+
+      let variantIndex = 0;
+      while (bucket.length < targetPerBucket && variantIndex < targetPerBucket * 12) {
+        const seed = seeds[variantIndex % seeds.length];
+        const question = buildExpandedQuestion(seed, subject, difficulty, variantIndex);
+        const key = `${subject}-${difficulty}-${normalizeSeedKey(question)}`;
+
+        if (!seen.has(key)) {
+          seen.add(key);
+          bucket.push({
+            ...seed,
+            q: question,
+            a: buildExpandedAnswer(seed, subject, difficulty, variantIndex),
+            subject,
+            difficulty,
+            seedQuestion: seed.q,
+          });
+        }
+
+        variantIndex += 1;
+      }
+
+      bank[subject].push(...bucket);
+    }
+  }
+
+  return bank;
+}
+
+const QUESTION_BANK = buildExpandedBank(SEED_QUESTION_BANK);
 const SUBJECT_OPTIONS = [...Object.keys(QUESTION_BANK), "Mixed Review"];
 const DIFFICULTIES = ["All", "easy", "medium", "hard"];
 const ENCOURAGEMENTS = [
@@ -440,11 +525,11 @@ function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRep
         id: `${nextSubject}-${normalize(question)}`,
         subject: nextSubject,
         difficulty: ["easy", "medium", "hard"].includes(card.difficulty) ? card.difficulty : "medium",
-        topic: topic || "ai review",
+        topic: topic || card.topic || "ai review",
         question,
         answer,
         rationale: String(card.rationale || answer || "Generated by Gemini."),
-        notes: String(card.notes || `Topic focus: ${topic || "general review"}.`),
+        notes: String(card.notes || `Topic focus: ${topic || card.topic || "general review"}.`),
       };
     }),
     (card) => card.id
@@ -727,11 +812,13 @@ function Badge({ label, color = "gray" }) {
 
 function Flashcard({ card, idx, total, onRate }) {
   const [flipped, setFlipped] = useState(false);
+  const [flipLocked, setFlipLocked] = useState(false);
   const prevCardId = useRef(card?.id);
 
   useEffect(() => {
     if (prevCardId.current !== card?.id) {
       setFlipped(false);
+      setFlipLocked(false);
       prevCardId.current = card?.id;
     }
   }, [card?.id]);
@@ -742,6 +829,16 @@ function Flashcard({ card, idx, total, onRate }) {
 
   const diffColor =
     card.difficulty === "hard" ? "red" : card.difficulty === "medium" ? "amber" : "green";
+
+  function handleFlip() {
+    if (flipLocked) {
+      return;
+    }
+
+    setFlipLocked(true);
+    setFlipped((value) => !value);
+    window.setTimeout(() => setFlipLocked(false), 420);
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -770,79 +867,113 @@ function Flashcard({ card, idx, total, onRate }) {
         </span>
       </div>
 
-      <div
-        onClick={() => setFlipped((value) => !value)}
-        style={{
-          cursor: "pointer",
-          minHeight: 260,
-          background: flipped ? `linear-gradient(135deg, ${C.accentLight} 0%, #fff 100%)` : C.surface,
-          border: `1.5px solid ${flipped ? C.accentMid : C.border}`,
-          borderRadius: 22,
-          padding: "28px 28px 24px",
-          transition: "all 0.25s ease",
-          userSelect: "none",
-          boxShadow: "0 12px 24px rgba(15, 23, 42, 0.05)",
-        }}
-      >
-        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-          <Badge label={card.subject} color="blue" />
-          <Badge label={card.topic} color="gray" />
-          <Badge label={card.difficulty} color={diffColor} />
-          {flipped ? <Badge label="Answer" color="green" /> : null}
-        </div>
-
-        {!flipped ? (
-          <>
-            <div
-              style={{
-                fontSize: 11,
-                color: C.faint,
-                fontWeight: 700,
-                letterSpacing: "0.07em",
-                textTransform: "uppercase",
-                marginBottom: 10,
-              }}
-            >
-              Question
-            </div>
-            <div style={{ fontSize: 19, fontWeight: 700, color: C.text, lineHeight: 1.55 }}>
-              {card.question}
-            </div>
-            <div style={{ marginTop: 20, fontSize: 12, color: C.faint, textAlign: "center" }}>
-              Tap to reveal answer
-            </div>
-          </>
-        ) : (
-          <>
-            <div
-              style={{
-                fontSize: 11,
-                color: C.accent,
-                fontWeight: 700,
-                letterSpacing: "0.07em",
-                textTransform: "uppercase",
-                marginBottom: 10,
-              }}
-            >
-              Rationale
-            </div>
-            <div style={{ fontSize: 15, color: C.text, lineHeight: 1.7 }}>{card.answer}</div>
-            <div
-              style={{
-                marginTop: 16,
-                padding: 14,
-                borderRadius: 14,
-                background: "#FAFBF8",
-                border: `1px solid ${C.border}`,
-                fontSize: 13,
-                lineHeight: 1.65,
-                color: C.muted,
-              }}
-            >
-              {card.notes}
-            </div>
-          </>
-        )}
+      <div style={{ perspective: 1400 }}>
+        <button
+          type="button"
+          onClick={handleFlip}
+          style={{
+            cursor: flipLocked ? "default" : "pointer",
+            minHeight: 280,
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            userSelect: "none",
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              minHeight: 280,
+              transformStyle: "preserve-3d",
+              transition: "transform 0.42s cubic-bezier(0.2, 0.7, 0.2, 1)",
+              transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+            }}
+          >
+            {[
+              {
+                side: "front",
+                heading: "Question",
+                body: card.question,
+                footer: "Tap to reveal answer",
+                background: C.surface,
+                borderColor: C.border,
+                accentColor: C.faint,
+                extra: null,
+              },
+              {
+                side: "back",
+                heading: "Answer",
+                body: card.answer,
+                footer: null,
+                background: `linear-gradient(135deg, ${C.accentLight} 0%, #fff 100%)`,
+                borderColor: C.accentMid,
+                accentColor: C.accent,
+                extra: (
+                  <div
+                    style={{
+                      marginTop: 16,
+                      padding: 14,
+                      borderRadius: 14,
+                      background: "#FAFBF8",
+                      border: `1.5px solid ${C.border}`,
+                      fontSize: 13,
+                      lineHeight: 1.65,
+                      color: C.muted,
+                    }}
+                  >
+                    {card.notes}
+                  </div>
+                ),
+              },
+            ].map((face) => (
+              <div
+                key={face.side}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  minHeight: 280,
+                  background: face.background,
+                  border: `1.5px solid ${face.borderColor}`,
+                  borderRadius: 22,
+                  padding: "28px 28px 24px",
+                  boxShadow: "0 12px 24px rgba(15, 23, 42, 0.05)",
+                  backfaceVisibility: "hidden",
+                  transform: face.side === "back" ? "rotateY(180deg)" : "rotateY(0deg)",
+                  textAlign: "left",
+                }}
+              >
+                <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+                  <Badge label={card.subject} color="blue" />
+                  <Badge label={card.topic} color="gray" />
+                  <Badge label={card.difficulty} color={diffColor} />
+                  {face.side === "back" ? <Badge label="Answer" color="green" /> : null}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: face.accentColor,
+                    fontWeight: 700,
+                    letterSpacing: "0.07em",
+                    textTransform: "uppercase",
+                    marginBottom: 10,
+                  }}
+                >
+                  {face.heading}
+                </div>
+                <div style={{ fontSize: face.side === "front" ? 19 : 15, fontWeight: 700, color: C.text, lineHeight: 1.65 }}>
+                  {face.body}
+                </div>
+                {face.footer ? (
+                  <div style={{ marginTop: 20, fontSize: 12, color: C.faint, textAlign: "center" }}>
+                    {face.footer}
+                  </div>
+                ) : null}
+                {face.extra}
+              </div>
+            ))}
+          </div>
+        </button>
       </div>
 
       <div
@@ -987,6 +1118,8 @@ function AIPanel({
 }
 
 function SavedSessionCard({ session, onOpen, onDelete }) {
+  const itemCount = session.questions?.length || session.cards?.length || 0;
+
   return (
     <div
       style={{
@@ -1006,13 +1139,17 @@ function SavedSessionCard({ session, onOpen, onDelete }) {
             {new Date(session.createdAt).toLocaleString()}
           </div>
         </div>
-        <Badge label={`${session.questions.length} items`} color="blue" />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {session.saved ? <Badge label="saved" color="green" /> : null}
+          <Badge label={`${itemCount} items`} color="blue" />
+        </div>
       </div>
       <div style={{ fontSize: 12, color: C.muted }}>{session.sourceLabel}</div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12, color: C.muted }}>
         <div>Score: <strong>{session.score ?? 0}%</strong></div>
         <div>Answered: <strong>{session.answeredCount ?? 0}</strong></div>
         <div>Difficulty: <strong>{session.difficulty}</strong></div>
+        <div>Mode: <strong>{session.mode}</strong></div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
@@ -1027,7 +1164,7 @@ function SavedSessionCard({ session, onOpen, onDelete }) {
             cursor: "pointer",
           }}
         >
-          Open
+          Review
         </button>
         <button
           onClick={() => onDelete(session.id)}
@@ -1051,19 +1188,24 @@ function SavedSessionCard({ session, onOpen, onDelete }) {
 export default function App() {
   const width = useWindowWidth();
   const persisted = loadPersisted();
+  const legacySavedSessions = persisted?.savedQuizSessions || [];
   const [subject, setSubject] = useState(persisted?.subject || "Pharmacology");
   const [difficulty, setDifficulty] = useState(persisted?.difficulty || "All");
   const [topicFilter, setTopicFilter] = useState(persisted?.topicFilter || "");
   const [mode, setMode] = useState(persisted?.mode || "flashcard");
   const [flashcards, setFlashcards] = useState([]);
   const [cardIdx, setCardIdx] = useState(0);
+  const [flashcardSessionRatings, setFlashcardSessionRatings] = useState({});
+  const [flashcardSessionSubmitted, setFlashcardSessionSubmitted] = useState(false);
   const [quiz, setQuiz] = useState([]);
   const [quizIdx, setQuizIdx] = useState(0);
+  const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [ratings, setRatings] = useState(persisted?.ratings || {});
   const [sessions, setSessions] = useState(persisted?.sessions || 0);
-  const [savedQuizSessions, setSavedQuizSessions] = useState(persisted?.savedQuizSessions || []);
+  const [reviewSessions, setReviewSessions] = useState(persisted?.reviewSessions || legacySavedSessions);
   const [usedFlashcardIds, setUsedFlashcardIds] = useState(persisted?.usedFlashcardIds || []);
+  const [usedFlashcardQuestions, setUsedFlashcardQuestions] = useState(persisted?.usedFlashcardQuestions || []);
   const [usedQuizPrompts, setUsedQuizPrompts] = useState(persisted?.usedQuizPrompts || []);
   const [recentFlashcardIds, setRecentFlashcardIds] = useState(persisted?.recentFlashcardIds || []);
   const [recentQuizPrompts, setRecentQuizPrompts] = useState(persisted?.recentQuizPrompts || []);
@@ -1083,18 +1225,21 @@ export default function App() {
     persisted?.summaryText || "Paste notes or upload a document to generate a reviewer summary."
   );
   const [filterWeakOnly, setFilterWeakOnly] = useState(persisted?.filterWeakOnly || false);
-  const [lastQuizSignature, setLastQuizSignature] = useState("");
   const [metricHover, setMetricHover] = useState("");
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
+  const usedFlashcardQuestionsRef = useRef(usedFlashcardQuestions);
   const usedQuizPromptsRef = useRef(usedQuizPrompts);
   const recentFlashcardIdsRef = useRef(recentFlashcardIds);
   const recentQuizPromptsRef = useRef(recentQuizPrompts);
-  const sessionsCountedRef = useRef(new Set());
 
   useEffect(() => {
     usedFlashcardIdsRef.current = usedFlashcardIds;
   }, [usedFlashcardIds]);
+
+  useEffect(() => {
+    usedFlashcardQuestionsRef.current = usedFlashcardQuestions;
+  }, [usedFlashcardQuestions]);
 
   useEffect(() => {
     usedQuizPromptsRef.current = usedQuizPrompts;
@@ -1130,8 +1275,9 @@ export default function App() {
         mode,
         ratings,
         sessions,
-        savedQuizSessions,
+        reviewSessions,
         usedFlashcardIds,
+        usedFlashcardQuestions,
         usedQuizPrompts,
         recentFlashcardIds,
         recentQuizPrompts,
@@ -1149,8 +1295,9 @@ export default function App() {
     mode,
     ratings,
     sessions,
-    savedQuizSessions,
+    reviewSessions,
     usedFlashcardIds,
+    usedFlashcardQuestions,
     usedQuizPrompts,
     recentFlashcardIds,
     recentQuizPrompts,
@@ -1196,6 +1343,18 @@ export default function App() {
     quizItem.userAnswer !== null &&
     normalize(quizItem.userAnswer) === normalize(quizItem.correctAnswer);
   const progressPercent = quiz.length ? Math.round((answeredCount / quiz.length) * 100) : 0;
+  const flashcardCompletedCount = flashcards.filter((card) => flashcardSessionRatings[card.id]).length;
+  const flashcardStrongCount = flashcards.filter((card) => flashcardSessionRatings[card.id] === "easy").length;
+  const flashcardNeedsReviewCount = flashcards.filter((card) => {
+    const value = flashcardSessionRatings[card.id];
+    return value === "again" || value === "hard";
+  }).length;
+  const flashcardProgressPercent = flashcards.length
+    ? Math.round((flashcardCompletedCount / flashcards.length) * 100)
+    : 0;
+  const reviewSessionAverage = reviewSessions.length
+    ? Math.round(reviewSessions.reduce((total, session) => total + Number(session.score || 0), 0) / reviewSessions.length)
+    : 0;
 
   useEffect(() => {
     setAiResponse("");
@@ -1210,6 +1369,9 @@ export default function App() {
 
   function markFlashcardsAsUsed(deck) {
     setUsedFlashcardIds((prev) => uniqueBy([...prev, ...deck.map((card) => card.id)], (value) => value));
+    setUsedFlashcardQuestions((prev) =>
+      uniqueBy([...prev, ...deck.map((card) => normalize(card.question))], (value) => value)
+    );
     setRecentFlashcardIds((prev) => [...prev, ...deck.map((card) => card.id)].slice(-RECENT_MEMORY_LIMIT));
   }
 
@@ -1236,6 +1398,8 @@ export default function App() {
     const deck = buildLocalFlashcardSet();
     setFlashcards(deck);
     setCardIdx(0);
+    setFlashcardSessionRatings({});
+    setFlashcardSessionSubmitted(false);
     markFlashcardsAsUsed(deck);
 
     if (message) {
@@ -1251,15 +1415,6 @@ export default function App() {
     loadLocalFlashcardSet("");
   }, [subject, difficulty, topicFilter, filterWeakOnly]);
 
-  useEffect(() => {
-    if (!quiz.length || answeredCount !== quiz.length || sessionsCountedRef.current.has(lastQuizSignature)) {
-      return;
-    }
-
-    sessionsCountedRef.current.add(lastQuizSignature);
-    setSessions((value) => value + 1);
-  }, [quiz, answeredCount, lastQuizSignature]);
-
   async function generateClaudeFlashcards() {
     clearMessages();
     setApiLoading(true);
@@ -1269,10 +1424,11 @@ export default function App() {
         notes: studyText,
         subject,
         topic: topicFilter,
+        difficulty: difficulty === "All" ? "mixed" : difficulty,
         count: FLASHCARD_SET_SIZE,
         excludeQuestions: hasCustomSource
           ? []
-          : usedFlashcardIdsRef.current.map((id) => id.split("-").slice(1).join("-")),
+          : usedFlashcardQuestionsRef.current,
       });
 
       const aiCards = sanitizeFlashcards(
@@ -1293,10 +1449,14 @@ export default function App() {
 
       setFlashcards(deck);
       setCardIdx(0);
+      setFlashcardSessionRatings({});
+      setFlashcardSessionSubmitted(false);
       markFlashcardsAsUsed(deck);
       setStatusMessage(
         deck.length >= FLASHCARD_SET_SIZE
-          ? "Gemini generated a fresh 10-card flashcard set."
+          ? topicFilter
+            ? `Gemini generated another ${FLASHCARD_SET_SIZE}-card focus set for ${topicFilter}.`
+            : "Gemini generated a fresh 10-card flashcard set."
           : `Gemini returned ${deck.length} cards for this focus.`
       );
     } catch (error) {
@@ -1311,6 +1471,7 @@ export default function App() {
     clearMessages();
     setApiLoading(true);
     setShowFeedback(false);
+    setQuizSubmitted(false);
 
     try {
       const data = await postJson("/api/claude/quiz", {
@@ -1342,10 +1503,11 @@ export default function App() {
       setQuiz(questions);
       setQuizIdx(0);
       setMode("quiz");
-      setLastQuizSignature(`${Date.now()}-${questions[0]?.id || uid()}`);
       setStatusMessage(
         questions.length >= QUIZ_SET_SIZE
-          ? "A fresh 10-question quiz is ready for review."
+          ? topicFilter
+            ? `Gemini generated another ${QUIZ_SET_SIZE}-question focus quiz for ${topicFilter}.`
+            : "A fresh 10-question quiz is ready for review."
           : `Loaded ${questions.length} questions for this focus.`
       );
 
@@ -1379,7 +1541,6 @@ export default function App() {
       setQuiz(fallback);
       setQuizIdx(0);
       setMode("quiz");
-      setLastQuizSignature(`${Date.now()}-${fallback[0]?.id || uid()}`);
       setApiError(
         error.message || "Gemini quiz generation failed. A local 10-question backup quiz has been loaded."
       );
@@ -1458,11 +1619,77 @@ export default function App() {
     }
   }
 
+  function recordReviewSession(session) {
+    setReviewSessions((prev) => [session, ...prev.filter((item) => item.id !== session.id)].slice(0, 18));
+  }
+
+  function submitFlashcardSession() {
+    if (!flashcards.length || flashcardCompletedCount < flashcards.length || flashcardSessionSubmitted) {
+      return;
+    }
+
+    const session = {
+      id: uid(),
+      createdAt: new Date().toISOString(),
+      mode: "flashcard",
+      subject,
+      difficulty,
+      topic: topicFilter,
+      sourceLabel: hasCustomSource
+        ? uploadedFileName || "Focused notes session"
+        : "Generated from CareDrop subject bank",
+      cards: flashcards,
+      currentIndex: cardIdx,
+      cardRatings: flashcardSessionRatings,
+      score: flashcards.length ? Math.round((flashcardStrongCount / flashcards.length) * 100) : 0,
+      answeredCount: flashcardCompletedCount,
+      correctCount: flashcardStrongCount,
+      weakCount: flashcardNeedsReviewCount,
+    };
+
+    recordReviewSession(session);
+    setFlashcardSessionSubmitted(true);
+    setSessions((value) => value + 1);
+    setStatusMessage("Flashcard session submitted and added to your review history.");
+  }
+
+  function submitQuizSession() {
+    if (!quiz.length || answeredCount < quiz.length || quizSubmitted) {
+      return;
+    }
+
+    const session = {
+      id: uid(),
+      createdAt: new Date().toISOString(),
+      mode: "quiz",
+      subject,
+      difficulty,
+      topic: topicFilter,
+      sourceLabel: hasCustomSource
+        ? uploadedFileName || "Focused notes session"
+        : "Generated from CareDrop subject bank",
+      questions: quiz,
+      currentIndex: quizIdx,
+      score: quiz.length ? Math.round((correctCount / quiz.length) * 100) : 0,
+      answeredCount,
+      correctCount,
+    };
+
+    recordReviewSession(session);
+    setQuizSubmitted(true);
+    setSessions((value) => value + 1);
+    setStatusMessage("Quiz session submitted and added to your review history.");
+  }
+
   function handleRate(key) {
     if (!currentCard) {
       return;
     }
 
+    setFlashcardSessionRatings((prev) => ({
+      ...prev,
+      [currentCard.id]: key,
+    }));
     setRatings((prev) => ({
       ...prev,
       [currentCard.id]: key,
@@ -1472,9 +1699,6 @@ export default function App() {
       setCardIdx((value) => value + 1);
       return;
     }
-
-    setSessions((value) => value + 1);
-    loadLocalFlashcardSet("A new 10-card flashcard set is ready.");
   }
 
   function handleQuizAnswer(option) {
@@ -1516,26 +1740,39 @@ export default function App() {
       currentIndex: quizIdx,
       score,
       answeredCount,
+      saved: true,
     };
 
-    setSavedQuizSessions((prev) => [session, ...prev].slice(0, 12));
-    setStatusMessage("Quiz session saved. You can reopen it from Saved Review Sessions.");
+    setReviewSessions((prev) => [session, ...prev].slice(0, 18));
+    setStatusMessage("Quiz session saved. You can reopen it from Review History.");
   }
 
   function openSavedQuiz(session) {
+    if (session.mode === "flashcard") {
+      setFlashcards(session.cards || []);
+      setCardIdx(clamp(session.currentIndex || 0, 0, Math.max((session.cards || []).length - 1, 0)));
+      setFlashcardSessionRatings(session.cardRatings || {});
+      setFlashcardSessionSubmitted(true);
+      setMode("flashcard");
+      setStatusMessage(`Loaded review session: ${buildSessionLabel(session)}.`);
+      return;
+    }
+
     setQuiz(session.questions || []);
     setQuizIdx(clamp(session.currentIndex || 0, 0, Math.max((session.questions || []).length - 1, 0)));
     setShowFeedback(false);
+    setQuizSubmitted(true);
     setMode("quiz");
     setStatusMessage(`Loaded saved session: ${buildSessionLabel(session)}.`);
   }
 
   function deleteSavedQuiz(sessionId) {
-    setSavedQuizSessions((prev) => prev.filter((session) => session.id !== sessionId));
+    setReviewSessions((prev) => prev.filter((session) => session.id !== sessionId));
   }
 
   function resetRotation() {
     setUsedFlashcardIds([]);
+    setUsedFlashcardQuestions([]);
     setUsedQuizPrompts([]);
     setRecentFlashcardIds([]);
     setRecentQuizPrompts([]);
@@ -1647,15 +1884,15 @@ export default function App() {
       colSpan: 1,
     },
     {
-      title: String(savedQuizSessions.length),
-      description: "Saved Quizzes",
+      title: String(reviewSessions.length),
+      description: "Review Sessions",
       icon: "SAVE",
-      status: savedQuizSessions.length ? "ready to reopen" : "nothing saved yet",
-      hoverText: savedQuizSessions.length
-        ? `${savedQuizSessions[0].subject} latest save | ${savedQuizSessions[0].score || 0}%`
-        : "Save a quiz to review it later",
-      actionLabel: savedQuizSessions.length ? "Open quiz review" : "",
-      onClick: () => setMode("quiz"),
+      status: reviewSessions.length ? `${reviewSessionAverage}% average score` : "nothing reviewed yet",
+      hoverText: reviewSessions.length
+        ? `${reviewSessions[0].subject} latest review | ${reviewSessions[0].score || 0}%`
+        : "Submit a session to start tracking progress",
+      actionLabel: reviewSessions.length ? "Open review history" : "",
+      onClick: () => setMetricHover(metricHover === "sessions" ? "" : "sessions"),
       tags: ["Sessions"],
       colSpan: 1,
     },
@@ -1780,6 +2017,21 @@ export default function App() {
           </div>
         ) : null}
 
+        <style>
+          {`
+            @keyframes caredropFadeSlide {
+              from {
+                opacity: 0;
+                transform: translateY(10px);
+              }
+              to {
+                opacity: 1;
+                transform: translateY(0);
+              }
+            }
+          `}
+        </style>
+
         <MagicBento items={bentoItems} />
         {metricHover === "accuracy" ? (
           <div
@@ -1796,6 +2048,26 @@ export default function App() {
               <div>Rated: <strong>{Object.keys(ratings).length}</strong></div>
               <div>Strong: <strong>{Object.values(ratings).filter((value) => value === "easy").length}</strong></div>
               <div>Needs work: <strong>{weakCardIds.length}</strong></div>
+            </div>
+          </div>
+        ) : null}
+        {metricHover === "sessions" ? (
+          <div
+            style={{
+              ...panelStyle,
+              padding: 16,
+              background: "#FBFAF7",
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 8 }}>
+              Session Progress
+            </div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, lineHeight: 1.7 }}>
+              <div>Submitted: <strong>{reviewSessions.length}</strong></div>
+              <div>Average score: <strong>{reviewSessionAverage}%</strong></div>
+              <div>
+                Last session: <strong>{reviewSessions[0] ? buildSessionLabel(reviewSessions[0]) : "None yet"}</strong>
+              </div>
             </div>
           </div>
         ) : null}
@@ -2001,7 +2273,7 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 17 }}>Flashcards</div>
                     <div style={{ fontSize: 12, color: C.muted }}>
-                      {subject} | target {FLASHCARD_SET_SIZE} cards per set | recycled and reshuffled as needed
+                      {subject} | {difficulty === "All" ? "all difficulties" : difficulty} | {topicFilter || "all topics"} | target {FLASHCARD_SET_SIZE} cards per set
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -2061,18 +2333,81 @@ export default function App() {
                         cursor: apiLoading ? "not-allowed" : "pointer",
                       }}
                     >
-                      {apiLoading ? "Loading..." : "Gemini Focus Set"}
+                      {apiLoading ? "Loading..." : topicFilter || hasCustomSource ? "Generate More with Gemini" : "Gemini Focus Set"}
                     </button>
                   </div>
                 </div>
 
                 {currentCard ? (
-                  <Flashcard
-                    card={currentCard}
-                    idx={cardIdx}
-                    total={flashcards.length}
-                    onRate={handleRate}
-                  />
+                  <>
+                    <Flashcard
+                      card={currentCard}
+                      idx={cardIdx}
+                      total={flashcards.length}
+                      onRate={handleRate}
+                    />
+                    <div
+                      style={{
+                        marginTop: 16,
+                        borderRadius: 18,
+                        padding: 18,
+                        background: "#FBFAF7",
+                        border: `1.5px solid ${C.border}`,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 10 }}>
+                        Flashcard Session Progress
+                      </div>
+                      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 14, lineHeight: 1.7 }}>
+                        <div>Reviewed: <strong>{flashcardCompletedCount} / {flashcards.length}</strong></div>
+                        <div>Strong: <strong>{flashcardStrongCount}</strong></div>
+                        <div>Needs work: <strong>{flashcardNeedsReviewCount}</strong></div>
+                        <div>Progress: <strong>{flashcardProgressPercent}%</strong></div>
+                      </div>
+                      <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          onClick={submitFlashcardSession}
+                          disabled={flashcardCompletedCount < flashcards.length || flashcardSessionSubmitted}
+                          style={{
+                            padding: "10px 16px",
+                            borderRadius: 10,
+                            border: "none",
+                            background:
+                              flashcardCompletedCount < flashcards.length || flashcardSessionSubmitted
+                                ? C.border
+                                : C.accent,
+                            color:
+                              flashcardCompletedCount < flashcards.length || flashcardSessionSubmitted
+                                ? C.muted
+                                : "#fff",
+                            fontWeight: 700,
+                            cursor:
+                              flashcardCompletedCount < flashcards.length || flashcardSessionSubmitted
+                                ? "not-allowed"
+                                : "pointer",
+                          }}
+                        >
+                          {flashcardSessionSubmitted ? "Flashcard Session Submitted" : "Submit Flashcard Session"}
+                        </button>
+                        {flashcardSessionSubmitted ? (
+                          <button
+                            onClick={() => loadLocalFlashcardSet("A new 10-card flashcard set is ready.")}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: `1px solid ${C.border}`,
+                              background: C.surface,
+                              color: C.text,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Start Another Set
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </>
                 ) : (
                   <div
                     style={{
@@ -2122,7 +2457,7 @@ export default function App() {
                         cursor: apiLoading ? "not-allowed" : "pointer",
                       }}
                     >
-                      {apiLoading ? "Generating..." : "Generate 10 Questions"}
+                      {apiLoading ? "Generating..." : topicFilter || hasCustomSource ? "Generate Another 10" : "Generate 10 Questions"}
                     </button>
                     <button
                       onClick={saveCurrentQuiz}
@@ -2192,11 +2527,13 @@ export default function App() {
                     </div>
 
                     <div
+                      key={quizItem.id}
                       style={{
                         background: "#FBFAF7",
                         borderRadius: 18,
                         padding: 22,
-                        border: `1px solid ${C.border}`,
+                        border: `1.5px solid ${C.border}`,
+                        animation: "caredropFadeSlide 0.24s ease",
                       }}
                     >
                       <div
@@ -2216,7 +2553,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
+                    <div key={`${quizItem.id}-options`} style={{ marginTop: 16, display: "grid", gap: 10, animation: "caredropFadeSlide 0.24s ease" }}>
                       {quizItem.options.map((option) => {
                         const selected = quizItem.userAnswer === option;
                         const correct = normalize(option) === normalize(quizItem.correctAnswer);
@@ -2245,6 +2582,7 @@ export default function App() {
                               cursor: quizItem.userAnswer !== null ? "not-allowed" : "pointer",
                               fontSize: 14,
                               lineHeight: 1.6,
+                              transition: "transform 0.18s ease, border-color 0.18s ease, background 0.18s ease",
                             }}
                           >
                             {option}
@@ -2360,6 +2698,8 @@ export default function App() {
                           <button
                             onClick={() => {
                               setShowFeedback(false);
+                              setAiResponse("");
+                              setQuestion("");
                               setQuizIdx((value) => Math.min(value + 1, quiz.length - 1));
                             }}
                             disabled={quizIdx >= quiz.length - 1}
@@ -2399,27 +2739,42 @@ export default function App() {
                             Score: <strong>{quiz.length ? Math.round((correctCount / quiz.length) * 100) : 0}%</strong>
                           </div>
                         </div>
+                        <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          <button
+                            onClick={submitQuizSession}
+                            disabled={answeredCount < quiz.length || quizSubmitted}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: "none",
+                              background: answeredCount < quiz.length || quizSubmitted ? C.border : C.accent,
+                              color: answeredCount < quiz.length || quizSubmitted ? C.muted : "#fff",
+                              fontWeight: 700,
+                              cursor: answeredCount < quiz.length || quizSubmitted ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            {quizSubmitted ? "Quiz Session Submitted" : "Submit Quiz Session"}
+                          </button>
+                          {quizSubmitted ? (
+                            <button
+                              onClick={generateQuiz}
+                              disabled={apiLoading}
+                              style={{
+                                padding: "10px 16px",
+                                borderRadius: 10,
+                                border: `1px solid ${C.border}`,
+                                background: C.surface,
+                                color: C.text,
+                                fontWeight: 700,
+                                cursor: apiLoading ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              Generate Another Set
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     ) : null}
-
-                    <div style={{ marginTop: 20 }}>
-                      <button
-                        onClick={generateQuiz}
-                        disabled={apiLoading}
-                        style={{
-                          width: "100%",
-                          padding: "12px 16px",
-                          borderRadius: 12,
-                          border: "none",
-                          background: apiLoading ? C.border : C.accent,
-                          color: apiLoading ? C.muted : "#fff",
-                          fontWeight: 700,
-                          cursor: apiLoading ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        {apiLoading ? "Generating..." : "Refresh 10-Question Quiz"}
-                      </button>
-                    </div>
                   </>
                 )}
               </div>
@@ -2608,11 +2963,11 @@ export default function App() {
 
             <div style={panelStyle}>
               <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>
-                Saved Review Sessions
+                Review History
               </div>
-              {savedQuizSessions.length ? (
+              {reviewSessions.length ? (
                 <div style={{ display: "grid", gap: 12 }}>
-                  {savedQuizSessions.map((session) => (
+                  {reviewSessions.map((session) => (
                     <SavedSessionCard
                       key={session.id}
                       session={session}
@@ -2623,7 +2978,7 @@ export default function App() {
                 </div>
               ) : (
                 <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
-                  Save a quiz session and it will appear here for review later.
+                  Submit a flashcard or quiz session and it will appear here for review later.
                 </div>
               )}
             </div>

@@ -44,6 +44,7 @@ export default async function handler(req, res) {
     const notes = String(body?.notes || "").trim();
     const subject = String(body?.subject || "Mixed Review");
     const topic = String(body?.topic || "").trim();
+    const difficulty = String(body?.difficulty || "medium");
     const count = Math.max(6, Math.min(24, Number(body?.count || 10)));
     const excludeQuestions = Array.isArray(body?.excludeQuestions) ? body.excludeQuestions.slice(0, 120) : [];
     const context = buildStudyContext({ notes, subject, topic });
@@ -52,11 +53,17 @@ export default async function handler(req, res) {
       return sendJson(res, 400, { success: false, error: "Provide notes, a subject, or a topic focus." });
     }
 
+    const difficultyInstruction =
+      difficulty === "mixed"
+        ? "Use a balanced mix of easy, medium, and hard flashcards."
+        : `Every flashcard must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
+
     const parsed = await generateJson(client, {
       systemInstruction:
         `You generate nursing flashcards from notes. Create exactly ${count} concise, board-focused cards. Respect the requested subject, topic, and difficulty boundaries.`,
       prompt: [
         "Build nursing study cards for a learner.",
+        difficultyInstruction,
         context,
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
