@@ -492,7 +492,11 @@ async function uploadFileForExtraction(file) {
   try {
     data = rawText ? JSON.parse(rawText) : {};
   } catch {
-    throw new Error("The upload service returned an invalid response.");
+    throw new Error(
+      rawText.includes("<!DOCTYPE") || rawText.startsWith("The page")
+        ? "Upload service is not returning JSON. Refresh after the new deployment finishes, or confirm /api/extract is deployed."
+        : "The upload service returned an invalid response."
+    );
   }
 
   if (!response.ok) {
@@ -500,6 +504,15 @@ async function uploadFileForExtraction(file) {
   }
 
   return data;
+}
+
+async function readTextFileLocally(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => resolve(String(event.target?.result || ""));
+    reader.onerror = () => reject(new Error("The text file could not be read locally."));
+    reader.readAsText(file);
+  });
 }
 
 function selectSessionItems(pool, size, usedKeys, recentKeys, keySelector) {
@@ -1397,6 +1410,23 @@ export default function App() {
       setUploadState("success");
       setStatusMessage(`${file.name} uploaded and extracted successfully.`);
     } catch (error) {
+      if (extension === ".txt") {
+        try {
+          const localText = await readTextFileLocally(file);
+          setUploadedFileName(file.name);
+          setUploadedText(localText);
+          setSummaryText(buildLocalSummary(localText));
+          setUploadState("success");
+          setStatusMessage(`${file.name} loaded locally while the upload service was unavailable.`);
+          setUploadError("");
+          return;
+        } catch (localError) {
+          setUploadState("failed");
+          setUploadError(localError.message || error.message || "Upload failed.");
+          return;
+        }
+      }
+
       setUploadState("failed");
       setUploadError(error.message || "Upload failed.");
     }
@@ -1404,6 +1434,7 @@ export default function App() {
 
   function handleFileUpload(event) {
     handleIncomingFile(event.target.files?.[0]);
+    event.target.value = "";
   }
 
   function handleDrop(event) {
