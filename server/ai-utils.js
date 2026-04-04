@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { jsonrepair } from "jsonrepair";
 
 export const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
@@ -53,7 +54,23 @@ export async function generateJson(
     "The AI request timed out. Please try again."
   );
 
-  return parseJsonResponse(response.text);
+  const parsed = parseJsonResponse(response.text);
+  if (parsed) {
+    return parsed;
+  }
+
+  const repaired = await generateText(
+    client,
+    {
+      systemInstruction:
+        "You repair malformed JSON. Return only valid JSON. Do not add commentary, markdown, or code fences.",
+      prompt: `Repair this JSON so it becomes valid JSON and preserves the same structure:\n\n${String(response.text || "").trim()}`,
+      maxOutputTokens,
+    },
+    timeoutMs
+  );
+
+  return parseJsonResponse(repaired);
 }
 
 export function parseJsonResponse(text) {
@@ -65,11 +82,24 @@ export function parseJsonResponse(text) {
   try {
     return JSON.parse(trimmed);
   } catch {
-    const match = trimmed.match(/\{[\s\S]*\}/);
-    if (!match) {
-      return null;
+    try {
+      return JSON.parse(jsonrepair(trimmed));
+    } catch {
+      const match = trimmed.match(/\{[\s\S]*\}/);
+      if (!match) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        try {
+          return JSON.parse(jsonrepair(match[0]));
+        } catch {
+          return null;
+        }
+      }
     }
-    return JSON.parse(match[0]);
   }
 }
 

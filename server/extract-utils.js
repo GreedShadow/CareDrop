@@ -2,13 +2,6 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
-import Tesseract from "tesseract.js";
-import WordExtractor from "word-extractor";
-
-const extractor = new WordExtractor();
-
 export const SUPPORTED_EXTENSIONS = new Set([".doc", ".docx", ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt"]);
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
@@ -33,6 +26,8 @@ async function extractDocText(buffer) {
   await fs.writeFile(tempPath, buffer);
 
   try {
+    const { default: WordExtractor } = await import("word-extractor");
+    const extractor = new WordExtractor();
     const document = await extractor.extract(tempPath);
     return document.getBody();
   } finally {
@@ -52,6 +47,7 @@ export async function extractFileText(file) {
   }
 
   if (extension === ".docx") {
+    const { default: mammoth } = await import("mammoth");
     const result = await mammoth.extractRawText({ buffer: file.buffer });
     return normalizeExtractedText(result.value);
   }
@@ -62,6 +58,7 @@ export async function extractFileText(file) {
   }
 
   if (extension === ".pdf") {
+    const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: file.buffer });
 
     try {
@@ -73,6 +70,7 @@ export async function extractFileText(file) {
   }
 
   if (IMAGE_EXTENSIONS.has(extension)) {
+    const { default: Tesseract } = await import("tesseract.js");
     const result = await withTimeout(
       Tesseract.recognize(file.buffer, "eng", {
         logger: () => {},

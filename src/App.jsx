@@ -608,9 +608,11 @@ async function uploadFileForExtraction(file) {
     data = rawText ? JSON.parse(rawText) : {};
   } catch {
     throw new Error(
-      rawText.includes("<!DOCTYPE") || rawText.startsWith("The page")
+      rawText.includes("FUNCTION_INVOCATION_FAILED")
+        ? "The upload service crashed on the server. Please retry after the latest deployment finishes."
+        : rawText.includes("<!DOCTYPE") || rawText.startsWith("The page")
         ? "Upload service is not returning JSON. Refresh after the new deployment finishes, or confirm /api/extract is deployed."
-        : "The upload service returned an invalid response."
+        : `The upload service returned an invalid response.${rawText ? ` (${rawText.slice(0, 120)})` : ""}`
     );
   }
 
