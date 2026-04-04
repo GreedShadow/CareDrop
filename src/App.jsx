@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageCircleMore, Minus, X } from "lucide-react";
+import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 
 const STORAGE_KEY = "caredrop-dashboard-v2";
 const REQUEST_STORAGE_KEY = "caredrop-feedback-v1";
@@ -702,6 +703,19 @@ function getGreeting(name) {
   }
 
   return `Good evening, ${firstName}.`;
+}
+
+function mapSupabaseUser(user) {
+  if (!user) {
+    return null;
+  }
+
+  return {
+    id: user.id,
+    name: user.user_metadata?.full_name || user.email?.split("@")[0] || "Nurse",
+    email: user.email || "",
+    provider: "supabase",
+  };
 }
 
 function loadRequestPersisted() {
@@ -1666,6 +1680,9 @@ function AuthScreen({
   setAuthPassword,
   authConfirmPassword,
   setAuthConfirmPassword,
+  termsAccepted,
+  setTermsAccepted,
+  cloudSyncReady,
   authError,
   authLoading,
   onSubmit,
@@ -1731,34 +1748,6 @@ function AuthScreen({
             </div>
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 12,
-            }}
-          >
-            {[
-              { label: "Saved Progress", value: "Per user" },
-              { label: "Session Restore", value: "Enabled" },
-              { label: "Review Focus", value: "PRC NLE" },
-            ].map((item) => (
-              <div
-                key={item.label}
-                style={{
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: 18,
-                  padding: 16,
-                }}
-              >
-                <div style={{ fontSize: 11, color: "rgba(233,239,247,0.65)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-                  {item.label}
-                </div>
-                <div style={{ marginTop: 8, fontSize: 20, fontWeight: 800 }}>{item.value}</div>
-              </div>
-            ))}
-          </div>
         </div>
 
         <div
@@ -1917,27 +1906,51 @@ function AuthScreen({
             </div>
           ) : null}
 
+          <label
+            style={{
+              marginTop: 16,
+              display: "flex",
+              gap: 10,
+              alignItems: "flex-start",
+              fontSize: 13,
+              lineHeight: 1.6,
+              color: C.text,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(event) => setTermsAccepted(event.target.checked)}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              I agree to the Terms and Conditions and understand that CareDrop is a reviewer tool for study support only.
+            </span>
+          </label>
+
           <button
             type="button"
             onClick={onSubmit}
-            disabled={authLoading}
+            disabled={authLoading || !termsAccepted}
             style={{
               marginTop: 20,
               padding: "13px 16px",
               borderRadius: 14,
               border: "none",
-              background: authLoading ? C.border : C.accent,
-              color: authLoading ? C.muted : "#fff",
+              background: authLoading || !termsAccepted ? C.border : C.accent,
+              color: authLoading || !termsAccepted ? C.muted : "#fff",
               fontWeight: 800,
               fontSize: 14,
-              cursor: authLoading ? "not-allowed" : "pointer",
+              cursor: authLoading || !termsAccepted ? "not-allowed" : "pointer",
             }}
           >
             {authLoading ? "Working..." : isRegister ? "Create Account" : "Sign In"}
           </button>
 
           <div style={{ marginTop: 14, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
-            This login currently keeps progress per user on this device. If you want cross-device cloud sync next, I can wire a hosted auth backend after this.
+            {cloudSyncReady
+              ? "Cloud sync is ready. Signed-in users can restore progress across devices once Supabase is configured."
+              : "Cloud sync will activate after you add the free Supabase project keys in the environment settings."}
           </div>
         </div>
       </div>
@@ -2025,8 +2038,12 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authConfirmPassword, setAuthConfirmPassword] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(!supabaseConfigured);
+  const [cloudSyncReady, setCloudSyncReady] = useState(supabaseConfigured);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState("");
   const [subject, setSubject] = useState(persisted?.subject || "Pharmacology");
   const [difficulty, setDifficulty] = useState(persisted?.difficulty || "All");
   const [topicFilter, setTopicFilter] = useState(persisted?.topicFilter || "");
@@ -2082,6 +2099,40 @@ export default function App() {
   const usedQuizPromptsRef = useRef(usedQuizPrompts);
   const recentFlashcardIdsRef = useRef(recentFlashcardIds);
   const recentQuizPromptsRef = useRef(recentQuizPrompts);
+  const remoteProgressLoadedRef = useRef(false);
+
+  function applyPersistedSnapshot(snapshot) {
+    if (!snapshot) {
+      return;
+    }
+
+    setSubject(snapshot.subject || "Pharmacology");
+    setDifficulty(snapshot.difficulty || "All");
+    setTopicFilter(snapshot.topicFilter || "");
+    setMode(snapshot.mode || "flashcard");
+    setRatings(snapshot.ratings || {});
+    setSessions(Number(snapshot.sessions || 0));
+    setReviewSessions(snapshot.reviewSessions || snapshot.savedQuizSessions || []);
+    setUsedFlashcardIds(snapshot.usedFlashcardIds || []);
+    setUsedFlashcardQuestions(snapshot.usedFlashcardQuestions || []);
+    setUsedQuizPrompts(snapshot.usedQuizPrompts || []);
+    setRecentFlashcardIds(snapshot.recentFlashcardIds || []);
+    setRecentQuizPrompts(snapshot.recentQuizPrompts || []);
+    setNoteText(snapshot.noteText || "");
+    setUploadedText(snapshot.uploadedText || "");
+    setUploadedFileName(snapshot.uploadedFileName || "");
+    setSummaryText(snapshot.summaryText || "Paste notes or upload a document to generate a reviewer summary.");
+    setFilterWeakOnly(Boolean(snapshot.filterWeakOnly));
+    setSubjectShortcutsOpen(snapshot.subjectShortcutsOpen !== false);
+    setFlashcards(snapshot.flashcards || []);
+    setCardIdx(clamp(Number(snapshot.cardIdx || 0), 0, Math.max((snapshot.flashcards || []).length - 1, 0)));
+    setFlashcardSessionRatings(snapshot.flashcardSessionRatings || {});
+    setFlashcardSessionSubmitted(Boolean(snapshot.flashcardSessionSubmitted));
+    setQuiz(snapshot.quiz || []);
+    setQuizIdx(clamp(Number(snapshot.quizIdx || 0), 0, Math.max((snapshot.quiz || []).length - 1, 0)));
+    setQuizSubmitted(Boolean(snapshot.quizSubmitted));
+    setShowFeedback(Boolean(snapshot.showFeedback));
+  }
 
   useEffect(() => {
     usedFlashcardIdsRef.current = usedFlashcardIds;
@@ -2110,6 +2161,11 @@ export default function App() {
 
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setTermsAccepted(false);
+    setAuthError("");
+  }, [authMode]);
 
   useEffect(() => {
     if (!statusMessage) {
@@ -2197,18 +2253,94 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    if (persisted?.flashcards?.length) {
-      setFlashcards(persisted.flashcards);
-      setCardIdx(clamp(Number(persisted.cardIdx || 0), 0, Math.max(persisted.flashcards.length - 1, 0)));
-      setFlashcardSessionRatings(persisted.flashcardSessionRatings || {});
-      setFlashcardSessionSubmitted(Boolean(persisted.flashcardSessionSubmitted));
+    if (!supabaseConfigured || !supabase || !currentUser?.id || currentUser.provider !== "supabase" || !remoteProgressLoadedRef.current) {
+      return undefined;
     }
 
-    if (persisted?.quiz?.length) {
-      setQuiz(persisted.quiz);
-      setQuizIdx(clamp(Number(persisted.quizIdx || 0), 0, Math.max(persisted.quiz.length - 1, 0)));
-      setQuizSubmitted(Boolean(persisted.quizSubmitted));
-      setShowFeedback(Boolean(persisted.showFeedback));
+    const payload = {
+      subject,
+      difficulty,
+      topicFilter,
+      mode,
+      ratings,
+      sessions,
+      reviewSessions,
+      flashcards,
+      cardIdx,
+      flashcardSessionRatings,
+      flashcardSessionSubmitted,
+      quiz,
+      quizIdx,
+      quizSubmitted,
+      showFeedback,
+      usedFlashcardIds,
+      usedFlashcardQuestions,
+      usedQuizPrompts,
+      recentFlashcardIds,
+      recentQuizPrompts,
+      noteText,
+      uploadedText,
+      uploadedFileName,
+      summaryText,
+      filterWeakOnly,
+      subjectShortcutsOpen,
+    };
+
+    const timeoutId = window.setTimeout(async () => {
+      const { error } = await supabase
+        .from("user_progress")
+        .upsert(
+          {
+            user_id: currentUser.id,
+            payload,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        );
+
+      if (error) {
+        setCloudSyncStatus("Cloud sync needs the Supabase table setup.");
+        return;
+      }
+
+      setCloudSyncStatus("Cloud sync active.");
+    }, 900);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    currentUser?.id,
+    currentUser?.provider,
+    subject,
+    difficulty,
+    topicFilter,
+    mode,
+    ratings,
+    sessions,
+    reviewSessions,
+    flashcards,
+    cardIdx,
+    flashcardSessionRatings,
+    flashcardSessionSubmitted,
+    quiz,
+    quizIdx,
+    quizSubmitted,
+    showFeedback,
+    usedFlashcardIds,
+    usedFlashcardQuestions,
+    usedQuizPrompts,
+    recentFlashcardIds,
+    recentQuizPrompts,
+    noteText,
+    uploadedText,
+    uploadedFileName,
+    summaryText,
+    filterWeakOnly,
+    subjectShortcutsOpen,
+  ]);
+
+  useEffect(() => {
+    if (persisted) {
+      applyPersistedSnapshot(persisted);
     }
   }, []);
 
@@ -2219,6 +2351,97 @@ export default function App() {
 
     window.localStorage.setItem(REQUEST_STORAGE_KEY, JSON.stringify(requestHistory));
   }, [requestHistory]);
+
+  useEffect(() => {
+    if (!supabaseConfigured || !supabase) {
+      setAuthReady(true);
+      return undefined;
+    }
+
+    let active = true;
+
+    async function bootstrapAuth() {
+      const { data } = await supabase.auth.getSession();
+      if (!active) {
+        return;
+      }
+
+      if (data.session?.user) {
+        const nextUser = mapSupabaseUser(data.session.user);
+        setCurrentUser(nextUser);
+        saveAuthSession(nextUser);
+      } else if (loadAuthSession()?.provider === "supabase") {
+        clearAuthSession();
+        setCurrentUser(null);
+      }
+
+      setCloudSyncReady(true);
+      setAuthReady(true);
+    }
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) {
+        return;
+      }
+
+      if (session?.user) {
+        const nextUser = mapSupabaseUser(session.user);
+        setCurrentUser(nextUser);
+        saveAuthSession(nextUser);
+      } else if (loadAuthSession()?.provider === "supabase") {
+        clearAuthSession();
+        setCurrentUser(null);
+      }
+    });
+
+    bootstrapAuth();
+
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseConfigured || !supabase || !currentUser?.id || currentUser.provider !== "supabase") {
+      remoteProgressLoadedRef.current = false;
+      return;
+    }
+
+    let active = true;
+
+    async function loadRemoteProgress() {
+      const { data, error } = await supabase
+        .from("user_progress")
+        .select("payload")
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+
+      if (!active) {
+        return;
+      }
+
+      if (error) {
+        setCloudSyncStatus("Cloud progress table is not ready yet.");
+        remoteProgressLoadedRef.current = true;
+        return;
+      }
+
+      if (data?.payload) {
+        applyPersistedSnapshot(data.payload);
+        setStatusMessage("Cloud progress restored successfully.");
+      }
+
+      setCloudSyncStatus("Cloud sync active.");
+      remoteProgressLoadedRef.current = true;
+    }
+
+    loadRemoteProgress();
+
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id, currentUser?.provider]);
 
   useEffect(() => {
     async function loadCentralRequests() {
@@ -2306,62 +2529,138 @@ export default function App() {
 
     const email = authEmail.trim().toLowerCase();
     const password = authPassword.trim();
+    const agreed = Boolean(termsAccepted);
 
     if (!email || !password) {
       setAuthError("Enter your email and password.");
       return;
     }
 
-    if (!window.crypto?.subtle) {
-      setAuthError("Secure login is not available in this browser.");
+    if (!agreed) {
+      setAuthError("Please accept the Terms and Conditions to continue.");
       return;
     }
 
     setAuthLoading(true);
 
     try {
-      const accounts = loadAccounts();
-      const passwordHash = await hashSecret(password);
+      if (supabaseConfigured && supabase) {
+        if (authMode === "register") {
+          const name = authName.trim();
 
-      if (authMode === "register") {
-        const name = authName.trim();
+          if (!name) {
+            throw new Error("Enter your name to create an account.");
+          }
 
-        if (!name) {
-          throw new Error("Enter your name to create an account.");
+          if (password.length < 8) {
+            throw new Error("Use at least 8 characters for the password.");
+          }
+
+          if (password !== authConfirmPassword) {
+            throw new Error("Passwords do not match.");
+          }
+
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                full_name: name,
+              },
+            },
+          });
+
+          if (error) {
+            throw error;
+          }
+
+          if (data.user) {
+            const nextUser = mapSupabaseUser(data.user);
+            saveAuthSession(nextUser);
+          }
+
+          setAuthPassword("");
+          setAuthConfirmPassword("");
+          setTermsAccepted(false);
+          setStatusMessage(
+            data.session
+              ? "Account created and signed in successfully."
+              : "Account created. Check your email if Supabase confirmation is enabled."
+          );
+        } else {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+
+          if (error) {
+            throw error;
+          }
+
+          const nextUser = mapSupabaseUser(data.user);
+          saveAuthSession(nextUser);
+          setStatusMessage("Signed in successfully.");
         }
-
-        if (password.length < 8) {
-          throw new Error("Use at least 8 characters for the password.");
-        }
-
-        if (password !== authConfirmPassword) {
-          throw new Error("Passwords do not match.");
-        }
-
-        if (accounts.some((account) => account.email === email)) {
-          throw new Error("An account with that email already exists.");
-        }
-
-        const nextUser = {
-          id: uid(),
-          name,
-          email,
-          passwordHash,
-          createdAt: new Date().toISOString(),
-        };
-
-        saveAccounts([...accounts, nextUser]);
-        saveAuthSession({ id: nextUser.id, name: nextUser.name, email: nextUser.email });
       } else {
-        const matched = accounts.find((account) => account.email === email);
-
-        if (!matched || matched.passwordHash !== passwordHash) {
-          throw new Error("Incorrect email or password.");
+        if (!window.crypto?.subtle) {
+          throw new Error("Secure login is not available in this browser.");
         }
 
-        saveAuthSession({ id: matched.id, name: matched.name, email: matched.email });
+        const accounts = loadAccounts();
+        const passwordHash = await hashSecret(password);
+
+        if (authMode === "register") {
+          const name = authName.trim();
+
+          if (!name) {
+            throw new Error("Enter your name to create an account.");
+          }
+
+          if (password.length < 8) {
+            throw new Error("Use at least 8 characters for the password.");
+          }
+
+          if (password !== authConfirmPassword) {
+            throw new Error("Passwords do not match.");
+          }
+
+          if (accounts.some((account) => String(account.email || "").trim().toLowerCase() === email)) {
+            throw new Error("An account with that email already exists.");
+          }
+
+          const nextUser = {
+            id: uid(),
+            name,
+            email,
+            passwordHash,
+            createdAt: new Date().toISOString(),
+            provider: "local",
+          };
+
+          saveAccounts([...accounts, nextUser]);
+          saveAuthSession({ id: nextUser.id, name: nextUser.name, email: nextUser.email, provider: "local" });
+          setStatusMessage("Account created and saved on this device.");
+        } else {
+          const matched = accounts.find((account) => String(account.email || "").trim().toLowerCase() === email);
+
+          if (!matched) {
+            throw new Error("Incorrect email or password.");
+          }
+
+          if (String(matched.passwordHash || "") !== passwordHash) {
+            throw new Error("Incorrect email or password.");
+          }
+
+          saveAuthSession({ id: matched.id, name: matched.name, email: matched.email, provider: "local" });
+          setStatusMessage("Signed in successfully.");
+        }
       }
 
+      setAuthName("");
+      setAuthEmail("");
+      setAuthPassword("");
+      setAuthConfirmPassword("");
+      setTermsAccepted(false);
       window.location.reload();
     } catch (error) {
       setAuthError(error.message || "Unable to complete sign in right now.");
@@ -2370,7 +2669,11 @@ export default function App() {
     }
   }
 
-  function handleSignOut() {
+  async function handleSignOut() {
+    if (supabaseConfigured && supabase && currentUser?.provider === "supabase") {
+      await supabase.auth.signOut();
+    }
+
     clearAuthSession();
     window.location.reload();
   }
@@ -2994,6 +3297,24 @@ export default function App() {
 
   const dashboardGreeting = getGreeting(currentUser?.name);
 
+  if (!authReady) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: C.bg,
+          fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
+          color: C.text,
+        }}
+      >
+        Restoring your study space...
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return (
       <AuthScreen
@@ -3007,6 +3328,9 @@ export default function App() {
         setAuthPassword={setAuthPassword}
         authConfirmPassword={authConfirmPassword}
         setAuthConfirmPassword={setAuthConfirmPassword}
+        termsAccepted={termsAccepted}
+        setTermsAccepted={setTermsAccepted}
+        cloudSyncReady={cloudSyncReady}
         authError={authError}
         authLoading={authLoading}
         onSubmit={handleAuthSubmit}
@@ -3452,6 +3776,9 @@ export default function App() {
                 {hasCustomSource
                   ? `Focused source loaded${uploadedFileName ? `: ${uploadedFileName}` : ""}. Repeats are allowed so the app can stay centered on your document.`
                   : "Using the local CareDrop subject bank. Flashcards and quizzes will avoid repeats until you reset the rotation."}
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
+                {cloudSyncStatus || (supabaseConfigured ? "Cloud sync is ready once you sign in with Supabase." : "Cloud sync is waiting for free Supabase keys in the environment settings.")}
               </div>
             </div>
           </div>
