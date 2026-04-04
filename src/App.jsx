@@ -137,12 +137,15 @@ const SEED_QUESTION_BANK = {
   ],
 };
 
-const BANK_ITEMS_PER_BUCKET = 21;
+const BANK_ITEMS_PER_BUCKET = 42;
 const BUCKET_DIFFICULTIES = ["easy", "medium", "hard"];
 const QUESTION_LEAD_INS = [
   "Board recall:",
   "Focused review:",
   "Nursing priority check:",
+  "PRC NLE review:",
+  "Clinical decision point:",
+  "Exam coaching prompt:",
 ];
 const QUESTION_TEMPLATES = [
   (entry) => entry.q,
@@ -153,11 +156,16 @@ const QUESTION_TEMPLATES = [
   (entry, subject, difficulty) => `For a ${difficulty} ${subject} review item about ${entry.topic}, which response is best?`,
   (entry, subject) => `During review of ${subject}, what key principle should be tied to ${entry.topic}?`,
   (entry, subject) => `If ${entry.topic} appears in a ${subject} question stem, what answer should come to mind?`,
+  (entry, subject) => `Which nursing judgment matters most when ${entry.topic} appears in ${subject}?`,
+  (entry, subject, difficulty) => `A ${difficulty} board item on ${entry.topic} is testing which safe response in ${subject}?`,
+  (entry, subject) => `What board-level reminder should stay attached to ${entry.topic} during ${subject} review?`,
 ];
 const ANSWER_REMINDERS = [
   (entry, subject) => `Board focus: connect ${entry.topic} to the safest nursing priority in ${subject}.`,
   (entry, subject, difficulty) => `Review clue: this is the ${difficulty} takeaway the stem is pointing toward in ${subject}.`,
   (entry) => `Memory hook: if the item is really about ${entry.topic}, this is the answer to anchor first.`,
+  (entry, subject) => `Clinical anchor: keep ${entry.topic} tied to the safest next nursing step in ${subject}.`,
+  (entry) => `Review note: this concept is meant to feel automatic by the time you sit for boards.`,
 ];
 
 function normalizeSeedKey(text) {
@@ -191,7 +199,7 @@ function buildExpandedBank(seedBank, targetPerBucket = BANK_ITEMS_PER_BUCKET) {
       }
 
       let variantIndex = 0;
-      while (bucket.length < targetPerBucket && variantIndex < targetPerBucket * 12) {
+      while (bucket.length < targetPerBucket && variantIndex < targetPerBucket * 30) {
         const seed = seeds[variantIndex % seeds.length];
         const question = buildExpandedQuestion(seed, subject, difficulty, variantIndex);
         const key = `${subject}-${difficulty}-${normalizeSeedKey(question)}`;
@@ -279,6 +287,62 @@ function useWindowWidth() {
   }, []);
 
   return width;
+}
+
+function getDateKey(value) {
+  const date = value ? new Date(value) : new Date();
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+function getStudyStreak(sessions) {
+  const uniqueDays = uniqueBy(
+    (sessions || [])
+      .map((session) => getDateKey(session.createdAt))
+      .sort((left, right) => new Date(right).getTime() - new Date(left).getTime()),
+    (value) => value
+  );
+
+  if (!uniqueDays.length) {
+    return 0;
+  }
+
+  let streak = 0;
+  let cursor = new Date();
+
+  while (true) {
+    const key = getDateKey(cursor);
+    if (!uniqueDays.includes(key)) {
+      if (!streak) {
+        cursor.setDate(cursor.getDate() - 1);
+        const yesterdayKey = getDateKey(cursor);
+        if (!uniqueDays.includes(yesterdayKey)) {
+          return 0;
+        }
+        streak += 1;
+        cursor.setDate(cursor.getDate() - 1);
+        continue;
+      }
+      break;
+    }
+
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return streak;
+}
+
+function getLocalDateLabel(value) {
+  if (!value) {
+    return "No session yet";
+  }
+
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function buildStudyText(noteText, uploadedText) {
@@ -1670,6 +1734,7 @@ function RequestModal({
 }
 
 function AuthScreen({
+  width,
   authMode,
   setAuthMode,
   authName,
@@ -1683,18 +1748,22 @@ function AuthScreen({
   termsAccepted,
   setTermsAccepted,
   cloudSyncReady,
+  authNotice,
   authError,
   authLoading,
+  forgotPasswordLoading,
   onSubmit,
+  onForgotPassword,
 }) {
   const isRegister = authMode === "register";
+  const stacked = width < 940;
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: C.bg,
-        padding: 24,
+        background: "linear-gradient(180deg, #F5F2EA 0%, #F8F6F1 100%)",
+        padding: width < 640 ? 16 : 24,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -1703,9 +1772,9 @@ function AuthScreen({
     >
       <div
         style={{
-          width: "min(960px, 100%)",
+          width: "min(1100px, 100%)",
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.05fr) minmax(320px, 420px)",
+          gridTemplateColumns: stacked ? "1fr" : "minmax(0, 1.1fr) minmax(340px, 440px)",
           gap: 20,
           alignItems: "stretch",
         }}
@@ -1714,15 +1783,27 @@ function AuthScreen({
           style={{
             background: "linear-gradient(145deg, #112240 0%, #16305C 70%, #214778 100%)",
             borderRadius: 28,
-            padding: 32,
+            padding: stacked ? 24 : 34,
             color: "#fff",
-            minHeight: 520,
+            minHeight: stacked ? 420 : 560,
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
             boxShadow: "0 24px 50px rgba(15, 23, 42, 0.16)",
+            position: "relative",
+            overflow: "hidden",
           }}
         >
+          <div
+            style={{
+              position: "absolute",
+              inset: "auto -60px -70px auto",
+              width: 220,
+              height: 220,
+              borderRadius: "50%",
+              background: "radial-gradient(circle, rgba(139,229,175,0.25) 0%, rgba(139,229,175,0.02) 65%, transparent 70%)",
+            }}
+          />
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div
@@ -1740,14 +1821,57 @@ function AuthScreen({
                 Care<span style={{ color: "#8BE5AF" }}>Drop</span>
               </div>
             </div>
-            <div style={{ marginTop: 28, fontSize: 42, lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.05em" }}>
-              Review smarter, and come back exactly where you left off.
+            <div style={{ marginTop: 28, fontSize: stacked ? 34 : 46, lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.05em", maxWidth: 520 }}>
+              Study smarter. Learn from mistakes. Build confidence.
             </div>
-            <div style={{ marginTop: 18, fontSize: 15, lineHeight: 1.85, color: "rgba(233,239,247,0.84)" }}>
-              Sign in to keep your flashcard sets, quiz sessions, progress, and weak-card review on this device. The app will greet you by name and restore your study flow when you return.
+            <div style={{ marginTop: 18, fontSize: 15, lineHeight: 1.85, color: "rgba(233,239,247,0.84)", maxWidth: 560 }}>
+              Continue your flashcards, quizzes, uploads, weak-area review, and saved sessions in one supportive workspace built for real learners preparing for demanding exams.
+            </div>
+            <div
+              style={{
+                marginTop: 26,
+                display: "grid",
+                gap: 12,
+                maxWidth: 520,
+              }}
+            >
+              {[
+                "Return to saved sessions without losing your review rhythm.",
+                "Track weak areas, quiz accuracy, and next recommended actions.",
+                "Use AI explanations when you miss an item and need clearer guidance.",
+              ].map((message) => (
+                <div
+                  key={message}
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    padding: "12px 14px",
+                    borderRadius: 16,
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 999,
+                      background: "#8BE5AF",
+                      marginTop: 6,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ fontSize: 14, lineHeight: 1.7, color: "rgba(238,243,249,0.9)" }}>{message}</div>
+                </div>
+              ))}
             </div>
           </div>
-
+          <div style={{ fontSize: 13, color: "rgba(233,239,247,0.78)", lineHeight: 1.7, maxWidth: 520 }}>
+            {cloudSyncReady
+              ? "Cloud sync is available, so your progress can follow you across devices once Supabase is connected."
+              : "You can still use CareDrop locally today. Free cloud sync becomes available after Supabase keys are added."}
+          </div>
         </div>
 
         <div
@@ -1788,12 +1912,12 @@ function AuthScreen({
           </div>
 
           <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.04em" }}>
-            {isRegister ? "Create your reviewer profile" : "Welcome back"}
+            {isRegister ? "Create your learner account" : "Welcome back"}
           </div>
           <div style={{ marginTop: 8, fontSize: 14, color: C.muted, lineHeight: 1.7 }}>
             {isRegister
-              ? "Register once on this device so CareDrop can retain your review history and progress."
-              : "Sign in to continue your saved nursing review sessions."}
+              ? "Set up your account to save sessions, track progress, and build a review history you can return to."
+              : "Pick up where you left off and keep your review momentum moving."}
           </div>
 
           <div style={{ marginTop: 22, display: "grid", gap: 12 }}>
@@ -1843,9 +1967,29 @@ function AuthScreen({
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
-                Password
-              </label>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 6 }}>
+                <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block" }}>
+                  Password
+                </label>
+                {!isRegister && cloudSyncReady ? (
+                  <button
+                    type="button"
+                    onClick={onForgotPassword}
+                    disabled={authLoading || forgotPasswordLoading}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      padding: 0,
+                      color: C.accent,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: authLoading || forgotPasswordLoading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {forgotPasswordLoading ? "Sending reset..." : "Forgot password?"}
+                  </button>
+                ) : null}
+              </div>
               <input
                 value={authPassword}
                 onChange={(event) => setAuthPassword(event.target.value)}
@@ -1888,6 +2032,23 @@ function AuthScreen({
               </div>
             ) : null}
           </div>
+
+          {authNotice ? (
+            <div
+              style={{
+                marginTop: 16,
+                padding: "11px 13px",
+                borderRadius: 14,
+                background: C.accentLight,
+                border: `1px solid ${C.accentMid}`,
+                color: C.text,
+                fontSize: 13,
+                lineHeight: 1.7,
+              }}
+            >
+              {authNotice}
+            </div>
+          ) : null}
 
           {authError ? (
             <div
@@ -1949,7 +2110,7 @@ function AuthScreen({
 
           <div style={{ marginTop: 14, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
             {cloudSyncReady
-              ? "Cloud sync is ready. Signed-in users can restore progress across devices once Supabase is configured."
+              ? "Signed-in learners can restore progress, saved sessions, and recent study state across devices."
               : "Cloud sync will activate after you add the free Supabase project keys in the environment settings."}
           </div>
         </div>
@@ -2039,8 +2200,10 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authConfirmPassword, setAuthConfirmPassword] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [authNotice, setAuthNotice] = useState("");
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
   const [authReady, setAuthReady] = useState(!supabaseConfigured);
   const [cloudSyncReady, setCloudSyncReady] = useState(supabaseConfigured);
   const [cloudSyncStatus, setCloudSyncStatus] = useState("");
@@ -2165,6 +2328,7 @@ export default function App() {
   useEffect(() => {
     setTermsAccepted(false);
     setAuthError("");
+    setAuthNotice("");
   }, [authMode]);
 
   useEffect(() => {
@@ -2505,6 +2669,104 @@ export default function App() {
     ? Math.round(reviewSessions.reduce((total, session) => total + Number(session.score || 0), 0) / reviewSessions.length)
     : 0;
   const hasRequestDraft = Boolean(requestName.trim() || requestMessage.trim() || requestStatus);
+  const overallAnsweredCount = reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0);
+  const quizSessionCount = reviewSessions.filter((session) => session.mode === "quiz").length;
+  const quizAverage = quizSessionCount
+    ? Math.round(
+        reviewSessions
+          .filter((session) => session.mode === "quiz")
+          .reduce((total, session) => total + Number(session.score || 0), 0) / quizSessionCount
+      )
+    : 0;
+  const subjectNames = Object.keys(QUESTION_BANK);
+  const weakSubjectCounts = weakCardIds.reduce((accumulator, cardId) => {
+    const matchedSubject = subjectNames.find((name) => String(cardId || "").startsWith(`${name}-`));
+    if (!matchedSubject) {
+      return accumulator;
+    }
+
+    accumulator[matchedSubject] = (accumulator[matchedSubject] || 0) + 1;
+    return accumulator;
+  }, {});
+  const weakestSubject =
+    Object.entries(weakSubjectCounts).sort((left, right) => Number(right[1]) - Number(left[1]))[0]?.[0] || "";
+  const mostRecentSession = reviewSessions[0] || null;
+  const savedSessionWaiting =
+    reviewSessions.find((session) => session.saved && session.mode === "quiz") ||
+    reviewSessions.find((session) => session.saved);
+  const studyStreak = getStudyStreak(reviewSessions);
+  const todayKey = getDateKey();
+  const todayAnsweredCount = reviewSessions
+    .filter((session) => getDateKey(session.createdAt) === todayKey)
+    .reduce((total, session) => total + Number(session.answeredCount || 0), 0);
+  const dailyGoalTarget = 10;
+  const dailyGoalProgress = clamp(Math.round((todayAnsweredCount / dailyGoalTarget) * 100), 0, 100);
+  const readinessScore = clamp(
+    Math.round((accuracy * 0.4) + (reviewSessionAverage * 0.25) + Math.min(sessions * 3, 20) + Math.min(studyStreak * 4, 15)),
+    0,
+    100
+  );
+  const isFirstVisit = !reviewSessions.length && !Object.keys(ratings).length;
+  const recommendedAction = (() => {
+    if (savedSessionWaiting) {
+      return {
+        title: "Resume a saved review session",
+        body: `You already have ${buildSessionLabel(savedSessionWaiting)} waiting. Reopen it and keep your momentum instead of starting from zero.`,
+        cta: "Resume saved session",
+        onClick: () => openSavedQuiz(savedSessionWaiting),
+      };
+    }
+
+    if (weakCardIds.length) {
+      return {
+        title: "Revisit your weak areas next",
+        body: weakestSubject
+          ? `${weakSubjectCounts[weakestSubject]} weak cards are stacking up in ${weakestSubject}. A focused pass there will tighten recall fastest.`
+          : "Your missed and unsure cards are ready for another pass. A quick weak-card round is the cleanest next step.",
+        cta: "Review weak cards",
+        onClick: () => {
+          setFilterWeakOnly(true);
+          setMode("flashcard");
+        },
+      };
+    }
+
+    if (mostRecentSession) {
+      return {
+        title: `Continue ${mostRecentSession.subject}`,
+        body: `Your latest session was ${buildSessionLabel(mostRecentSession)}. Keep the thread going while the topic is still fresh.`,
+        cta: mostRecentSession.mode === "quiz" ? "Start another quiz" : "Open flashcards",
+        onClick: () => {
+          setSubject(mostRecentSession.subject || subject);
+          setDifficulty(mostRecentSession.difficulty || difficulty);
+          setTopicFilter(mostRecentSession.topic || "");
+          if (mostRecentSession.mode === "quiz") {
+            setMode("quiz");
+            if (!quiz.length) {
+              generateQuiz();
+            }
+          } else {
+            setMode("flashcard");
+            if (!flashcards.length) {
+              loadLocalFlashcardSet();
+            }
+          }
+        },
+      };
+    }
+
+    return {
+      title: "Start your first focused session",
+      body: "Open a 10-card flashcard set or a short quiz, then let the dashboard begin tracking your accuracy, streak, and weak areas.",
+      cta: "Open flashcards",
+      onClick: () => {
+        setMode("flashcard");
+        if (!flashcards.length) {
+          loadLocalFlashcardSet();
+        }
+      },
+    };
+  })();
 
   useEffect(() => {
     setAiResponse("");
@@ -2524,11 +2786,47 @@ export default function App() {
     setRequestStatus("");
   }
 
-  async function handleAuthSubmit() {
+  async function handleForgotPassword() {
     setAuthError("");
+    setAuthNotice("");
 
     const email = authEmail.trim().toLowerCase();
-    const password = authPassword.trim();
+
+    if (!supabaseConfigured || !supabase) {
+      setAuthError("Password reset becomes available after Supabase is connected.");
+      return;
+    }
+
+    if (!email) {
+      setAuthError("Enter your email first so we know where to send the reset link.");
+      return;
+    }
+
+    setForgotPasswordLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setAuthNotice("Password reset instructions were sent. Check your inbox and spam folder if needed.");
+    } catch (error) {
+      setAuthError(error.message || "We couldn't send the reset email right now.");
+    } finally {
+      setForgotPasswordLoading(false);
+    }
+  }
+
+  async function handleAuthSubmit() {
+    setAuthError("");
+    setAuthNotice("");
+
+    const email = authEmail.trim().toLowerCase();
+    const password = authPassword;
     const agreed = Boolean(termsAccepted);
 
     if (!email || !password) {
@@ -2577,16 +2875,20 @@ export default function App() {
           if (data.user) {
             const nextUser = mapSupabaseUser(data.user);
             saveAuthSession(nextUser);
+            setCurrentUser(nextUser);
           }
 
           setAuthPassword("");
           setAuthConfirmPassword("");
           setTermsAccepted(false);
-          setStatusMessage(
-            data.session
-              ? "Account created and signed in successfully."
-              : "Account created. Check your email if Supabase confirmation is enabled."
-          );
+          if (data.session && data.user) {
+            setStatusMessage("Account created and signed in successfully.");
+            applyPersistedSnapshot(loadPersisted(data.user.id));
+          } else {
+            setAuthMode("login");
+            setAuthNotice("Account created. Check your email if Supabase confirmation is enabled, then sign in to continue.");
+            return;
+          }
         } else {
           const { data, error } = await supabase.auth.signInWithPassword({
             email,
@@ -2599,6 +2901,8 @@ export default function App() {
 
           const nextUser = mapSupabaseUser(data.user);
           saveAuthSession(nextUser);
+          setCurrentUser(nextUser);
+          applyPersistedSnapshot(loadPersisted(nextUser.id));
           setStatusMessage("Signed in successfully.");
         }
       } else {
@@ -2639,6 +2943,8 @@ export default function App() {
 
           saveAccounts([...accounts, nextUser]);
           saveAuthSession({ id: nextUser.id, name: nextUser.name, email: nextUser.email, provider: "local" });
+          setCurrentUser({ id: nextUser.id, name: nextUser.name, email: nextUser.email, provider: "local" });
+          applyPersistedSnapshot(loadPersisted(nextUser.id));
           setStatusMessage("Account created and saved on this device.");
         } else {
           const matched = accounts.find((account) => String(account.email || "").trim().toLowerCase() === email);
@@ -2652,6 +2958,8 @@ export default function App() {
           }
 
           saveAuthSession({ id: matched.id, name: matched.name, email: matched.email, provider: "local" });
+          setCurrentUser({ id: matched.id, name: matched.name, email: matched.email, provider: "local" });
+          applyPersistedSnapshot(loadPersisted(matched.id));
           setStatusMessage("Signed in successfully.");
         }
       }
@@ -2661,7 +2969,6 @@ export default function App() {
       setAuthPassword("");
       setAuthConfirmPassword("");
       setTermsAccepted(false);
-      window.location.reload();
     } catch (error) {
       setAuthError(error.message || "Unable to complete sign in right now.");
     } finally {
@@ -3318,6 +3625,7 @@ export default function App() {
   if (!currentUser) {
     return (
       <AuthScreen
+        width={width}
         authMode={authMode}
         setAuthMode={setAuthMode}
         authName={authName}
@@ -3331,9 +3639,12 @@ export default function App() {
         termsAccepted={termsAccepted}
         setTermsAccepted={setTermsAccepted}
         cloudSyncReady={cloudSyncReady}
+        authNotice={authNotice}
         authError={authError}
         authLoading={authLoading}
+        forgotPasswordLoading={forgotPasswordLoading}
         onSubmit={handleAuthSubmit}
+        onForgotPassword={handleForgotPassword}
       />
     );
   }
@@ -3491,16 +3802,15 @@ export default function App() {
           />
           <div
             style={{
-              display: "flex",
-              justifyContent: "space-between",
+              display: "grid",
+              gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.4fr) minmax(280px, 360px)",
               gap: 20,
-              flexWrap: "wrap",
               marginBottom: 18,
               position: "relative",
               zIndex: 1,
             }}
           >
-            <div style={{ maxWidth: 520 }}>
+            <div style={{ maxWidth: 560 }}>
               <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(225,233,247,0.64)", fontWeight: 800 }}>
                 CareDrop Command Center
               </div>
@@ -3508,14 +3818,45 @@ export default function App() {
                 {dashboardGreeting}
               </div>
               <div style={{ marginTop: 10, fontSize: width < 880 ? 30 : 38, lineHeight: 1.08, fontWeight: 900, letterSpacing: "-0.06em" }}>
-                Review with structure, not clutter.
+                Review workspace built to guide your next move.
               </div>
               <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, color: "rgba(228,235,246,0.84)" }}>
-                Pick a subject, lock the difficulty, and move between flashcards, quizzes, uploads, and review history from one focused workspace.
+                Keep your flashcards, quizzes, uploads, saved sessions, and weak-area review in one calm place that helps you decide what to do next.
+              </div>
+              <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ padding: "10px 14px", borderRadius: 999, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 12, color: "rgba(234,241,249,0.88)" }}>
+                  {studyStreak ? `${studyStreak}-day study streak` : "Start a streak with one session today"}
+                </div>
+                <div style={{ padding: "10px 14px", borderRadius: 999, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 12, color: "rgba(234,241,249,0.88)" }}>
+                  {mostRecentSession ? `Last studied ${mostRecentSession.subject}` : "Your first session will start the tracker"}
+                </div>
               </div>
             </div>
-            <div style={{ fontSize: 13, color: "rgba(228,235,246,0.8)", textAlign: width < 880 ? "left" : "right" }}>
-              <div>{gentlePush}</div>
+            <div
+              style={{
+                borderRadius: 24,
+                padding: "18px 18px 16px",
+                background: "linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 100%)",
+                border: "1px solid rgba(255,255,255,0.09)",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                minHeight: 170,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(228,235,246,0.62)", fontWeight: 800 }}>
+                  Encouragement
+                </div>
+                <div style={{ marginTop: 14, fontSize: 22, lineHeight: 1.45, fontWeight: 700, color: "#FFFFFF" }}>
+                  {gentlePush}
+                </div>
+              </div>
+              <div style={{ marginTop: 18, fontSize: 13, lineHeight: 1.7, color: "rgba(225,233,247,0.78)" }}>
+                {isFirstVisit
+                  ? "Start one short set today and CareDrop will begin building your study trail."
+                  : recommendedAction.body}
+              </div>
             </div>
           </div>
 
@@ -3532,7 +3873,7 @@ export default function App() {
             <ProgressRing
               value={clamp(Math.round(((Object.keys(ratings).length + reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0)) / Math.max(totalCards * 0.55, 1)) * 100), 0, 100)}
               label="overall completion"
-              caption={`${getExactEntries(activeEntries, subject, difficulty, topicFilter).length || totalCards} items ready for this filter`}
+              caption={isFirstVisit ? "Ready when you are." : "Your next set is prepared."}
             />
             <div
               style={{
@@ -3541,10 +3882,10 @@ export default function App() {
                 gap: 10,
               }}
             >
-              <HeroMetric label="Readiness Score" value={`${clamp(Math.round((accuracy * 0.45) + (reviewSessionAverage * 0.35) + Math.min(sessions * 3, 20)), 0, 100)}%`} helper={weakCardIds.length ? `${weakCardIds.length} weak cards to revisit` : "steady progress"} accent="#F8D56C" />
-              <HeroMetric label="Total Sessions" value={sessions} helper={`${reviewSessions.length} stored in history`} accent="#8BE5AF" />
-              <HeroMetric label="Average Quiz Score" value={`${reviewSessions.filter((session) => session.mode === "quiz").length ? Math.round(reviewSessions.filter((session) => session.mode === "quiz").reduce((total, session) => total + Number(session.score || 0), 0) / reviewSessions.filter((session) => session.mode === "quiz").length) : 0}%`} helper={`${reviewSessions.filter((session) => session.mode === "quiz").length} quiz sessions tracked`} accent="#6BC0FF" />
-              <HeroMetric label="Answered Overall" value={reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0)} helper={reviewSessions[0] ? `Last: ${reviewSessions[0].subject}` : "Start a session to track this"} accent="#D8B4FE" />
+              <HeroMetric label="Readiness Score" value={`${readinessScore}%`} helper={weakCardIds.length ? `${weakCardIds.length} weak cards worth revisiting` : isFirstVisit ? "Complete one short session to begin scoring" : "Building confidence steadily"} accent="#F8D56C" />
+              <HeroMetric label="Study Streak" value={studyStreak || 0} helper={studyStreak ? "Keep the rhythm going today" : "One session starts the streak"} accent="#8BE5AF" />
+              <HeroMetric label="Average Quiz Score" value={`${quizAverage}%`} helper={quizSessionCount ? `${quizSessionCount} quiz sessions tracked` : "Your quiz trend will appear here"} accent="#6BC0FF" />
+              <HeroMetric label="Answered Overall" value={overallAnsweredCount} helper={mostRecentSession ? `Last reviewed ${mostRecentSession.subject}` : "Answer one set to start tracking"} accent="#D8B4FE" />
             </div>
           </div>
         </div>
@@ -3557,85 +3898,149 @@ export default function App() {
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ ...panelStyle, padding: 16, background: "#FCFBF8" }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: C.faint,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  marginBottom: 10,
-                }}
-              >
-                Workspace
+            <div style={{ ...panelStyle, padding: 18, background: "#FCFBF8" }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Study Command Center
               </div>
-              <div style={{ display: "grid", gap: 8 }}>
-                <SidebarNavButton active={mode === "dashboard"} label="Dashboard" hint="Overview and readiness" onClick={() => setMode("dashboard")} />
-                <SidebarNavButton active={mode === "flashcard"} label="Flashcards" hint="Focused card review" badge={flashcards.length || ""} onClick={() => setMode("flashcard")} />
-                <SidebarNavButton active={mode === "quiz"} label="Quiz" hint="Board-style drills" badge={quiz.length || ""} onClick={() => setMode("quiz")} />
-                <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => setMode("notes")} />
-                <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions" badge={reviewSessions.length || ""} onClick={() => setMode("history")} />
-              </div>
-            </div>
-            <div style={panelStyle}>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 800,
-                  color: C.muted,
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  marginBottom: 14,
-                }}
-              >
-                Study Controls
+              <div style={{ marginTop: 6, fontSize: 13, color: C.muted, lineHeight: 1.65 }}>
+                Choose your workspace, set your filters, and jump straight into the right review block without hunting around the page.
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Difficulty</label>
-                <select
-                  value={difficulty}
-                  onChange={(event) => setDifficulty(event.target.value)}
-                  style={selectStyle}
-                >
-                  {DIFFICULTIES.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
+              <div style={{ marginTop: 18 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                  Workspace
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <SidebarNavButton active={mode === "dashboard"} label="Dashboard" hint="Overview and next steps" onClick={() => setMode("dashboard")} />
+                  <SidebarNavButton active={mode === "flashcard"} label="Flashcards" hint="Focused card review" badge={flashcards.length || ""} onClick={() => setMode("flashcard")} />
+                  <SidebarNavButton active={mode === "quiz"} label="Quiz" hint="Board-style drills" badge={quiz.length || ""} onClick={() => setMode("quiz")} />
+                  <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => setMode("notes")} />
+                  <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions and returns" badge={reviewSessions.length || ""} onClick={() => setMode("history")} />
+                </div>
+              </div>
 
-                <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Subject</label>
-                <select
-                  value={subject}
-                  onChange={(event) => setSubject(event.target.value)}
-                  style={selectStyle}
-                >
-                  {SUBJECT_OPTIONS.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
+              <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                  Review Filters
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Difficulty</label>
+                  <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} style={selectStyle}>
+                    {DIFFICULTIES.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
 
-                <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>
-                  Topic Focus
-                </label>
-                <input
-                  value={topicFilter}
-                  onChange={(event) => setTopicFilter(event.target.value)}
-                  placeholder="cardiac drugs, dengue, delegation..."
+                  <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Subject</label>
+                  <select value={subject} onChange={(event) => setSubject(event.target.value)} style={selectStyle}>
+                    {SUBJECT_OPTIONS.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Topic Focus</label>
+                  <input
+                    value={topicFilter}
+                    onChange={(event) => setTopicFilter(event.target.value)}
+                    placeholder="cardiac drugs, dengue, delegation..."
+                    style={{
+                      ...selectStyle,
+                      cursor: "text",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
+                <button
+                  type="button"
+                  onClick={() => setSubjectShortcutsOpen((value) => !value)}
                   style={{
-                    ...selectStyle,
-                    cursor: "text",
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    cursor: "pointer",
+                    textAlign: "left",
                   }}
-                />
+                >
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                      Subject Shortcuts
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: C.faint }}>
+                      Quick jump between major review areas
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 18, color: C.muted, fontWeight: 700 }}>
+                    {subjectShortcutsOpen ? "▾" : "▸"}
+                  </div>
+                </button>
 
+                {subjectShortcutsOpen ? (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      display: "grid",
+                      gap: 8,
+                      maxHeight: 300,
+                      overflowY: "auto",
+                      paddingRight: 4,
+                    }}
+                  >
+                    {SUBJECT_OPTIONS.map((value) => (
+                      <button
+                        key={value}
+                        onClick={() => {
+                          setSubject(value);
+                          setMode("flashcard");
+                        }}
+                        style={{
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "10px 12px",
+                          borderRadius: 14,
+                          border: `1px solid ${subject === value ? "#C4D6EA" : C.border}`,
+                          background: subject === value ? "#EEF4FB" : "#FBFAF7",
+                          color: subject === value ? "#17355E" : C.text,
+                          fontSize: 13,
+                          fontWeight: subject === value ? 800 : 700,
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: 999,
+                            background: subject === value ? C.accent : "#CDD5DF",
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span>{value}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}`, display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  Review Tools
+                </div>
                 <button
                   onClick={() => setFilterWeakOnly((value) => !value)}
                   style={{
-                    marginTop: 4,
                     padding: "11px 14px",
                     borderRadius: 12,
                     border: filterWeakOnly ? `1px solid ${C.red}` : `1px solid ${C.border}`,
@@ -3647,7 +4052,6 @@ export default function App() {
                 >
                   {filterWeakOnly ? "Showing Weak Cards Only" : "Focus Weak Cards"}
                 </button>
-
                 <button
                   onClick={resetRotation}
                   style={{
@@ -3662,6 +4066,23 @@ export default function App() {
                 >
                   Reset Non-Repeat Rotation
                 </button>
+                {savedSessionWaiting ? (
+                  <button
+                    type="button"
+                    onClick={() => openSavedQuiz(savedSessionWaiting)}
+                    style={{
+                      padding: "11px 14px",
+                      borderRadius: 12,
+                      border: `1px solid #C7D6E5`,
+                      background: "#EEF4FB",
+                      color: "#17355E",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Resume Saved Session
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -3674,108 +4095,23 @@ export default function App() {
                   padding: 16,
                 }}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, color: C.red }}>Weak Card Alert</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: C.red }}>Weak Area Insight</div>
                 <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6, marginTop: 6 }}>
-                  {weakCardIds.length} cards still need another pass.
+                  {weakestSubject
+                    ? `${weakCardIds.length} cards still need another pass, with the heaviest pull in ${weakestSubject}.`
+                    : `${weakCardIds.length} cards still need another pass.`}
                 </div>
               </div>
             ) : null}
 
             <div style={panelStyle}>
-              <button
-                type="button"
-                onClick={() => setSubjectShortcutsOpen((value) => !value)}
-                style={{
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  border: "none",
-                  background: "transparent",
-                  padding: 0,
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 800,
-                      color: C.muted,
-                      letterSpacing: "0.07em",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Subject Shortcuts
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 12, color: C.faint }}>
-                    Quick jump between major review areas
-                  </div>
-                </div>
-                <div style={{ fontSize: 18, color: C.muted, fontWeight: 700 }}>
-                  {subjectShortcutsOpen ? "▾" : "▸"}
-                </div>
-              </button>
-
-              {subjectShortcutsOpen ? (
-                <div
-                  style={{
-                    marginTop: 14,
-                    display: "grid",
-                    gap: 8,
-                    maxHeight: 360,
-                    overflowY: "auto",
-                    paddingRight: 4,
-                  }}
-                >
-                  {SUBJECT_OPTIONS.map((value) => (
-                    <button
-                      key={value}
-                      onClick={() => {
-                        setSubject(value);
-                        setMode("flashcard");
-                      }}
-                      style={{
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "10px 12px",
-                        borderRadius: 14,
-                        border: `1px solid ${subject === value ? "#C4D6EA" : C.border}`,
-                        background: subject === value ? "#EEF4FB" : "#FBFAF7",
-                        color: subject === value ? "#17355E" : C.text,
-                        fontSize: 13,
-                        fontWeight: subject === value ? 800 : 700,
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: 999,
-                          background: subject === value ? C.accent : "#CDD5DF",
-                          flexShrink: 0,
-                        }}
-                      />
-                      <span>{value}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
-            <div style={panelStyle}>
               <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 10 }}>
-                Source Mode
+                Review Source
               </div>
               <div style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>
                 {hasCustomSource
                   ? `Focused source loaded${uploadedFileName ? `: ${uploadedFileName}` : ""}. Repeats are allowed so the app can stay centered on your document.`
-                  : "Using the local CareDrop subject bank. Flashcards and quizzes will avoid repeats until you reset the rotation."}
+                  : "Using the CareDrop review bank. Sessions stay balanced, filtered, and non-repeating until you reset rotation."}
               </div>
               <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
                 {cloudSyncStatus || (supabaseConfigured ? "Cloud sync is ready once you sign in with Supabase." : "Cloud sync is waiting for free Supabase keys in the environment settings.")}
@@ -3827,68 +4163,239 @@ export default function App() {
                   </div>
                 }
               >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: width < 900 ? "1fr" : "repeat(3, minmax(0, 1fr))",
-                    gap: 14,
-                  }}
-                >
-                  {[
-                    {
-                      key: "accuracy",
-                      title: "Accuracy",
-                      value: `${accuracy}%`,
-                      helper: Object.keys(ratings).length ? `${Object.keys(ratings).length} cards rated` : "No ratings yet",
-                      body: `${Object.values(ratings).filter((value) => value === "easy").length} strong responses and ${weakCardIds.length} weak cards logged so far.`,
-                    },
-                    {
-                      key: "weak",
-                      title: "Weak Cards",
-                      value: weakCardIds.length,
-                      helper: weakCardIds.length ? "Needs another pass" : "Looking stable",
-                      body: weakCardIds.length
-                        ? "Use Focus Weak Cards to re-run only the concepts you marked as missed or unsure."
-                        : "No weak-card backlog at the moment.",
-                    },
-                    {
-                      key: "history",
-                      title: "Review History",
-                      value: reviewSessions.length,
-                      helper: reviewSessions[0] ? `${reviewSessions[0].subject} was most recent` : "No saved sessions yet",
-                      body: reviewSessions[0]
-                        ? `Latest score: ${reviewSessions[0].score || 0}% in ${buildSessionLabel(reviewSessions[0])}.`
-                        : "Submit a flashcard or quiz session to build your review trail.",
-                    },
-                  ].map((item) => {
-                    const active = metricHover === item.key;
-                    return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => setMetricHover(active ? "" : item.key)}
-                        style={{
-                          borderRadius: 18,
-                          padding: 18,
-                          border: `1px solid ${active ? "#BFD1E5" : C.border}`,
-                          background: active ? "#F2F7FB" : "#FCFBF8",
-                          textAlign: "left",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                          {item.title}
-                        </div>
-                        <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, letterSpacing: "-0.05em" }}>{item.value}</div>
-                        <div style={{ marginTop: 6, fontSize: 13, color: C.muted }}>{item.helper}</div>
-                        {active ? (
-                          <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.7, color: C.text }}>
-                            {item.body}
+                <div style={{ display: "grid", gap: 16 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.15fr) minmax(280px, 0.85fr)",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 20,
+                        padding: 20,
+                        border: "1px solid #D8E3EF",
+                        background: "linear-gradient(180deg, #F7FBFF 0%, #F1F6FB 100%)",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Next Best Step
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 26, fontWeight: 900, letterSpacing: "-0.05em", color: "#17355E" }}>
+                        {recommendedAction.title}
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.8, color: C.text }}>
+                        {recommendedAction.body}
+                      </div>
+                      <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={recommendedAction.onClick}
+                          style={{
+                            padding: "11px 16px",
+                            borderRadius: 12,
+                            border: "none",
+                            background: C.accent,
+                            color: "#fff",
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {recommendedAction.cta}
+                        </button>
+                        {mostRecentSession ? (
+                          <div style={{ padding: "11px 14px", borderRadius: 12, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, color: C.muted }}>
+                            Last session: {buildSessionLabel(mostRecentSession)}
                           </div>
                         ) : null}
-                      </button>
-                    );
-                  })}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 20,
+                        padding: 20,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Today&apos;s Rhythm
+                      </div>
+                      <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13, color: C.text, fontWeight: 700 }}>
+                            <span>Daily goal progress</span>
+                            <span>{todayAnsweredCount}/{dailyGoalTarget}</span>
+                          </div>
+                          <div style={{ marginTop: 8, height: 10, borderRadius: 999, background: "#E8E4DC", overflow: "hidden" }}>
+                            <div style={{ width: `${dailyGoalProgress}%`, height: "100%", background: "linear-gradient(90deg, #3D7E64 0%, #7CCB9C 100%)" }} />
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 14, lineHeight: 1.8, color: C.text }}>
+                          {todayAnsweredCount
+                            ? `You already answered ${todayAnsweredCount} items today. ${todayAnsweredCount >= dailyGoalTarget ? "Goal reached — anything extra is bonus review." : "One more short session will move the bar forward."}`
+                            : "No activity logged yet today. A short set is enough to restart your rhythm."}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}` }}>
+                            <div style={{ fontSize: 11, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              Study streak
+                            </div>
+                            <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{studyStreak || 0} day{studyStreak === 1 ? "" : "s"}</div>
+                          </div>
+                          <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}` }}>
+                            <div style={{ fontSize: 11, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              Recent activity
+                            </div>
+                            <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.6, fontWeight: 700 }}>
+                              {mostRecentSession ? getLocalDateLabel(mostRecentSession.createdAt) : "No recent activity yet"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: width < 980 ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                      gap: 14,
+                    }}
+                  >
+                    {[
+                      {
+                        key: "accuracy",
+                        title: "Accuracy",
+                        value: `${accuracy}%`,
+                        helper: Object.keys(ratings).length ? `${Object.keys(ratings).length} cards rated so far` : "Complete a set to start tracking",
+                        body: Object.keys(ratings).length
+                          ? `${Object.values(ratings).filter((value) => value === "easy").length} strong responses are already sticking.`
+                          : "Your flashcard confidence and quick wins will start appearing here after your first session.",
+                      },
+                      {
+                        key: "weak",
+                        title: "Weak Area Insight",
+                        value: weakCardIds.length,
+                        helper: weakCardIds.length
+                          ? weakestSubject
+                            ? `${weakestSubject} needs the most support right now`
+                            : "A few concepts still need another pass"
+                          : "No weak-card backlog at the moment",
+                        body: weakCardIds.length
+                          ? "Use Focus Weak Cards to review the items you missed or marked as unsure without restarting everything."
+                          : "Once you start rating cards, CareDrop will surface the topics that deserve another pass.",
+                      },
+                      {
+                        key: "history",
+                        title: "Review History",
+                        value: reviewSessions.length,
+                        helper: mostRecentSession ? `${mostRecentSession.subject} was your latest subject` : "Your completed sessions will live here",
+                        body: mostRecentSession
+                          ? `Latest result: ${mostRecentSession.score || 0}% in ${buildSessionLabel(mostRecentSession)}.`
+                          : "Submit a flashcard or quiz session once, and CareDrop will start building your review trail.",
+                      },
+                    ].map((item) => {
+                      const active = metricHover === item.key;
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => setMetricHover(active ? "" : item.key)}
+                          style={{
+                            borderRadius: 18,
+                            padding: 18,
+                            border: `1px solid ${active ? "#BFD1E5" : C.border}`,
+                            background: active ? "#F2F7FB" : "#FCFBF8",
+                            textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            {item.title}
+                          </div>
+                          <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, letterSpacing: "-0.05em" }}>{item.value}</div>
+                          <div style={{ marginTop: 6, fontSize: 13, color: C.muted }}>{item.helper}</div>
+                          {active ? (
+                            <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.7, color: C.text }}>
+                              {item.body}
+                            </div>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 20,
+                      padding: 18,
+                      border: `1px solid ${C.border}`,
+                      background: "#FCFBF8",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          Recent Review Trail
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 14, lineHeight: 1.7, color: C.muted }}>
+                          {reviewSessions.length
+                            ? "Pick up a recent session or use it to decide what to revisit next."
+                            : "Once you submit a quiz or flashcard set, your review trail will start here."}
+                        </div>
+                      </div>
+                      {reviewSessions.length ? (
+                        <button
+                          type="button"
+                          onClick={() => setMode("history")}
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 12,
+                            border: `1px solid ${C.border}`,
+                            background: "#FFFFFF",
+                            color: C.text,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Open history
+                        </button>
+                      ) : null}
+                    </div>
+                    {reviewSessions.length ? (
+                      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                        {reviewSessions.slice(0, 3).map((session) => (
+                          <button
+                            key={session.id}
+                            type="button"
+                            onClick={() => openSavedQuiz(session)}
+                            style={{
+                              width: "100%",
+                              borderRadius: 16,
+                              padding: "14px 16px",
+                              border: `1px solid ${C.border}`,
+                              background: "#FFFFFF",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 16,
+                              alignItems: "center",
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>{buildSessionLabel(session)}</div>
+                              <div style={{ marginTop: 4, fontSize: 12, color: C.muted }}>{getLocalDateLabel(session.createdAt)}</div>
+                            </div>
+                            <div style={{ fontSize: 13, color: C.accent, fontWeight: 800 }}>{session.score || 0}%</div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </AnalyticsCard>
             ) : null}

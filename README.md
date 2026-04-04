@@ -1,6 +1,6 @@
 # CareDrop
 
-PRC NLE-focused nursing study workspace with Gemini-powered summaries, flashcards, quizzes, compact feedback reporting, and optional Supabase-based cloud sync for learner progress.
+PRC NLE-focused study platform with Gemini-powered summaries, flashcards, quizzes, supportive dashboard guidance, compact feedback reporting, and optional Supabase-based cloud sync for learner progress.
 
 ## Setup
 
@@ -14,9 +14,10 @@ PRC NLE-focused nursing study workspace with Gemini-powered summaries, flashcard
 ## Features
 
 - Subject and topic-focused study sessions
-- Local flashcards and quiz flow
+- 1000+ balanced internal review-bank items powering flashcards and quiz prompts
+- Local flashcards and quiz flow with cloud-ready continuity
 - Gemini summaries, flashcards, and quizzes with PRC NLE, DOH-aware, and PNDF-aware framing
-- Local sign-in/register with Supabase-ready cloud sync
+- Polished sign-in/register flow with Supabase-ready cloud sync
 - Saved review sessions
 - Non-repeating AI sessions unless notes are provided
 - Central request/report inbox through GitHub Issues when configured
