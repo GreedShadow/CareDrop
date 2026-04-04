@@ -7,6 +7,7 @@ const FLASHCARD_SET_SIZE = 10;
 const QUIZ_SET_SIZE = 10;
 const RECENT_MEMORY_LIMIT = 12;
 const SUPPORTED_UPLOAD_EXTENSIONS = [".doc", ".docx", ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt"];
+const LOGO_SRC = "/favicon.svg";
 
 const C = {
   bg: "#F7F6F3",
@@ -1537,10 +1538,18 @@ export default function App() {
               alignItems: "center",
               justifyContent: "center",
               color: "#fff",
-              fontSize: 16,
+              overflow: "hidden",
             }}
           >
-            ??
+            <img
+              src={LOGO_SRC}
+              alt="CareDrop logo"
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "block",
+              }}
+            />
           </div>
           <span style={{ fontWeight: 800, fontSize: 18 }}>
             Care<span style={{ color: C.accent }}>Drop</span>
