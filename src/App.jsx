@@ -374,6 +374,14 @@ function getLocalDateLabel(value) {
   });
 }
 
+function getAuthRedirectUrl() {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  return window.location.origin;
+}
+
 function buildStudyText(noteText, uploadedText) {
   return [uploadedText, noteText].filter(Boolean).join("\n\n").trim();
 }
@@ -3045,6 +3053,7 @@ export default function App() {
             email,
             password,
             options: {
+              emailRedirectTo: getAuthRedirectUrl(),
               data: {
                 full_name: name,
               },
