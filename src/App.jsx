@@ -50,6 +50,20 @@ const SEED_QUESTION_BANK = {
     { q: "A patient develops sudden stridor after a procedure. What is the nurse's priority response?", a: "Treat it as an airway emergency, call for immediate help, support oxygenation, and prepare for rapid airway intervention.", difficulty: "hard", topic: "airway emergency" },
     { q: "Which finding most strongly suggests sepsis is progressing to instability?", a: "Worsening mental status, hypotension, tachycardia, and poor perfusion together suggest possible septic shock and need urgent escalation.", difficulty: "hard", topic: "sepsis recognition" },
     { q: "During triage, which patient should be assessed first: chest pain, fever, or stable post-op discomfort?", a: "The patient with possible life-threatening compromise such as chest pain suggestive of acute coronary syndrome should be assessed first.", difficulty: "hard", topic: "triage priority" },
+    { q: "What is the safest way to verify a nasogastric tube before giving feeding or medication?", a: "Follow the facility method for placement confirmation, most safely using approved tube-position verification before anything enters the tube.", difficulty: "medium", topic: "enteral safety" },
+    { q: "Why is repositioning a pressure-injury prevention priority for immobile patients?", a: "Regular repositioning reduces prolonged tissue pressure, improves perfusion, and lowers the risk of skin breakdown.", difficulty: "easy", topic: "skin integrity" },
+    { q: "What should the nurse do first when a patient says the pain is suddenly much worse than before?", a: "Reassess the pain fully, check vital signs, and determine whether the change suggests a new urgent complication rather than routine discomfort.", difficulty: "medium", topic: "pain assessment" },
+    { q: "What is the nurse's priority when a patient begins choking but can still cough forcefully?", a: "Encourage the patient to continue coughing and stay ready to intervene if the airway becomes more obstructed.", difficulty: "easy", topic: "airway support" },
+    { q: "Why should documentation be timely and objective?", a: "It supports continuity of care, legal safety, and accurate communication without adding opinion or unsupported conclusions.", difficulty: "easy", topic: "documentation" },
+    { q: "Which assessment finding should be escalated first after starting a blood transfusion?", a: "Fever, chills, dyspnea, back pain, or a feeling of doom because these may signal an acute transfusion reaction.", difficulty: "hard", topic: "transfusion safety" },
+    { q: "What is the priority safety action before assisting a weak patient out of bed for the first time after surgery?", a: "Assess stability first, control the environment, and use support or extra help because post-op patients are at high fall risk.", difficulty: "medium", topic: "fall prevention" },
+    { q: "Why is a focused neurologic check important after any sudden change in mentation?", a: "A rapid mental-status change may signal hypoxia, hypoglycemia, stroke, infection, or another evolving emergency that needs urgent clarification.", difficulty: "hard", topic: "neurologic assessment" },
+    { q: "What does informed consent require from the nurse during routine care?", a: "The nurse witnesses voluntariness and understanding concerns, then advocates if the patient seems confused or pressured.", difficulty: "medium", topic: "legal foundations" },
+    { q: "What is the most reliable way to prevent patient falls during toileting rounds?", a: "Anticipate toileting needs, answer call lights promptly, and stay with high-risk patients when needed.", difficulty: "easy", topic: "fall prevention" },
+    { q: "Why is SBAR useful during nursing handoff?", a: "It organizes urgent information into a concise structure so the next clinician can understand the problem and act safely.", difficulty: "easy", topic: "handoff communication" },
+    { q: "When a patient refuses a prescribed treatment, what is the nurse's best response?", a: "Assess understanding, explore concerns, provide clear information, and respect the patient's right while documenting and escalating appropriately.", difficulty: "medium", topic: "patient rights" },
+    { q: "Which patient needs the highest priority assessment: new confusion, mild nausea, or chronic shoulder pain?", a: "New confusion because an acute change in mentation may be the earliest sign of serious deterioration.", difficulty: "hard", topic: "priority setting" },
+    { q: "What is the nurse's first action if a medication dose seems unusually high?", a: "Pause before administration, verify the order, check the reference if needed, and clarify the dose rather than guessing.", difficulty: "easy", topic: "medication safety" },
   ],
   Pharmacology: [
     { q: "What is the priority assessment before administering digoxin?", a: "Check the apical pulse for 1 full minute and hold if it is below the ordered parameter. Also review potassium because hypokalemia increases toxicity risk.", difficulty: "medium", topic: "cardiac drugs" },
@@ -74,6 +88,21 @@ const SEED_QUESTION_BANK = {
     { q: "Which finding after thyroidectomy requires immediate action?", a: "Stridor or respiratory distress, which may indicate airway obstruction or hemorrhage.", difficulty: "hard", topic: "post-op care" },
     { q: "What is the best position for a patient with acute dyspnea?", a: "High Fowler's or the most upright tolerated position to support ventilation.", difficulty: "easy", topic: "respiratory" },
     { q: "What should the nurse suspect when a patient with GI bleeding becomes cool, pale, and tachycardic?", a: "Hypovolemic shock from blood loss requiring urgent assessment, support, and escalation.", difficulty: "hard", topic: "shock" },
+    { q: "What is the first nursing concern when a patient with heart failure suddenly gains 2 kilograms in two days?", a: "Fluid retention and worsening congestion because rapid weight gain can reflect decompensating heart failure.", difficulty: "medium", topic: "cardiac" },
+    { q: "Which finding is most urgent in a patient with COPD receiving oxygen therapy?", a: "Worsening somnolence, severe dyspnea, or dropping oxygen saturation because these suggest failing ventilation, not just routine disease symptoms.", difficulty: "hard", topic: "respiratory" },
+    { q: "Why is strict intake and output monitoring important in acute kidney injury?", a: "Small fluid shifts matter, and accurate intake and output helps identify worsening retention, overload, or poor renal perfusion early.", difficulty: "medium", topic: "renal" },
+    { q: "What should the nurse do first for a patient with suspected stroke who has new unilateral weakness?", a: "Treat it as time-sensitive, assess airway and glucose, note the onset time, and activate urgent stroke evaluation.", difficulty: "hard", topic: "neurologic" },
+    { q: "Which symptom pattern most strongly suggests acute appendicitis is worsening?", a: "Increasing abdominal pain with guarding, fever, and rebound tenderness suggests escalating inflammation or perforation risk.", difficulty: "medium", topic: "gastrointestinal" },
+    { q: "What is the priority teaching for a patient taking levothyroxine?", a: "Take it consistently, usually on an empty stomach, and understand that symptom improvement is gradual rather than immediate.", difficulty: "easy", topic: "endocrine" },
+    { q: "Why is chest-tube bubbling in the water-seal chamber important to assess?", a: "Intermittent bubbling may reflect expected air escape, but continuous bubbling can suggest an air leak that needs evaluation.", difficulty: "medium", topic: "respiratory" },
+    { q: "Which finding after abdominal surgery should raise concern for paralytic ileus?", a: "Increasing distention, absent bowel sounds, nausea, and inability to tolerate intake suggest slowed bowel function.", difficulty: "medium", topic: "gastrointestinal" },
+    { q: "What is the nurse's priority for a patient with suspected myocardial infarction who reports crushing chest pain?", a: "Rapid cardiac assessment, monitoring, and escalation are critical because myocardial injury is time-sensitive.", difficulty: "hard", topic: "cardiac" },
+    { q: "What is the safest nursing response to symptomatic hypocalcemia after thyroid surgery?", a: "Recognize it early, assess for tingling or tetany, and escalate because airway-threatening spasm can develop.", difficulty: "hard", topic: "electrolytes" },
+    { q: "What is the main concern when a patient with cirrhosis becomes increasingly drowsy and confused?", a: "Possible hepatic encephalopathy, which requires prompt assessment and management of the precipitating cause.", difficulty: "hard", topic: "gastrointestinal" },
+    { q: "Why should a patient with pancreatitis remain NPO during an acute flare if ordered?", a: "Resting the pancreas helps reduce stimulation and can support pain control and recovery.", difficulty: "easy", topic: "gastrointestinal" },
+    { q: "What does black, tarry stool usually suggest in Med-Surg review?", a: "Melena, which often points to upper GI bleeding and should not be dismissed as a minor finding.", difficulty: "easy", topic: "gastrointestinal" },
+    { q: "What finding matters most after insulin administration in a patient who is suddenly diaphoretic and shaky?", a: "Suspect hypoglycemia first and confirm rapidly so treatment can start without delay.", difficulty: "easy", topic: "endocrine" },
+    { q: "Why is neurovascular assessment important after casting a fractured limb?", a: "Circulation, movement, and sensation can worsen quickly if swelling compromises the extremity.", difficulty: "medium", topic: "musculoskeletal" },
   ],
   "Maternal & Newborn": [
     { q: "Late decelerations during labor usually mean what?", a: "Uteroplacental insufficiency. Reposition, give oxygen, increase fluids, stop oxytocin, and notify the provider.", difficulty: "hard", topic: "fetal monitoring" },
@@ -1415,15 +1444,17 @@ function HeroMetric({ label, value, helper, accent = "#9AD75B" }) {
   );
 }
 
-function ProgressRing({ value, label, caption }) {
+function ProgressRing({ value, label, caption, size = 190 }) {
   const normalized = Math.max(0, Math.min(100, Number(value || 0)));
   const angle = normalized * 3.6;
+  const outerSize = size;
+  const innerSize = Math.round(size * 0.74);
 
   return (
     <div
       style={{
-        width: 190,
-        height: 190,
+        width: outerSize,
+        height: outerSize,
         borderRadius: "50%",
         background: `conic-gradient(#5AD67D 0deg ${angle}deg, rgba(255,255,255,0.08) ${angle}deg 360deg)`,
         display: "flex",
@@ -1434,8 +1465,8 @@ function ProgressRing({ value, label, caption }) {
     >
       <div
         style={{
-          width: 140,
-          height: 140,
+          width: innerSize,
+          height: innerSize,
           borderRadius: "50%",
           background: "linear-gradient(180deg, #172544 0%, #10203C 100%)",
           display: "flex",
@@ -1448,11 +1479,11 @@ function ProgressRing({ value, label, caption }) {
           boxSizing: "border-box",
         }}
       >
-        <div style={{ fontSize: 34, fontWeight: 800 }}>{normalized}%</div>
+        <div style={{ fontSize: size < 170 ? 28 : 34, fontWeight: 800 }}>{normalized}%</div>
         <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(223,232,246,0.72)" }}>
           {label}
         </div>
-        <div style={{ marginTop: 8, fontSize: 11, color: "rgba(154, 215, 91, 0.9)" }}>{caption}</div>
+        <div style={{ marginTop: 8, fontSize: size < 170 ? 10 : 11, color: "rgba(154, 215, 91, 0.9)" }}>{caption}</div>
       </div>
     </div>
   );
@@ -1749,6 +1780,7 @@ function AuthScreen({
   setTermsAccepted,
   cloudSyncReady,
   authNotice,
+  onDismissNotice,
   authError,
   authLoading,
   forgotPasswordLoading,
@@ -2037,16 +2069,35 @@ function AuthScreen({
             <div
               style={{
                 marginTop: 16,
-                padding: "11px 13px",
-                borderRadius: 14,
-                background: C.accentLight,
+                padding: "16px 16px 14px",
+                borderRadius: 16,
+                background: "#F4FBF7",
                 border: `1px solid ${C.accentMid}`,
                 color: C.text,
-                fontSize: 13,
-                lineHeight: 1.7,
               }}
             >
-              {authNotice}
+              <div style={{ fontSize: 12, color: C.accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                {authNotice.title}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7 }}>
+                {authNotice.body}
+              </div>
+              <button
+                type="button"
+                onClick={onDismissNotice}
+                style={{
+                  marginTop: 12,
+                  padding: "9px 12px",
+                  borderRadius: 10,
+                  border: `1px solid ${C.accentMid}`,
+                  background: "#FFFFFF",
+                  color: C.accent,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {authNotice.actionLabel || "Continue"}
+              </button>
             </div>
           ) : null}
 
@@ -2200,7 +2251,7 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authConfirmPassword, setAuthConfirmPassword] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [authNotice, setAuthNotice] = useState("");
+  const [authNotice, setAuthNotice] = useState(null);
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
@@ -2328,7 +2379,7 @@ export default function App() {
   useEffect(() => {
     setTermsAccepted(false);
     setAuthError("");
-    setAuthNotice("");
+    setAuthNotice(null);
   }, [authMode]);
 
   useEffect(() => {
@@ -2788,7 +2839,7 @@ export default function App() {
 
   async function handleForgotPassword() {
     setAuthError("");
-    setAuthNotice("");
+    setAuthNotice(null);
 
     const email = authEmail.trim().toLowerCase();
 
@@ -2813,7 +2864,12 @@ export default function App() {
         throw error;
       }
 
-      setAuthNotice("Password reset instructions were sent. Check your inbox and spam folder if needed.");
+      setAuthNotice({
+        title: "Check your email",
+        body: "Password reset instructions were sent. Open the reset link, then return here and sign in with your updated password.",
+        actionLabel: "Back to sign in",
+      });
+      setAuthMode("login");
     } catch (error) {
       setAuthError(error.message || "We couldn't send the reset email right now.");
     } finally {
@@ -2823,7 +2879,7 @@ export default function App() {
 
   async function handleAuthSubmit() {
     setAuthError("");
-    setAuthNotice("");
+    setAuthNotice(null);
 
     const email = authEmail.trim().toLowerCase();
     const password = authPassword;
@@ -2886,7 +2942,11 @@ export default function App() {
             applyPersistedSnapshot(loadPersisted(data.user.id));
           } else {
             setAuthMode("login");
-            setAuthNotice("Account created. Check your email if Supabase confirmation is enabled, then sign in to continue.");
+            setAuthNotice({
+              title: "Verify your email",
+              body: "Your account was created. If Supabase email confirmation is enabled, open the verification email first, then come back to sign in and continue your review sessions.",
+              actionLabel: "Sign in when ready",
+            });
             return;
           }
         } else {
@@ -3598,11 +3658,13 @@ export default function App() {
     background: C.surface,
     border: `1px solid ${C.border}`,
     borderRadius: 20,
-    padding: 24,
+    padding: width < 640 ? 18 : 24,
     boxShadow: "0 10px 22px rgba(15, 23, 42, 0.04)",
   };
 
   const dashboardGreeting = getGreeting(currentUser?.name);
+  const isMobile = width < 640;
+  const isNarrowTablet = width < 820;
 
   if (!authReady) {
     return (
@@ -3640,6 +3702,7 @@ export default function App() {
         setTermsAccepted={setTermsAccepted}
         cloudSyncReady={cloudSyncReady}
         authNotice={authNotice}
+        onDismissNotice={() => setAuthNotice(null)}
         authError={authError}
         authLoading={authLoading}
         forgotPasswordLoading={forgotPasswordLoading}
@@ -3662,11 +3725,13 @@ export default function App() {
         style={{
           background: C.surface,
           borderBottom: `1px solid ${C.border}`,
-          padding: "0 24px",
-          minHeight: 62,
+          padding: isMobile ? "10px 14px" : "0 24px",
+          minHeight: isMobile ? 72 : 62,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          flexDirection: isMobile ? "column" : "row",
+          gap: isMobile ? 10 : 0,
           position: "sticky",
           top: 0,
           zIndex: 20,
@@ -3700,7 +3765,7 @@ export default function App() {
             Care<span style={{ color: C.accent }}>Drop</span>
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end", width: isMobile ? "100%" : "auto" }}>
           <div
             style={{
               padding: "8px 12px",
@@ -3736,7 +3801,7 @@ export default function App() {
         style={{
           maxWidth: 1220,
           margin: "0 auto",
-          padding: "28px 20px 36px",
+          padding: isMobile ? "16px 12px 28px" : "28px 20px 36px",
           display: "flex",
           flexDirection: "column",
           gap: 20,
@@ -3874,11 +3939,12 @@ export default function App() {
               value={clamp(Math.round(((Object.keys(ratings).length + reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0)) / Math.max(totalCards * 0.55, 1)) * 100), 0, 100)}
               label="overall completion"
               caption={isFirstVisit ? "Ready when you are." : "Your next set is prepared."}
+              size={isMobile ? 156 : 190}
             />
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: width < 780 ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
+                gridTemplateColumns: isMobile ? "1fr" : width < 780 ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
                 gap: 10,
               }}
             >
@@ -4238,7 +4304,7 @@ export default function App() {
                             ? `You already answered ${todayAnsweredCount} items today. ${todayAnsweredCount >= dailyGoalTarget ? "Goal reached — anything extra is bonus review." : "One more short session will move the bar forward."}`
                             : "No activity logged yet today. A short set is enough to restart your rhythm."}
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
                           <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}` }}>
                             <div style={{ fontSize: 11, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                               Study streak
@@ -4380,8 +4446,9 @@ export default function App() {
                               background: "#FFFFFF",
                               display: "flex",
                               justifyContent: "space-between",
+                              flexDirection: isMobile ? "column" : "row",
                               gap: 16,
-                              alignItems: "center",
+                              alignItems: isMobile ? "flex-start" : "center",
                               cursor: "pointer",
                               textAlign: "left",
                             }}
