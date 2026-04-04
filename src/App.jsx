@@ -3,6 +3,8 @@ import { MessageCircleMore, Minus, X } from "lucide-react";
 
 const STORAGE_KEY = "caredrop-dashboard-v2";
 const REQUEST_STORAGE_KEY = "caredrop-feedback-v1";
+const AUTH_SESSION_KEY = "caredrop-auth-session-v1";
+const ACCOUNT_STORAGE_KEY = "caredrop-auth-accounts-v1";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 const FLASHCARD_SET_SIZE = 10;
 const QUIZ_SET_SIZE = 10;
@@ -612,17 +614,94 @@ function buildSessionLabel(session) {
   return `${session.subject}${session.topic ? ` - ${session.topic}` : ""} (${session.mode})`;
 }
 
-function loadPersisted() {
+function getProgressStorageKey(userId) {
+  return userId ? `${STORAGE_KEY}-${userId}` : STORAGE_KEY;
+}
+
+function loadPersisted(userId) {
   if (typeof window === "undefined") {
     return null;
   }
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(getProgressStorageKey(userId));
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
+}
+
+function loadAuthSession() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAuthSession(user) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user));
+}
+
+function clearAuthSession() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(AUTH_SESSION_KEY);
+}
+
+function loadAccounts() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(ACCOUNT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAccounts(accounts) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(accounts));
+}
+
+async function hashSecret(value) {
+  const encoder = new TextEncoder();
+  const digest = await window.crypto.subtle.digest("SHA-256", encoder.encode(String(value || "")));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function getGreeting(name) {
+  const hour = new Date().getHours();
+  const firstName = String(name || "Nurse").trim().split(/\s+/)[0] || "Nurse";
+
+  if (hour < 12) {
+    return `Good morning, ${firstName}.`;
+  }
+
+  if (hour < 18) {
+    return `Good afternoon, ${firstName}.`;
+  }
+
+  return `Good evening, ${firstName}.`;
 }
 
 function loadRequestPersisted() {
@@ -1576,6 +1655,296 @@ function RequestModal({
   );
 }
 
+function AuthScreen({
+  authMode,
+  setAuthMode,
+  authName,
+  setAuthName,
+  authEmail,
+  setAuthEmail,
+  authPassword,
+  setAuthPassword,
+  authConfirmPassword,
+  setAuthConfirmPassword,
+  authError,
+  authLoading,
+  onSubmit,
+}) {
+  const isRegister = authMode === "register";
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: C.bg,
+        padding: 24,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
+      }}
+    >
+      <div
+        style={{
+          width: "min(960px, 100%)",
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1.05fr) minmax(320px, 420px)",
+          gap: 20,
+          alignItems: "stretch",
+        }}
+      >
+        <div
+          style={{
+            background: "linear-gradient(145deg, #112240 0%, #16305C 70%, #214778 100%)",
+            borderRadius: 28,
+            padding: 32,
+            color: "#fff",
+            minHeight: 520,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            boxShadow: "0 24px 50px rgba(15, 23, 42, 0.16)",
+          }}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,0.12)",
+                  overflow: "hidden",
+                }}
+              >
+                <img src={LOGO_SRC} alt="CareDrop logo" style={{ width: "100%", height: "100%", display: "block" }} />
+              </div>
+              <div style={{ fontWeight: 800, fontSize: 20 }}>
+                Care<span style={{ color: "#8BE5AF" }}>Drop</span>
+              </div>
+            </div>
+            <div style={{ marginTop: 28, fontSize: 42, lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.05em" }}>
+              Review smarter, and come back exactly where you left off.
+            </div>
+            <div style={{ marginTop: 18, fontSize: 15, lineHeight: 1.85, color: "rgba(233,239,247,0.84)" }}>
+              Sign in to keep your flashcard sets, quiz sessions, progress, and weak-card review on this device. The app will greet you by name and restore your study flow when you return.
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 12,
+            }}
+          >
+            {[
+              { label: "Saved Progress", value: "Per user" },
+              { label: "Session Restore", value: "Enabled" },
+              { label: "Review Focus", value: "PRC NLE" },
+            ].map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 18,
+                  padding: 16,
+                }}
+              >
+                <div style={{ fontSize: 11, color: "rgba(233,239,247,0.65)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+                  {item.label}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 20, fontWeight: 800 }}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: C.surface,
+            border: `1px solid ${C.border}`,
+            borderRadius: 28,
+            padding: 28,
+            boxShadow: "0 18px 36px rgba(15, 23, 42, 0.08)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+          }}
+        >
+          <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
+            {[
+              ["login", "Sign In"],
+              ["register", "Register"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setAuthMode(value)}
+                style={{
+                  flex: 1,
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  border: authMode === value ? "1px solid rgba(23, 43, 77, 0.12)" : `1px solid ${C.border}`,
+                  background: authMode === value ? "linear-gradient(135deg, #1A2740 0%, #24385E 100%)" : "#FBFAF7",
+                  color: authMode === value ? "#fff" : C.text,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.04em" }}>
+            {isRegister ? "Create your reviewer profile" : "Welcome back"}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 14, color: C.muted, lineHeight: 1.7 }}>
+            {isRegister
+              ? "Register once on this device so CareDrop can retain your review history and progress."
+              : "Sign in to continue your saved nursing review sessions."}
+          </div>
+
+          <div style={{ marginTop: 22, display: "grid", gap: 12 }}>
+            {isRegister ? (
+              <div>
+                <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
+                  Name
+                </label>
+                <input
+                  value={authName}
+                  onChange={(event) => setAuthName(event.target.value)}
+                  placeholder="Your name"
+                  style={{
+                    width: "100%",
+                    padding: "12px 14px",
+                    borderRadius: 14,
+                    border: `1px solid ${C.border}`,
+                    background: "#FBFAF7",
+                    fontSize: 14,
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+            ) : null}
+
+            <div>
+              <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
+                Email
+              </label>
+              <input
+                value={authEmail}
+                onChange={(event) => setAuthEmail(event.target.value)}
+                placeholder="name@example.com"
+                type="email"
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  border: `1px solid ${C.border}`,
+                  background: "#FBFAF7",
+                  fontSize: 14,
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
+                Password
+              </label>
+              <input
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                placeholder="At least 8 characters"
+                type="password"
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  border: `1px solid ${C.border}`,
+                  background: "#FBFAF7",
+                  fontSize: 14,
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            {isRegister ? (
+              <div>
+                <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
+                  Confirm Password
+                </label>
+                <input
+                  value={authConfirmPassword}
+                  onChange={(event) => setAuthConfirmPassword(event.target.value)}
+                  placeholder="Repeat password"
+                  type="password"
+                  style={{
+                    width: "100%",
+                    padding: "12px 14px",
+                    borderRadius: 14,
+                    border: `1px solid ${C.border}`,
+                    background: "#FBFAF7",
+                    fontSize: 14,
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          {authError ? (
+            <div
+              style={{
+                marginTop: 16,
+                padding: "11px 13px",
+                borderRadius: 14,
+                background: C.redLight,
+                border: `1px solid ${C.red}`,
+                color: C.text,
+                fontSize: 13,
+                lineHeight: 1.6,
+              }}
+            >
+              {authError}
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={authLoading}
+            style={{
+              marginTop: 20,
+              padding: "13px 16px",
+              borderRadius: 14,
+              border: "none",
+              background: authLoading ? C.border : C.accent,
+              color: authLoading ? C.muted : "#fff",
+              fontWeight: 800,
+              fontSize: 14,
+              cursor: authLoading ? "not-allowed" : "pointer",
+            }}
+          >
+            {authLoading ? "Working..." : isRegister ? "Create Account" : "Sign In"}
+          </button>
+
+          <div style={{ marginTop: 14, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+            This login currently keeps progress per user on this device. If you want cross-device cloud sync next, I can wire a hosted auth backend after this.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SavedSessionCard({ session, onOpen, onDelete }) {
   const itemCount = session.questions?.length || session.cards?.length || 0;
 
@@ -1646,9 +2015,18 @@ function SavedSessionCard({ session, onOpen, onDelete }) {
 
 export default function App() {
   const width = useWindowWidth();
-  const persisted = loadPersisted();
+  const initialUser = loadAuthSession();
+  const persisted = initialUser ? loadPersisted(initialUser.id) : null;
   const legacySavedSessions = persisted?.savedQuizSessions || [];
   const persistedRequests = loadRequestPersisted();
+  const [currentUser, setCurrentUser] = useState(initialUser);
+  const [authMode, setAuthMode] = useState("login");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authConfirmPassword, setAuthConfirmPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [subject, setSubject] = useState(persisted?.subject || "Pharmacology");
   const [difficulty, setDifficulty] = useState(persisted?.difficulty || "All");
   const [topicFilter, setTopicFilter] = useState(persisted?.topicFilter || "");
@@ -1695,6 +2073,9 @@ export default function App() {
   const [requestHistory, setRequestHistory] = useState(persistedRequests);
   const [requestLoading, setRequestLoading] = useState(false);
   const [requestConfigured, setRequestConfigured] = useState(false);
+  const [subjectShortcutsOpen, setSubjectShortcutsOpen] = useState(
+    persisted?.subjectShortcutsOpen !== false
+  );
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
   const usedFlashcardQuestionsRef = useRef(usedFlashcardQuestions);
@@ -1750,12 +2131,12 @@ export default function App() {
   }, [statusMessage]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || !currentUser?.id) {
       return;
     }
 
     window.localStorage.setItem(
-      STORAGE_KEY,
+      getProgressStorageKey(currentUser.id),
       JSON.stringify({
         subject,
         difficulty,
@@ -1782,9 +2163,11 @@ export default function App() {
         uploadedFileName,
         summaryText,
         filterWeakOnly,
+        subjectShortcutsOpen,
       })
     );
   }, [
+    currentUser?.id,
     subject,
     difficulty,
     topicFilter,
@@ -1810,6 +2193,7 @@ export default function App() {
     uploadedFileName,
     summaryText,
     filterWeakOnly,
+    subjectShortcutsOpen,
   ]);
 
   useEffect(() => {
@@ -1915,6 +2299,80 @@ export default function App() {
     setRequestName("");
     setRequestMessage("");
     setRequestStatus("");
+  }
+
+  async function handleAuthSubmit() {
+    setAuthError("");
+
+    const email = authEmail.trim().toLowerCase();
+    const password = authPassword.trim();
+
+    if (!email || !password) {
+      setAuthError("Enter your email and password.");
+      return;
+    }
+
+    if (!window.crypto?.subtle) {
+      setAuthError("Secure login is not available in this browser.");
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      const accounts = loadAccounts();
+      const passwordHash = await hashSecret(password);
+
+      if (authMode === "register") {
+        const name = authName.trim();
+
+        if (!name) {
+          throw new Error("Enter your name to create an account.");
+        }
+
+        if (password.length < 8) {
+          throw new Error("Use at least 8 characters for the password.");
+        }
+
+        if (password !== authConfirmPassword) {
+          throw new Error("Passwords do not match.");
+        }
+
+        if (accounts.some((account) => account.email === email)) {
+          throw new Error("An account with that email already exists.");
+        }
+
+        const nextUser = {
+          id: uid(),
+          name,
+          email,
+          passwordHash,
+          createdAt: new Date().toISOString(),
+        };
+
+        saveAccounts([...accounts, nextUser]);
+        saveAuthSession({ id: nextUser.id, name: nextUser.name, email: nextUser.email });
+      } else {
+        const matched = accounts.find((account) => account.email === email);
+
+        if (!matched || matched.passwordHash !== passwordHash) {
+          throw new Error("Incorrect email or password.");
+        }
+
+        saveAuthSession({ id: matched.id, name: matched.name, email: matched.email });
+      }
+
+      window.location.reload();
+    } catch (error) {
+      setAuthError(error.message || "Unable to complete sign in right now.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  function handleSignOut() {
+    clearAuthSession();
+    window.location.reload();
   }
 
   function markFlashcardsAsUsed(deck) {
@@ -2414,7 +2872,7 @@ export default function App() {
     const fallbackEntry = {
       id: uid(),
       type: requestType,
-      submittedBy: requestName.trim() || "Anonymous",
+      submittedBy: requestName.trim() || currentUser?.name || currentUser?.email || "Anonymous",
       message: requestMessage.trim(),
       createdAt: new Date().toISOString(),
       state: "local",
@@ -2427,7 +2885,7 @@ export default function App() {
     try {
       const data = await postJson("/api/feedback", {
         type: requestType,
-        name: requestName.trim(),
+        name: requestName.trim() || currentUser?.name || currentUser?.email || "",
         message: requestMessage.trim(),
         appContext: `Submitted from CareDrop | subject=${subject} | difficulty=${difficulty} | topic=${topicFilter || "none"}`,
       });
@@ -2534,6 +2992,28 @@ export default function App() {
     boxShadow: "0 10px 22px rgba(15, 23, 42, 0.04)",
   };
 
+  const dashboardGreeting = getGreeting(currentUser?.name);
+
+  if (!currentUser) {
+    return (
+      <AuthScreen
+        authMode={authMode}
+        setAuthMode={setAuthMode}
+        authName={authName}
+        setAuthName={setAuthName}
+        authEmail={authEmail}
+        setAuthEmail={setAuthEmail}
+        authPassword={authPassword}
+        setAuthPassword={setAuthPassword}
+        authConfirmPassword={authConfirmPassword}
+        setAuthConfirmPassword={setAuthConfirmPassword}
+        authError={authError}
+        authLoading={authLoading}
+        onSubmit={handleAuthSubmit}
+      />
+    );
+  }
+
   return (
     <div
       style={{
@@ -2585,8 +3065,35 @@ export default function App() {
             Care<span style={{ color: C.accent }}>Drop</span>
           </span>
         </div>
-        <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>
-          Review workspace
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div
+            style={{
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: "#F6F3ED",
+              border: `1px solid ${C.border}`,
+              fontSize: 12,
+              fontWeight: 700,
+              color: C.text,
+            }}
+          >
+            {currentUser.name}
+          </div>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 999,
+              border: `1px solid ${C.border}`,
+              background: C.surface,
+              color: C.muted,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Sign Out
+          </button>
         </div>
       </nav>
 
@@ -2673,6 +3180,9 @@ export default function App() {
               <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(225,233,247,0.64)", fontWeight: 800 }}>
                 CareDrop Command Center
               </div>
+              <div style={{ marginTop: 10, fontSize: 16, color: "#BFE4FF", fontWeight: 700 }}>
+                {dashboardGreeting}
+              </div>
               <div style={{ marginTop: 10, fontSize: width < 880 ? 30 : 38, lineHeight: 1.08, fontWeight: 900, letterSpacing: "-0.06em" }}>
                 Review with structure, not clutter.
               </div>
@@ -2713,59 +3223,6 @@ export default function App() {
               <HeroMetric label="Answered Overall" value={reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0)} helper={reviewSessions[0] ? `Last: ${reviewSessions[0].subject}` : "Start a session to track this"} accent="#D8B4FE" />
             </div>
           </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
-          {SUBJECT_OPTIONS.map((value) => (
-            <SubjectTab
-              key={value}
-              active={subject === value}
-              label={value}
-              onClick={() => setSubject(value)}
-            />
-          ))}
-        </div>
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {[
-            ["dashboard", "Dashboard", ""],
-            ["flashcard", "Flashcards", flashcards.length ? `${flashcards.length}` : `${FLASHCARD_SET_SIZE}`],
-            ["quiz", "Quiz", quiz.length ? `${quiz.length}` : `${QUIZ_SET_SIZE}`],
-            ["notes", "Notes & Upload", hasCustomSource ? "Live" : ""],
-            ["history", "Review History", reviewSessions.length ? `${reviewSessions.length}` : ""],
-          ].map(([key, label, count]) => (
-            <button
-              key={key}
-              onClick={() => setMode(key)}
-              style={{
-                padding: "10px 18px",
-                borderRadius: 999,
-                border: mode === key ? "1px solid rgba(23, 43, 77, 0.12)" : `1px solid ${C.border}`,
-                background: mode === key ? "linear-gradient(135deg, #1A2740 0%, #24385E 100%)" : C.surface,
-                color: mode === key ? "#fff" : C.muted,
-                fontWeight: 800,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              <span>{label}</span>
-              {count ? (
-                <span
-                  style={{
-                    marginLeft: 8,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    background: mode === key ? "rgba(255,255,255,0.16)" : "#EEF3FA",
-                    color: mode === key ? "#fff" : "#355E8A",
-                    fontSize: 11,
-                    fontWeight: 800,
-                  }}
-                >
-                  {count}
-                </span>
-              ) : null}
-            </button>
-          ))}
         </div>
 
         <div
@@ -2901,41 +3358,90 @@ export default function App() {
             ) : null}
 
             <div style={panelStyle}>
-              <div
+              <button
+                type="button"
+                onClick={() => setSubjectShortcutsOpen((value) => !value)}
                 style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: C.muted,
-                  letterSpacing: "0.07em",
-                  textTransform: "uppercase",
-                  marginBottom: 12,
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  cursor: "pointer",
+                  textAlign: "left",
                 }}
               >
-                Subject Shortcuts
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {SUBJECT_OPTIONS.map((value) => (
-                  <button
-                    key={value}
-                    onClick={() => {
-                      setSubject(value);
-                      setMode("flashcard");
-                    }}
+                <div>
+                  <div
                     style={{
-                      padding: "7px 12px",
-                      borderRadius: 999,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      border: `1px solid ${subject === value ? C.accent : C.border}`,
-                      background: subject === value ? C.accentLight : C.surface,
-                      color: subject === value ? C.accent : C.muted,
-                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: C.muted,
+                      letterSpacing: "0.07em",
+                      textTransform: "uppercase",
                     }}
                   >
-                    {value}
-                  </button>
-                ))}
-              </div>
+                    Subject Shortcuts
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: C.faint }}>
+                    Quick jump between major review areas
+                  </div>
+                </div>
+                <div style={{ fontSize: 18, color: C.muted, fontWeight: 700 }}>
+                  {subjectShortcutsOpen ? "▾" : "▸"}
+                </div>
+              </button>
+
+              {subjectShortcutsOpen ? (
+                <div
+                  style={{
+                    marginTop: 14,
+                    display: "grid",
+                    gap: 8,
+                    maxHeight: 360,
+                    overflowY: "auto",
+                    paddingRight: 4,
+                  }}
+                >
+                  {SUBJECT_OPTIONS.map((value) => (
+                    <button
+                      key={value}
+                      onClick={() => {
+                        setSubject(value);
+                        setMode("flashcard");
+                      }}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: `1px solid ${subject === value ? "#C4D6EA" : C.border}`,
+                        background: subject === value ? "#EEF4FB" : "#FBFAF7",
+                        color: subject === value ? "#17355E" : C.text,
+                        fontSize: 13,
+                        fontWeight: subject === value ? 800 : 700,
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: 999,
+                          background: subject === value ? C.accent : "#CDD5DF",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span>{value}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div style={panelStyle}>
