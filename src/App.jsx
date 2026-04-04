@@ -2613,7 +2613,7 @@ export default function App() {
             }}
           >
             <ProgressRing
-              value={clamp(Math.round(((Object.keys(ratings).length + totalAnsweredAcrossSessions) / Math.max(totalCards * 0.55, 1)) * 100), 0, 100)}
+              value={clamp(Math.round(((Object.keys(ratings).length + reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0)) / Math.max(totalCards * 0.55, 1)) * 100), 0, 100)}
               label="overall completion"
               caption={`${getExactEntries(activeEntries, subject, difficulty, topicFilter).length || totalCards} items ready for this filter`}
             />
