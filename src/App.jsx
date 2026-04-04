@@ -1648,6 +1648,7 @@ export default function App() {
   const [aiResponse, setAiResponse] = useState("");
   const [apiError, setApiError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [statusFading, setStatusFading] = useState(false);
   const [question, setQuestion] = useState("");
   const [gentlePush, setGentlePush] = useState(ENCOURAGEMENTS[0]);
   const [noteText, setNoteText] = useState(persisted?.noteText || "");
@@ -1703,6 +1704,25 @@ export default function App() {
 
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!statusMessage) {
+      setStatusFading(false);
+      return undefined;
+    }
+
+    setStatusFading(false);
+    const fadeTimer = window.setTimeout(() => setStatusFading(true), 3200);
+    const clearTimer = window.setTimeout(() => {
+      setStatusMessage("");
+      setStatusFading(false);
+    }, 4300);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [statusMessage]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2523,6 +2543,9 @@ export default function App() {
               padding: 16,
               borderColor: apiError ? C.red : C.accentMid,
               background: apiError ? C.redLight : C.accentLight,
+              opacity: apiError ? 1 : statusFading ? 0 : 1,
+              transform: apiError ? "translateY(0)" : statusFading ? "translateY(-6px)" : "translateY(0)",
+              transition: "opacity 0.8s ease, transform 0.8s ease",
             }}
           >
             <div style={{ fontSize: 13, fontWeight: 800, color: apiError ? C.red : C.accent }}>
