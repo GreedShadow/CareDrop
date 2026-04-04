@@ -9,3 +9,5 @@ services:
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-4-20250514
+      - key: ALLOWED_ORIGIN
+        sync: false

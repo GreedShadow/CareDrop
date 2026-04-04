@@ -1,9 +1,17 @@
 import "dotenv/config";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+import { fileURLToPath } from "url";
+
 import Anthropic from "@anthropic-ai/sdk";
 import cors from "cors";
 import express from "express";
-import path from "path";
-import { fileURLToPath } from "url";
+import mammoth from "mammoth";
+import multer from "multer";
+import { PDFParse } from "pdf-parse";
+import Tesseract from "tesseract.js";
+import WordExtractor from "word-extractor";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,22 +20,37 @@ const distDir = path.join(rootDir, "dist");
 const port = Number(process.env.PORT || 3001);
 const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
 const allowedOrigin = process.env.ALLOWED_ORIGIN?.split(",").map((value) => value.trim()).filter(Boolean);
+const extractor = new WordExtractor();
+
+const SUPPORTED_EXTENSIONS = new Set([".doc", ".docx", ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt"]);
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
 const app = express();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 12 * 1024 * 1024,
+  },
+});
+
 app.use(
   cors({
     origin: allowedOrigin?.length ? allowedOrigin : true,
   })
 );
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "3mb" }));
 
 function requireClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return null;
-  }
+  return apiKey ? new Anthropic({ apiKey }) : null;
+}
 
-  return new Anthropic({ apiKey });
+function jsonError(res, status, error, extra = {}) {
+  return res.status(status).json({
+    success: false,
+    error,
+    ...extra,
+  });
 }
 
 function extractTextContent(content) {
@@ -58,6 +81,7 @@ function parseJsonResponse(text) {
 
 function buildStudyContext({ notes, subject, topic }) {
   const parts = [];
+
   if (subject && subject !== "Mixed Review") {
     parts.push(`Subject focus: ${subject}`);
   }
@@ -67,26 +91,146 @@ function buildStudyContext({ notes, subject, topic }) {
   if (notes) {
     parts.push(`Use these uploaded notes as the primary study source:\n${notes}`);
   }
+
   return parts.join("\n\n").trim();
 }
 
+function withTimeout(promise, timeoutMs, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]);
+}
+
+function normalizeExtractedText(text) {
+  return String(text || "")
+    .replace(/\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function extractDocText(buffer) {
+  const tempPath = path.join(os.tmpdir(), `caredrop-${Date.now()}-${Math.random().toString(36).slice(2)}.doc`);
+  await fs.writeFile(tempPath, buffer);
+
+  try {
+    const document = await extractor.extract(tempPath);
+    return document.getBody();
+  } finally {
+    await fs.unlink(tempPath).catch(() => {});
+  }
+}
+
+async function extractFileText(file) {
+  const extension = path.extname(file.originalname || "").toLowerCase();
+
+  if (!SUPPORTED_EXTENSIONS.has(extension)) {
+    throw new Error("Unsupported file type. Upload a DOC, DOCX, PDF, JPG, JPEG, PNG, WEBP, or TXT file.");
+  }
+
+  if (extension === ".txt") {
+    return normalizeExtractedText(file.buffer.toString("utf8"));
+  }
+
+  if (extension === ".docx") {
+    const result = await mammoth.extractRawText({ buffer: file.buffer });
+    return normalizeExtractedText(result.value);
+  }
+
+  if (extension === ".doc") {
+    const value = await extractDocText(file.buffer);
+    return normalizeExtractedText(value);
+  }
+
+  if (extension === ".pdf") {
+    const parser = new PDFParse({ data: file.buffer });
+    try {
+      const result = await parser.getText();
+      return normalizeExtractedText(result.text);
+    } finally {
+      await parser.destroy();
+    }
+  }
+
+  if (IMAGE_EXTENSIONS.has(extension)) {
+    const result = await withTimeout(
+      Tesseract.recognize(file.buffer, "eng", {
+        logger: () => {},
+      }),
+      120000,
+      "Image text extraction timed out."
+    );
+
+    return normalizeExtractedText(result?.data?.text || "");
+  }
+
+  throw new Error("Unsupported file type.");
+}
+
+async function callClaude(client, options, timeoutMs = 45000) {
+  return withTimeout(client.messages.create(options), timeoutMs, "The AI request timed out. Please try again.");
+}
+
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, model, configured: Boolean(process.env.ANTHROPIC_API_KEY) });
+  res.json({
+    success: true,
+    ok: true,
+    model,
+    configured: Boolean(process.env.ANTHROPIC_API_KEY),
+  });
+});
+
+app.post("/api/extract", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return jsonError(res, 400, "No file was uploaded.");
+    }
+
+    const extension = path.extname(req.file.originalname || "").toLowerCase();
+    if (!SUPPORTED_EXTENSIONS.has(extension)) {
+      return jsonError(
+        res,
+        400,
+        "Unsupported file type. Please upload a DOC, DOCX, PDF, JPG, JPEG, PNG, WEBP, or TXT file."
+      );
+    }
+
+    const text = await extractFileText(req.file);
+    if (!text) {
+      return jsonError(
+        res,
+        422,
+        "We could not read enough text from that file. Try a clearer image or a text-based document."
+      );
+    }
+
+    return res.json({
+      success: true,
+      fileName: req.file.originalname,
+      fileType: extension,
+      text,
+    });
+  } catch (error) {
+    console.error("Extract error:", error);
+    return jsonError(res, 500, error.message || "Failed to extract readable content from the file.");
+  }
 });
 
 app.post("/api/claude/summary", async (req, res) => {
   try {
     const client = requireClient();
     if (!client) {
-      return res.status(500).json({ error: "Missing ANTHROPIC_API_KEY in server environment." });
+      return jsonError(res, 500, "Missing ANTHROPIC_API_KEY in server environment.");
     }
 
     const notes = String(req.body?.notes || "").trim();
     if (!notes) {
-      return res.status(400).json({ error: "Notes are required." });
+      return jsonError(res, 400, "Notes are required.");
     }
 
-    const response = await client.messages.create({
+    const response = await callClaude(client, {
       model,
       max_tokens: 700,
       system:
@@ -99,11 +243,10 @@ app.post("/api/claude/summary", async (req, res) => {
       ],
     });
 
-    const summary = extractTextContent(response.content);
-    return res.json({ summary });
+    return res.json({ success: true, summary: extractTextContent(response.content) });
   } catch (error) {
     console.error("Claude summary error:", error);
-    return res.status(500).json({ error: "Failed to generate Claude summary." });
+    return jsonError(res, 500, error.message || "Failed to generate Claude summary.");
   }
 });
 
@@ -111,30 +254,30 @@ app.post("/api/claude/cards", async (req, res) => {
   try {
     const client = requireClient();
     if (!client) {
-      return res.status(500).json({ error: "Missing ANTHROPIC_API_KEY in server environment." });
+      return jsonError(res, 500, "Missing ANTHROPIC_API_KEY in server environment.");
     }
 
     const notes = String(req.body?.notes || "").trim();
     const subject = String(req.body?.subject || "Mixed Review");
     const topic = String(req.body?.topic || "").trim();
-    const count = Math.max(4, Math.min(15, Number(req.body?.count || 10)));
-    const excludeQuestions = Array.isArray(req.body?.excludeQuestions) ? req.body.excludeQuestions.slice(0, 80) : [];
+    const count = Math.max(6, Math.min(24, Number(req.body?.count || 10)));
+    const excludeQuestions = Array.isArray(req.body?.excludeQuestions) ? req.body.excludeQuestions.slice(0, 120) : [];
     const context = buildStudyContext({ notes, subject, topic });
 
     if (!context) {
-      return res.status(400).json({ error: "Provide notes, a subject, or a topic focus." });
+      return jsonError(res, 400, "Provide notes, a subject, or a topic focus.");
     }
 
-    const response = await client.messages.create({
+    const response = await callClaude(client, {
       model,
-      max_tokens: 1800,
+      max_tokens: 2200,
       system:
-        `You generate nursing flashcards from notes. Return only valid JSON matching this shape: {"cards":[{"subject":"string","difficulty":"easy|medium|hard","question":"string","answer":"string","rationale":"string","notes":"string"}]}. Create exactly ${count} concise, study-useful cards.`,
+        `You generate nursing flashcards from notes. Return only valid JSON matching this shape: {"cards":[{"subject":"string","difficulty":"easy|medium|hard","question":"string","answer":"string","rationale":"string","notes":"string","topic":"string"}]}. Create exactly ${count} concise, board-focused cards.`,
       messages: [
         {
           role: "user",
           content: [
-            `Build nursing study cards for a learner.`,
+            "Build nursing study cards for a learner.",
             context,
             excludeQuestions.length
               ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
@@ -144,13 +287,12 @@ app.post("/api/claude/cards", async (req, res) => {
       ],
     });
 
-    const text = extractTextContent(response.content);
-    const parsed = parseJsonResponse(text);
+    const parsed = parseJsonResponse(extractTextContent(response.content));
     const cards = Array.isArray(parsed?.cards) ? parsed.cards.slice(0, count) : [];
-    return res.json({ cards });
+    return res.json({ success: true, cards });
   } catch (error) {
     console.error("Claude cards error:", error);
-    return res.status(500).json({ error: "Failed to generate Claude study cards." });
+    return jsonError(res, 500, error.message || "Failed to generate Claude study cards.");
   }
 });
 
@@ -158,31 +300,37 @@ app.post("/api/claude/quiz", async (req, res) => {
   try {
     const client = requireClient();
     if (!client) {
-      return res.status(500).json({ error: "Missing ANTHROPIC_API_KEY in server environment." });
+      return jsonError(res, 500, "Missing ANTHROPIC_API_KEY in server environment.");
     }
 
     const notes = String(req.body?.notes || "").trim();
     const subject = String(req.body?.subject || "Mixed Review");
     const topic = String(req.body?.topic || "").trim();
     const difficulty = String(req.body?.difficulty || "medium");
-    const count = Math.max(5, Math.min(20, Number(req.body?.count || 20)));
-    const excludeQuestions = Array.isArray(req.body?.excludeQuestions) ? req.body.excludeQuestions.slice(0, 120) : [];
+    const count = Math.max(6, Math.min(20, Number(req.body?.count || 10)));
+    const excludeQuestions = Array.isArray(req.body?.excludeQuestions) ? req.body.excludeQuestions.slice(0, 160) : [];
     const context = buildStudyContext({ notes, subject, topic });
 
     if (!context) {
-      return res.status(400).json({ error: "Provide notes, a subject, or a topic focus." });
+      return jsonError(res, 400, "Provide notes, a subject, or a topic focus.");
     }
 
-    const response = await client.messages.create({
+    const difficultyInstruction =
+      difficulty === "mixed"
+        ? "Use a balanced mix of easy, medium, and hard questions."
+        : `Every question must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
+
+    const response = await callClaude(client, {
       model,
-      max_tokens: 3200,
+      max_tokens: 3600,
       system:
-        "You generate nursing multiple-choice quizzes. Return only valid JSON matching this shape: {\"questions\":[{\"subject\":\"string\",\"difficulty\":\"easy|medium|hard\",\"prompt\":\"string\",\"correctAnswer\":\"string\",\"options\":[\"string\",\"string\",\"string\",\"string\"],\"rationale\":\"string\",\"notes\":\"string\"}]}. Generate exactly the requested number of high-yield questions. Each question must have four distinct options and one clearly best answer.",
+        'You generate nursing multiple-choice quizzes. Return only valid JSON matching this shape: {"questions":[{"subject":"string","difficulty":"easy|medium|hard","topic":"string","prompt":"string","correctAnswer":"string","options":["string","string","string","string"],"rationale":"string","notes":"string"}]}. Each question must have four distinct options, one clearly best answer, and board-style rationale.',
       messages: [
         {
           role: "user",
           content: [
-            `Generate ${count} ${difficulty}-difficulty nursing quiz questions.`,
+            `Generate ${count} nursing quiz questions.`,
+            difficultyInstruction,
             context,
             excludeQuestions.length
               ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
@@ -192,60 +340,89 @@ app.post("/api/claude/quiz", async (req, res) => {
       ],
     });
 
-    const text = extractTextContent(response.content);
-    const parsed = parseJsonResponse(text);
-    const questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
-    return res.json({ questions });
+    const parsed = parseJsonResponse(extractTextContent(response.content));
+    const questions = Array.isArray(parsed?.questions) ? parsed.questions.slice(0, count) : [];
+    return res.json({ success: true, questions });
   } catch (error) {
     console.error("Claude quiz error:", error);
-    return res.status(500).json({ error: "Failed to generate Claude quiz questions." });
+    return jsonError(res, 500, error.message || "Failed to generate Claude quiz questions.");
   }
 });
 
-app.post("/api/claude/ask", async (req, res) => {
+app.post("/api/claude/review-help", async (req, res) => {
   try {
     const client = requireClient();
     if (!client) {
-      return res.status(500).json({ error: "Missing ANTHROPIC_API_KEY in server environment." });
+      return jsonError(res, 500, "Missing ANTHROPIC_API_KEY in server environment.");
     }
 
+    const userPrompt = String(req.body?.userPrompt || "").trim();
     const question = String(req.body?.question || "").trim();
+    const selectedAnswer = String(req.body?.selectedAnswer || "").trim();
+    const correctAnswer = String(req.body?.correctAnswer || "").trim();
+    const rationale = String(req.body?.rationale || "").trim();
+    const notes = String(req.body?.notes || "").trim();
     const subject = String(req.body?.subject || "Mixed Review");
     const topic = String(req.body?.topic || "").trim();
-    const notes = String(req.body?.notes || "").trim();
-    const context = buildStudyContext({ notes, subject, topic });
+    const difficulty = String(req.body?.difficulty || "medium");
 
-    if (!question) {
-      return res.status(400).json({ error: "A question is required." });
+    if (!userPrompt || !question || !correctAnswer) {
+      return jsonError(res, 400, "The wrong-answer review request is incomplete.");
     }
 
-    const response = await client.messages.create({
+    const response = await callClaude(client, {
       model,
       max_tokens: 900,
       system:
-        "You are a Philippine nursing board exam coach. Answer concisely and clinically. If the user asks about a concept, explain it in board-review language and highlight priority nursing actions or red flags.",
+        "You are a nursing board exam coach. Answer only in the context of the missed question. Be clear, accurate, exam-focused, and supportive. Explain why the correct answer is best and why the chosen answer is weaker when relevant. Keep the reply concise but helpful.",
       messages: [
         {
           role: "user",
-          content: [context || "General nursing review context.", `Question: ${question}`].join("\n\n"),
+          content: [
+            `Subject: ${subject}`,
+            `Topic: ${topic || "General review"}`,
+            `Difficulty: ${difficulty}`,
+            `Question: ${question}`,
+            `Chosen answer: ${selectedAnswer || "No answer recorded"}`,
+            `Correct answer: ${correctAnswer}`,
+            `Rationale: ${rationale || "None provided."}`,
+            notes ? `Memory tip: ${notes}` : "",
+            `Learner question: ${userPrompt}`,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
         },
       ],
     });
 
-    return res.json({ response: extractTextContent(response.content) });
+    return res.json({ success: true, response: extractTextContent(response.content) });
   } catch (error) {
-    console.error("Claude ask error:", error);
-    return res.status(500).json({ error: "Failed to get Claude response." });
+    console.error("Claude review help error:", error);
+    return jsonError(res, 500, error.message || "Failed to generate the AI explanation.");
   }
 });
 
 app.use(express.static(distDir));
+
+app.get("/api/*", (_req, res) => {
+  return jsonError(res, 404, "API route not found.");
+});
 
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api/")) {
     return next();
   }
   return res.sendFile(path.join(distDir, "index.html"));
+});
+
+app.use((error, req, res, _next) => {
+  console.error("Unhandled server error:", error);
+
+  if (req.path.startsWith("/api/")) {
+    return jsonError(res, 500, error.message || "Unexpected server error.");
+  }
+
+  return res.status(500).send("Unexpected server error.");
 });
 
 app.listen(port, () => {

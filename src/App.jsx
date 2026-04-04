@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import MagicBento from "./MagicBento";
 
 const STORAGE_KEY = "caredrop-dashboard-v2";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 const FLASHCARD_SET_SIZE = 10;
-const QUIZ_SET_SIZE = 20;
+const QUIZ_SET_SIZE = 10;
+const RECENT_MEMORY_LIMIT = 12;
+const SUPPORTED_UPLOAD_EXTENSIONS = [".doc", ".docx", ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt"];
 
 const C = {
   bg: "#F7F6F3",
@@ -132,6 +134,16 @@ const ENCOURAGEMENTS = [
   "Read the stem slowly. Your nursing judgment is getting stronger.",
   "Progress matters more than perfection.",
   "The board exam is hard. You're training for it every day.",
+  "A calm review session still moves you forward.",
+  "Missed questions are still helping you pass.",
+  "You are building safe instincts, not just memorizing facts.",
+  "Small wins count on low-energy days too.",
+  "Pause, breathe, then trust your nursing priorities.",
+  "Every set you finish sharpens your recall.",
+  "This is hard work, and you are doing it well.",
+  "You can be gentle with yourself and still make strong progress.",
+  "One more set is one more step closer.",
+  "Slow progress is still real progress.",
 ];
 
 function apiUrl(path) {
@@ -286,14 +298,17 @@ function buildDistractors(correctAnswer, pool) {
 
 function buildLocalQuizFallback(subject, difficulty, topic, count, usedPrompts = []) {
   const allEntries = getAllEntries();
+  const exactDifficultyEntries = difficulty === "All"
+    ? allEntries
+    : allEntries.filter((entry) => entry.difficulty === difficulty);
   const prioritized = uniqueBy(
     [
       ...getFilteredEntries(subject, difficulty, topic),
       ...getFilteredEntries(subject, difficulty, ""),
-      ...getFilteredEntries(subject, "All", topic),
-      ...getFilteredEntries(subject, "All", ""),
+      ...(difficulty === "All" ? getFilteredEntries(subject, "All", topic) : []),
+      ...(difficulty === "All" ? getFilteredEntries(subject, "All", "") : []),
       ...getFilteredEntries("Mixed Review", difficulty, topic),
-      ...allEntries,
+      ...(difficulty === "All" ? allEntries : exactDifficultyEntries),
     ],
     (entry) => `${entry.subject}-${normalize(entry.q)}`
   );
@@ -406,11 +421,26 @@ function loadPersisted() {
 }
 
 async function postJson(path, payload) {
-  const response = await fetch(apiUrl(path), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+  let response;
+
+  try {
+    response = await fetch(apiUrl(path), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    window.clearTimeout(timeoutId);
+    if (error.name === "AbortError") {
+      throw new Error("The request timed out. Please try again.");
+    }
+    throw new Error("Network error. Check the backend connection and try again.");
+  }
+
+  window.clearTimeout(timeoutId);
 
   const rawText = await response.text();
   let data;
@@ -430,6 +460,85 @@ async function postJson(path, payload) {
   }
 
   return data;
+}
+
+async function uploadFileForExtraction(file) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 120000);
+  const formData = new FormData();
+  formData.append("file", file);
+
+  let response;
+
+  try {
+    response = await fetch(apiUrl("/api/extract"), {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    window.clearTimeout(timeoutId);
+    if (error.name === "AbortError") {
+      throw new Error("Upload timed out. Please try again.");
+    }
+    throw new Error("Upload failed. Please check your connection and try again.");
+  }
+
+  window.clearTimeout(timeoutId);
+  const rawText = await response.text();
+  let data;
+
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    throw new Error("The upload service returned an invalid response.");
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || "Upload failed.");
+  }
+
+  return data;
+}
+
+function selectSessionItems(pool, size, usedKeys, recentKeys, keySelector) {
+  const distinctPool = uniqueBy(pool, keySelector);
+  if (!distinctPool.length) {
+    return [];
+  }
+
+  const nextUsed = usedKeys.filter((key) => distinctPool.some((item) => keySelector(item) === key));
+  const nextRecent = recentKeys.filter((key) => distinctPool.some((item) => keySelector(item) === key));
+  const unseen = nextUsed.length >= distinctPool.length
+    ? []
+    : distinctPool.filter((item) => !nextUsed.includes(keySelector(item)));
+  const selected = [];
+
+  function take(candidates) {
+    for (const item of shuffle(candidates)) {
+      const key = keySelector(item);
+      if (selected.some((selectedItem) => keySelector(selectedItem) === key)) {
+        continue;
+      }
+      selected.push(item);
+      if (selected.length >= Math.min(size, distinctPool.length)) {
+        return;
+      }
+    }
+  }
+
+  take(unseen.filter((item) => !nextRecent.includes(keySelector(item))));
+  if (selected.length < Math.min(size, distinctPool.length)) {
+    take(unseen);
+  }
+  if (selected.length < Math.min(size, distinctPool.length)) {
+    take(distinctPool.filter((item) => !nextRecent.includes(keySelector(item))));
+  }
+  if (selected.length < Math.min(size, distinctPool.length)) {
+    take(distinctPool);
+  }
+
+  return selected.slice(0, Math.min(size, distinctPool.length));
 }
 
 function Badge({ label, color = "gray" }) {
@@ -744,6 +853,11 @@ function SavedSessionCard({ session, onOpen, onDelete }) {
         <Badge label={`${session.questions.length} items`} color="blue" />
       </div>
       <div style={{ fontSize: 12, color: C.muted }}>{session.sourceLabel}</div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12, color: C.muted }}>
+        <div>Score: <strong>{session.score ?? 0}%</strong></div>
+        <div>Answered: <strong>{session.answeredCount ?? 0}</strong></div>
+        <div>Difficulty: <strong>{session.difficulty}</strong></div>
+      </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
           onClick={() => onOpen(session)}
@@ -795,6 +909,8 @@ export default function App() {
   const [savedQuizSessions, setSavedQuizSessions] = useState(persisted?.savedQuizSessions || []);
   const [usedFlashcardIds, setUsedFlashcardIds] = useState(persisted?.usedFlashcardIds || []);
   const [usedQuizPrompts, setUsedQuizPrompts] = useState(persisted?.usedQuizPrompts || []);
+  const [recentFlashcardIds, setRecentFlashcardIds] = useState(persisted?.recentFlashcardIds || []);
+  const [recentQuizPrompts, setRecentQuizPrompts] = useState(persisted?.recentQuizPrompts || []);
   const [apiLoading, setApiLoading] = useState(false);
   const [aiResponse, setAiResponse] = useState("");
   const [apiError, setApiError] = useState("");
@@ -804,14 +920,20 @@ export default function App() {
   const [noteText, setNoteText] = useState(persisted?.noteText || "");
   const [uploadedText, setUploadedText] = useState(persisted?.uploadedText || "");
   const [uploadedFileName, setUploadedFileName] = useState(persisted?.uploadedFileName || "");
+  const [uploadState, setUploadState] = useState("idle");
+  const [uploadError, setUploadError] = useState("");
+  const [dragActive, setDragActive] = useState(false);
   const [summaryText, setSummaryText] = useState(
     persisted?.summaryText || "Paste notes or upload a document to generate a reviewer summary."
   );
   const [filterWeakOnly, setFilterWeakOnly] = useState(persisted?.filterWeakOnly || false);
   const [lastQuizSignature, setLastQuizSignature] = useState("");
+  const [metricHover, setMetricHover] = useState("");
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
   const usedQuizPromptsRef = useRef(usedQuizPrompts);
+  const recentFlashcardIdsRef = useRef(recentFlashcardIds);
+  const recentQuizPromptsRef = useRef(recentQuizPrompts);
   const sessionsCountedRef = useRef(new Set());
 
   useEffect(() => {
@@ -821,6 +943,14 @@ export default function App() {
   useEffect(() => {
     usedQuizPromptsRef.current = usedQuizPrompts;
   }, [usedQuizPrompts]);
+
+  useEffect(() => {
+    recentFlashcardIdsRef.current = recentFlashcardIds;
+  }, [recentFlashcardIds]);
+
+  useEffect(() => {
+    recentQuizPromptsRef.current = recentQuizPrompts;
+  }, [recentQuizPrompts]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -847,6 +977,8 @@ export default function App() {
         savedQuizSessions,
         usedFlashcardIds,
         usedQuizPrompts,
+        recentFlashcardIds,
+        recentQuizPrompts,
         noteText,
         uploadedText,
         uploadedFileName,
@@ -864,6 +996,8 @@ export default function App() {
     savedQuizSessions,
     usedFlashcardIds,
     usedQuizPrompts,
+    recentFlashcardIds,
+    recentQuizPrompts,
     noteText,
     uploadedText,
     uploadedFileName,
@@ -902,17 +1036,20 @@ export default function App() {
     normalize(quizItem.userAnswer) === normalize(quizItem.correctAnswer);
   const progressPercent = quiz.length ? Math.round((answeredCount / quiz.length) * 100) : 0;
 
+  useEffect(() => {
+    setAiResponse("");
+    setQuestion("");
+  }, [quizIdx, quiz.length]);
+
   function clearMessages() {
     setApiError("");
     setStatusMessage("");
+    setUploadError("");
   }
 
   function markFlashcardsAsUsed(deck) {
-    if (hasCustomSource || filterWeakOnly) {
-      return;
-    }
-
     setUsedFlashcardIds((prev) => uniqueBy([...prev, ...deck.map((card) => card.id)], (value) => value));
+    setRecentFlashcardIds((prev) => [...prev, ...deck.map((card) => card.id)].slice(-RECENT_MEMORY_LIMIT));
   }
 
   function buildLocalFlashcardSet() {
@@ -922,11 +1059,13 @@ export default function App() {
       candidates = candidates.filter((card) => weakCardIds.includes(card.id));
     }
 
-    if (!hasCustomSource) {
-      candidates = candidates.filter((card) => !usedFlashcardIdsRef.current.includes(card.id));
-    }
-
-    return shuffle(candidates).slice(0, FLASHCARD_SET_SIZE);
+    return selectSessionItems(
+      candidates,
+      FLASHCARD_SET_SIZE,
+      hasCustomSource ? [] : usedFlashcardIdsRef.current,
+      recentFlashcardIdsRef.current,
+      (card) => card.id
+    );
   }
 
   function loadLocalFlashcardSet(message) {
@@ -936,13 +1075,11 @@ export default function App() {
     markFlashcardsAsUsed(deck);
 
     if (message) {
-      if (deck.length >= FLASHCARD_SET_SIZE) {
-        setStatusMessage(message);
-      } else if (deck.length > 0) {
-        setStatusMessage(`Showing ${deck.length} cards for this filter. Add notes or reset the rotation for a fresh set.`);
-      } else {
-        setStatusMessage("No fresh cards left for this filter. Reset the rotation or upload notes for a focused set.");
-      }
+      setStatusMessage(
+        deck.length
+          ? message
+          : "No card data exists for this exact filter yet. Try another subject or upload a document."
+      );
     }
   }
 
@@ -1020,24 +1157,21 @@ export default function App() {
         excludeQuestions: hasCustomSource ? [] : usedQuizPromptsRef.current,
       });
 
-      const aiQuestions = sanitizeQuizQuestions(
-        data.questions,
-        subject,
-        topicFilter,
-        usedQuizPromptsRef.current,
-        hasCustomSource
-      );
+      const aiQuestions = sanitizeQuizQuestions(data.questions, subject, topicFilter, [], true);
       const fallback = buildLocalQuizFallback(
         subject,
         difficulty,
         topicFilter,
         QUIZ_SET_SIZE - aiQuestions.length,
-        [
-          ...usedQuizPromptsRef.current,
-          ...aiQuestions.map((item) => normalize(item.prompt)),
-        ]
+        []
       );
-      const questions = [...aiQuestions, ...fallback].slice(0, QUIZ_SET_SIZE);
+      const questions = selectSessionItems(
+        [...aiQuestions, ...fallback],
+        QUIZ_SET_SIZE,
+        hasCustomSource ? [] : usedQuizPromptsRef.current,
+        recentQuizPromptsRef.current,
+        (item) => normalize(item.prompt)
+      );
 
       setQuiz(questions);
       setQuizIdx(0);
@@ -1045,7 +1179,7 @@ export default function App() {
       setLastQuizSignature(`${Date.now()}-${questions[0]?.id || uid()}`);
       setStatusMessage(
         questions.length >= QUIZ_SET_SIZE
-          ? "20 quiz questions are ready for review."
+          ? "A fresh 10-question quiz is ready for review."
           : `Loaded ${questions.length} questions for this focus.`
       );
 
@@ -1056,21 +1190,31 @@ export default function App() {
             (value) => value
           )
         );
+        setRecentQuizPrompts((prev) =>
+          [...prev, ...questions.map((item) => normalize(item.prompt))].slice(-RECENT_MEMORY_LIMIT)
+        );
       }
     } catch (error) {
-      const fallback = buildLocalQuizFallback(
+      const fallbackPool = buildLocalQuizFallback(
         subject,
         difficulty,
         topicFilter,
         QUIZ_SET_SIZE,
-        hasCustomSource ? [] : usedQuizPromptsRef.current
+        []
+      );
+      const fallback = selectSessionItems(
+        fallbackPool,
+        QUIZ_SET_SIZE,
+        hasCustomSource ? [] : usedQuizPromptsRef.current,
+        recentQuizPromptsRef.current,
+        (item) => normalize(item.prompt)
       );
       setQuiz(fallback);
       setQuizIdx(0);
       setMode("quiz");
       setLastQuizSignature(`${Date.now()}-${fallback[0]?.id || uid()}`);
       setApiError(
-        error.message || "Claude quiz generation failed. A local 20-question backup quiz has been loaded."
+        error.message || "Claude quiz generation failed. A local 10-question backup quiz has been loaded."
       );
       if (!hasCustomSource) {
         setUsedQuizPrompts((prev) =>
@@ -1078,6 +1222,9 @@ export default function App() {
             [...prev, ...fallback.map((item) => normalize(item.prompt))],
             (value) => value
           )
+        );
+        setRecentQuizPrompts((prev) =>
+          [...prev, ...fallback.map((item) => normalize(item.prompt))].slice(-RECENT_MEMORY_LIMIT)
         );
       }
     } finally {
@@ -1108,7 +1255,7 @@ export default function App() {
   }
 
   async function askClaude() {
-    if (!question.trim()) {
+    if (!question.trim() || !quizItem || currentCorrect || quizItem.userAnswer === null) {
       return;
     }
 
@@ -1117,11 +1264,16 @@ export default function App() {
     setAiResponse("");
 
     try {
-      const data = await postJson("/api/claude/ask", {
-        question,
-        subject,
-        topic: topicFilter,
-        notes: studyText,
+      const data = await postJson("/api/claude/review-help", {
+        userPrompt: question,
+        question: quizItem?.prompt,
+        selectedAnswer: quizItem?.userAnswer,
+        correctAnswer: quizItem?.correctAnswer,
+        rationale: quizItem?.rationale,
+        notes: quizItem?.notes,
+        subject: quizItem?.subject || subject,
+        topic: quizItem?.topic || topicFilter,
+        difficulty: quizItem?.difficulty || difficulty,
       });
 
       setAiResponse(data.response || "No response returned.");
@@ -1178,6 +1330,8 @@ export default function App() {
       return;
     }
 
+    const score = quiz.length ? Math.round((correctCount / quiz.length) * 100) : 0;
+
     const session = {
       id: uid(),
       createdAt: new Date().toISOString(),
@@ -1190,6 +1344,8 @@ export default function App() {
         : "Generated from CareDrop subject bank",
       questions: quiz,
       currentIndex: quizIdx,
+      score,
+      answeredCount,
     };
 
     setSavedQuizSessions((prev) => [session, ...prev].slice(0, 12));
@@ -1211,67 +1367,118 @@ export default function App() {
   function resetRotation() {
     setUsedFlashcardIds([]);
     setUsedQuizPrompts([]);
+    setRecentFlashcardIds([]);
+    setRecentQuizPrompts([]);
     setStatusMessage("Flashcard and quiz rotation history was cleared.");
     loadLocalFlashcardSet("Fresh local flashcards loaded after reset.");
   }
 
-  function handleFileUpload(event) {
-    const file = event.target.files?.[0];
+  async function handleIncomingFile(file) {
     if (!file) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (loadEvent) => {
-      const text = String(loadEvent.target?.result || "");
-      setUploadedFileName(file.name);
-      setUploadedText(text);
-      setSummaryText(buildLocalSummary(text));
-      setStatusMessage(`${file.name} loaded. Claude can now focus on this source.`);
-    };
-    reader.readAsText(file);
+    const extension = `.${file.name.split(".").pop()?.toLowerCase() || ""}`;
+    if (!SUPPORTED_UPLOAD_EXTENSIONS.includes(extension)) {
+      setUploadState("failed");
+      setUploadError("Unsupported file type. Upload DOC, DOCX, PDF, JPG, JPEG, PNG, WEBP, or TXT.");
+      return;
+    }
+
+    clearMessages();
+    setUploadState("uploading");
+
+    try {
+      const data = await uploadFileForExtraction(file);
+      setUploadedFileName(data.fileName || file.name);
+      setUploadedText(data.text || "");
+      setSummaryText(buildLocalSummary(data.text || ""));
+      setUploadState("success");
+      setStatusMessage(`${file.name} uploaded and extracted successfully.`);
+    } catch (error) {
+      setUploadState("failed");
+      setUploadError(error.message || "Upload failed.");
+    }
+  }
+
+  function handleFileUpload(event) {
+    handleIncomingFile(event.target.files?.[0]);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setDragActive(false);
+    handleIncomingFile(event.dataTransfer?.files?.[0]);
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    setDragActive(true);
+  }
+
+  function handleDragLeave(event) {
+    event.preventDefault();
+    setDragActive(false);
   }
 
   const bentoItems = [
     {
       title: String(totalCards),
       description: "Total Cards",
-      icon: "🗂️",
+      icon: "POOL",
       status: "local high-yield bank",
+      hoverText: `${flashcards.length} cards currently loaded in this session`,
+      actionLabel: "Open flashcards",
+      onClick: () => setMode("flashcard"),
       tags: ["Study"],
       colSpan: 1,
     },
     {
       title: `${accuracy}%`,
       description: "Accuracy",
-      icon: "🎯",
+      icon: "AC",
       status: Object.keys(ratings).length ? `${Object.keys(ratings).length} cards rated` : "start reviewing",
+      hoverText: `${Object.values(ratings).filter((value) => value === "easy").length} strong, ${weakCardIds.length} weak`,
+      actionLabel: metricHover === "accuracy" ? "Tap again to close detail" : "Tap for rating detail",
+      onClick: () => setMetricHover(metricHover === "accuracy" ? "" : "accuracy"),
       tags: ["Progress"],
       colSpan: 1,
     },
     {
       title: String(weakCardIds.length),
       description: "Weak Cards",
-      icon: "⚠️",
+      icon: "WK",
       status: weakCardIds.length ? "needs another pass" : "looking good",
+      hoverText: weakCardIds.length ? "Click to open weak-card review" : "No weak cards right now",
+      actionLabel: weakCardIds.length ? "Open weak review" : "",
+      onClick: () => {
+        setFilterWeakOnly(true);
+        setMode("flashcard");
+      },
       tags: ["Review"],
       colSpan: 1,
     },
     {
       title: String(savedQuizSessions.length),
       description: "Saved Quizzes",
-      icon: "💾",
+      icon: "SAVE",
       status: savedQuizSessions.length ? "ready to reopen" : "nothing saved yet",
+      hoverText: savedQuizSessions.length
+        ? `${savedQuizSessions[0].subject} latest save | ${savedQuizSessions[0].score || 0}%`
+        : "Save a quiz to review it later",
+      actionLabel: savedQuizSessions.length ? "Open quiz review" : "",
+      onClick: () => setMode("quiz"),
       tags: ["Sessions"],
       colSpan: 1,
     },
     {
       title: "Daily Boost",
       description: gentlePush,
-      icon: "💬",
+      icon: "GO",
       status: hasCustomSource ? "focused source mode" : "standard subject mode",
       tags: ["Encouragement"],
       colSpan: 2,
+      interactive: false,
     },
   ];
 
@@ -1333,7 +1540,7 @@ export default function App() {
               fontSize: 16,
             }}
           >
-            💊
+            ??
           </div>
           <span style={{ fontWeight: 800, fontSize: 18 }}>
             Care<span style={{ color: C.accent }}>Drop</span>
@@ -1378,6 +1585,24 @@ export default function App() {
         ) : null}
 
         <MagicBento items={bentoItems} />
+        {metricHover === "accuracy" ? (
+          <div
+            style={{
+              ...panelStyle,
+              padding: 16,
+              background: "#FBFAF7",
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 8 }}>
+              Accuracy Detail
+            </div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, lineHeight: 1.7 }}>
+              <div>Rated: <strong>{Object.keys(ratings).length}</strong></div>
+              <div>Strong: <strong>{Object.values(ratings).filter((value) => value === "easy").length}</strong></div>
+              <div>Needs work: <strong>{weakCardIds.length}</strong></div>
+            </div>
+          </div>
+        ) : null}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {[
@@ -1580,7 +1805,7 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 17 }}>Flashcards</div>
                     <div style={{ fontSize: 12, color: C.muted }}>
-                      {subject} · target {FLASHCARD_SET_SIZE} cards per set · non-repeating unless a custom source is loaded
+                      {subject} | target {FLASHCARD_SET_SIZE} cards per set | recycled and reshuffled as needed
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1663,7 +1888,7 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    No fresh flashcards are available for this exact filter right now. Reset the rotation or upload notes for a focused custom set.
+                    No card data exists for this exact filter yet. Try another focus or upload a document to build more cards.
                   </div>
                 )}
               </div>
@@ -1684,7 +1909,7 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 17 }}>Quiz</div>
                     <div style={{ fontSize: 12, color: C.muted }}>
-                      Target {QUIZ_SET_SIZE} questions · subject-first · saved sessions supported
+                      Target {QUIZ_SET_SIZE} questions | strict difficulty filter | saved sessions supported
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1701,7 +1926,7 @@ export default function App() {
                         cursor: apiLoading ? "not-allowed" : "pointer",
                       }}
                     >
-                      {apiLoading ? "Generating..." : "Generate 20 Questions"}
+                      {apiLoading ? "Generating..." : "Generate 10 Questions"}
                     </button>
                     <button
                       onClick={saveCurrentQuiz}
@@ -1732,7 +1957,7 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    Generate a quiz to load a 20-question session for this subject and topic focus.
+                    Generate a quiz to load a 10-question session for this subject and topic focus.
                   </div>
                 ) : (
                   <>
@@ -1858,7 +2083,83 @@ export default function App() {
                           <div>
                             <strong>Memory tip:</strong> {quizItem.notes}
                           </div>
+                          {!currentCorrect ? (
+                            <div>
+                              <strong>Why your answer is weaker:</strong> It does not match the best nursing priority or review principle as closely as the correct answer.
+                            </div>
+                          ) : null}
                         </div>
+                        {!currentCorrect ? (
+                          <div
+                            style={{
+                              marginTop: 14,
+                              padding: 14,
+                              borderRadius: 14,
+                              background: "#FFFFFF",
+                              border: `1px solid ${C.border}`,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 8 }}>
+                              AI Review Help
+                            </div>
+                            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginBottom: 10 }}>
+                              Ask anything about this missed item. You can ask for a mnemonic, a simpler explanation, or another example.
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <input
+                                value={question}
+                                onChange={(event) => setQuestion(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    askClaude();
+                                  }
+                                }}
+                                placeholder="Why is this correct? Explain it simply. Give me a mnemonic..."
+                                style={{
+                                  flex: 1,
+                                  minWidth: 220,
+                                  padding: "10px 12px",
+                                  borderRadius: 10,
+                                  border: `1px solid ${C.border}`,
+                                  background: "#FBFAF7",
+                                  fontSize: 13,
+                                  outline: "none",
+                                }}
+                              />
+                              <button
+                                onClick={askClaude}
+                                disabled={apiLoading || !question.trim()}
+                                style={{
+                                  padding: "10px 14px",
+                                  borderRadius: 10,
+                                  border: "none",
+                                  background: apiLoading || !question.trim() ? C.border : C.accent,
+                                  color: apiLoading || !question.trim() ? C.muted : "#fff",
+                                  fontWeight: 700,
+                                  cursor: apiLoading || !question.trim() ? "not-allowed" : "pointer",
+                                }}
+                              >
+                                {apiLoading ? "Thinking..." : "Ask AI"}
+                              </button>
+                            </div>
+                            {aiResponse ? (
+                              <div
+                                style={{
+                                  marginTop: 10,
+                                  padding: 12,
+                                  borderRadius: 12,
+                                  background: C.accentLight,
+                                  border: `1px solid ${C.accentMid}`,
+                                  fontSize: 13,
+                                  lineHeight: 1.7,
+                                  whiteSpace: "pre-wrap",
+                                }}
+                              >
+                                {aiResponse}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button
                             onClick={() => {
@@ -1906,15 +2207,22 @@ export default function App() {
                     ) : null}
 
                     <div style={{ marginTop: 20 }}>
-                      <AIPanel
-                        apiLoading={apiLoading}
-                        aiResponse={aiResponse}
-                        onGenerate={generateQuiz}
-                        onAsk={askClaude}
-                        question={question}
-                        setQuestion={setQuestion}
-                        buttonLabel="Refresh 20-Question Quiz"
-                      />
+                      <button
+                        onClick={generateQuiz}
+                        disabled={apiLoading}
+                        style={{
+                          width: "100%",
+                          padding: "12px 16px",
+                          borderRadius: 12,
+                          border: "none",
+                          background: apiLoading ? C.border : C.accent,
+                          color: apiLoading ? C.muted : "#fff",
+                          fontWeight: 700,
+                          cursor: apiLoading ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {apiLoading ? "Generating..." : "Refresh 10-Question Quiz"}
+                      </button>
                     </div>
                   </>
                 )}
@@ -1925,19 +2233,22 @@ export default function App() {
               <div style={panelStyle}>
                 <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Notes & Upload</div>
                 <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>
-                  Upload a reviewer, paste notes, then ask Claude for summary, flashcards, or a focused quiz.
+                  Upload a reviewer, PDF, or image, then use the extracted text for flashcards, quizzes, and reviewer notes.
                 </div>
 
                 <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
                   style={{
-                    border: `2px dashed ${C.border}`,
+                    border: `2px dashed ${dragActive ? C.accentMid : C.border}`,
                     borderRadius: 16,
                     padding: 22,
                     textAlign: "center",
-                    background: "#FBFAF7",
+                    background: dragActive ? C.accentLight : "#FBFAF7",
                   }}
                 >
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>📁</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: C.accent }}>DROPZONE</div>
                   <label
                     style={{
                       padding: "10px 18px",
@@ -1952,7 +2263,7 @@ export default function App() {
                     Choose File
                     <input
                       type="file"
-                      accept=".txt,.md,.json"
+                      accept=".doc,.docx,.pdf,.jpg,.jpeg,.png,.webp,.txt"
                       onChange={handleFileUpload}
                       style={{ display: "none" }}
                     />
@@ -1960,6 +2271,29 @@ export default function App() {
                   <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
                     {uploadedFileName || "No file uploaded yet."}
                   </div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: C.faint }}>
+                    Supported: DOC, DOCX, PDF, JPG, JPEG, PNG, WEBP, TXT
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      fontSize: 12,
+                      color: uploadState === "failed" ? C.red : uploadState === "success" ? C.accent : C.muted,
+                    }}
+                  >
+                    {uploadState === "idle"
+                      ? "Idle"
+                      : uploadState === "uploading"
+                        ? "Uploading and extracting..."
+                        : uploadState === "success"
+                          ? "Upload successful"
+                          : "Upload failed"}
+                  </div>
+                  {uploadError ? (
+                    <div style={{ marginTop: 6, fontSize: 12, color: C.red }}>
+                      {uploadError}
+                    </div>
+                  ) : null}
                 </div>
 
                 <textarea
@@ -2047,6 +2381,32 @@ export default function App() {
                     {summaryText}
                   </div>
                 </div>
+                {uploadedText ? (
+                  <div
+                    style={{
+                      marginTop: 16,
+                      background: "#FBFAF7",
+                      borderRadius: 16,
+                      border: `1px solid ${C.border}`,
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 10 }}>
+                      Extracted Content Preview
+                    </div>
+                    <div
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        fontSize: 13,
+                        lineHeight: 1.8,
+                        maxHeight: 220,
+                        overflowY: "auto",
+                      }}
+                    >
+                      {uploadedText.slice(0, 4000)}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -2084,9 +2444,10 @@ export default function App() {
           fontSize: 12,
         }}
       >
-        CareDrop | NLE nursing board reviewer | subject-focused flashcards and quizzes with Claude support
+        CareDrop | subject-focused flashcards and quizzes with Claude support
       </footer>
     </div>
   );
 }
+
 
