@@ -1,6 +1,4 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import MagicBento from "./MagicBento";
-
 const STORAGE_KEY = "caredrop-dashboard-v2";
 const REQUEST_STORAGE_KEY = "caredrop-feedback-v1";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
@@ -1165,6 +1163,159 @@ function AIPanel({
           {aiResponse}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function SidebarNavButton({ active, label, hint, onClick, badge }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "12px 14px",
+        borderRadius: 14,
+        border: active ? "1px solid rgba(88, 130, 193, 0.32)" : "1px solid transparent",
+        background: active ? "linear-gradient(135deg, #1F3D73 0%, #122B55 100%)" : "transparent",
+        color: active ? "#F8FBFF" : "#465468",
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "all 0.2s ease",
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 800 }}>{label}</div>
+        {hint ? (
+          <div style={{ fontSize: 11, color: active ? "rgba(248, 251, 255, 0.72)" : "#95A1B2", marginTop: 3 }}>
+            {hint}
+          </div>
+        ) : null}
+      </div>
+      {badge ? (
+        <span
+          style={{
+            minWidth: 26,
+            height: 26,
+            borderRadius: 999,
+            padding: "0 8px",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: active ? "rgba(255,255,255,0.16)" : "#EEF3FA",
+            color: active ? "#FFFFFF" : "#355E8A",
+            fontSize: 11,
+            fontWeight: 800,
+          }}
+        >
+          {badge}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function SubjectTab({ active, label, meta, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: active ? "1px solid rgba(23, 43, 77, 0.12)" : "1px solid transparent",
+        background: active ? "linear-gradient(135deg, #1A2740 0%, #24385E 100%)" : "transparent",
+        color: active ? "#FFFFFF" : "#4C5C73",
+        borderRadius: 16,
+        padding: "12px 16px",
+        minWidth: 136,
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "all 0.2s ease",
+      }}
+    >
+      <div style={{ fontSize: 14, fontWeight: 800 }}>{label}</div>
+      <div style={{ fontSize: 11, marginTop: 4, color: active ? "rgba(255,255,255,0.72)" : "#92A0B5" }}>
+        {meta}
+      </div>
+    </button>
+  );
+}
+
+function HeroMetric({ label, value, helper, accent = "#9AD75B" }) {
+  return (
+    <div
+      style={{
+        padding: "0 18px",
+        borderLeft: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      <div style={{ fontSize: 12, color: "rgba(228, 235, 246, 0.62)", marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 34, fontWeight: 800, color: "#FFFFFF", letterSpacing: "-0.04em" }}>{value}</div>
+      <div style={{ marginTop: 4, fontSize: 12, color: accent }}>{helper}</div>
+    </div>
+  );
+}
+
+function ProgressRing({ value, label, caption }) {
+  const normalized = Math.max(0, Math.min(100, Number(value || 0)));
+  const angle = normalized * 3.6;
+
+  return (
+    <div
+      style={{
+        width: 190,
+        height: 190,
+        borderRadius: "50%",
+        background: `conic-gradient(#5AD67D 0deg ${angle}deg, rgba(255,255,255,0.08) ${angle}deg 360deg)`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03)",
+      }}
+    >
+      <div
+        style={{
+          width: 140,
+          height: 140,
+          borderRadius: "50%",
+          background: "linear-gradient(180deg, #172544 0%, #10203C 100%)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#FFFFFF",
+          textAlign: "center",
+          padding: 16,
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ fontSize: 34, fontWeight: 800 }}>{normalized}%</div>
+        <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(223,232,246,0.72)" }}>
+          {label}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: "rgba(154, 215, 91, 0.9)" }}>{caption}</div>
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsCard({ title, children, footer }) {
+  return (
+    <div
+      style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: 22,
+        padding: 22,
+        boxShadow: "0 14px 30px rgba(16, 30, 59, 0.05)",
+      }}
+    >
+      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{title}</div>
+      {children}
+      {footer ? <div style={{ marginTop: 16 }}>{footer}</div> : null}
     </div>
   );
 }
@@ -2351,7 +2502,7 @@ export default function App() {
           </span>
         </div>
         <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>
-          React + Vite + Express
+          Focused nursing review workspace
         </div>
       </nav>
 
@@ -2403,62 +2554,119 @@ export default function App() {
           `}
         </style>
 
-        <MagicBento items={bentoItems} />
-        {metricHover === "accuracy" ? (
+        <div
+          style={{
+            ...panelStyle,
+            padding: width < 900 ? 20 : 24,
+            background: "linear-gradient(135deg, #152645 0%, #0E1C36 62%, #13294A 100%)",
+            color: "#FFFFFF",
+            overflow: "hidden",
+            position: "relative",
+          }}
+        >
           <div
             style={{
-              ...panelStyle,
-              padding: 16,
-              background: "#FBFAF7",
+              position: "absolute",
+              inset: "auto -120px -110px auto",
+              width: 280,
+              height: 280,
+              borderRadius: "50%",
+              background: "radial-gradient(circle, rgba(90,214,125,0.24) 0%, rgba(90,214,125,0) 68%)",
             }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 8 }}>
-              Accuracy Detail
-            </div>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, lineHeight: 1.7 }}>
-              <div>Rated: <strong>{Object.keys(ratings).length}</strong></div>
-              <div>Strong: <strong>{Object.values(ratings).filter((value) => value === "easy").length}</strong></div>
-              <div>Needs work: <strong>{weakCardIds.length}</strong></div>
-            </div>
-          </div>
-        ) : null}
-        {metricHover === "sessions" ? (
+          />
           <div
             style={{
-              ...panelStyle,
-              padding: 16,
-              background: "#FBFAF7",
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 20,
+              flexWrap: "wrap",
+              marginBottom: 18,
+              position: "relative",
+              zIndex: 1,
             }}
           >
-            <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 8 }}>
-              Session Progress
-            </div>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, lineHeight: 1.7 }}>
-              <div>Submitted: <strong>{reviewSessions.length}</strong></div>
-              <div>Average score: <strong>{reviewSessionAverage}%</strong></div>
-              <div>
-                Last session: <strong>{reviewSessions[0] ? buildSessionLabel(reviewSessions[0]) : "None yet"}</strong>
+            <div style={{ maxWidth: 520 }}>
+              <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(225,233,247,0.64)", fontWeight: 800 }}>
+                CareDrop Command Center
+              </div>
+              <div style={{ marginTop: 10, fontSize: width < 880 ? 30 : 38, lineHeight: 1.08, fontWeight: 900, letterSpacing: "-0.06em" }}>
+                Review with structure, not clutter.
+              </div>
+              <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, color: "rgba(228,235,246,0.84)" }}>
+                Pick a subject, lock the difficulty, and move between flashcards, quizzes, uploads, and review history from one focused workspace.
               </div>
             </div>
+            <div style={{ fontSize: 13, color: "rgba(228,235,246,0.8)", textAlign: width < 880 ? "left" : "right" }}>
+              <div>{hasCustomSource ? "Focused reviewer mode" : "Expanded core bank mode"}</div>
+              <div style={{ marginTop: 6 }}>{gentlePush}</div>
+            </div>
           </div>
-        ) : null}
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: width < 1180 ? "1fr" : "240px minmax(0, 1fr)",
+              gap: 20,
+              alignItems: "center",
+              position: "relative",
+              zIndex: 1,
+            }}
+          >
+            <ProgressRing
+              value={clamp(Math.round(((Object.keys(ratings).length + totalAnsweredAcrossSessions) / Math.max(totalCards * 0.55, 1)) * 100), 0, 100)}
+              label="overall completion"
+              caption={`${getExactEntries(activeEntries, subject, difficulty, topicFilter).length || totalCards} items ready for this filter`}
+            />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: width < 780 ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
+                gap: 10,
+              }}
+            >
+              <HeroMetric label="Readiness Score" value={`${clamp(Math.round((accuracy * 0.45) + (reviewSessionAverage * 0.35) + Math.min(sessions * 3, 20)), 0, 100)}%`} helper={weakCardIds.length ? `${weakCardIds.length} weak cards to revisit` : "steady progress"} accent="#F8D56C" />
+              <HeroMetric label="Total Sessions" value={sessions} helper={`${reviewSessions.length} stored in history`} accent="#8BE5AF" />
+              <HeroMetric label="Average Quiz Score" value={`${reviewSessions.filter((session) => session.mode === "quiz").length ? Math.round(reviewSessions.filter((session) => session.mode === "quiz").reduce((total, session) => total + Number(session.score || 0), 0) / reviewSessions.filter((session) => session.mode === "quiz").length) : 0}%`} helper={`${reviewSessions.filter((session) => session.mode === "quiz").length} quiz sessions tracked`} accent="#6BC0FF" />
+              <HeroMetric label="Answered Overall" value={reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0)} helper={reviewSessions[0] ? `Last: ${reviewSessions[0].subject}` : "Start a session to track this"} accent="#D8B4FE" />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
+          {SUBJECT_OPTIONS.map((value) => (
+            <SubjectTab
+              key={value}
+              active={subject === value}
+              label={value}
+              meta={`${
+                (value === "Mixed Review"
+                  ? activeEntries
+                  : activeEntries.filter((entry) => entry.subject === value)
+                ).filter((entry) => (difficulty === "All" ? true : entry.difficulty === difficulty)).length
+              } ${difficulty === "All" ? "items" : difficulty}`}
+              onClick={() => setSubject(value)}
+            />
+          ))}
+        </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {[
+            ["dashboard", "Dashboard"],
             ["flashcard", "Flashcards"],
             ["quiz", "Quiz"],
             ["notes", "Notes & Upload"],
+            ["history", "Review History"],
           ].map(([key, label]) => (
             <button
               key={key}
               onClick={() => setMode(key)}
               style={{
-                padding: "9px 18px",
+                padding: "10px 18px",
                 borderRadius: 999,
-                border: mode === key ? `1.5px solid ${C.accent}` : `1px solid ${C.border}`,
-                background: mode === key ? C.accentLight : C.surface,
-                color: mode === key ? C.accent : C.muted,
-                fontWeight: mode === key ? 800 : 600,
+                border: mode === key ? "1px solid rgba(23, 43, 77, 0.12)" : `1px solid ${C.border}`,
+                background: mode === key ? "linear-gradient(135deg, #1A2740 0%, #24385E 100%)" : C.surface,
+                color: mode === key ? "#fff" : C.muted,
+                fontWeight: 800,
                 fontSize: 13,
                 cursor: "pointer",
               }}
@@ -2476,6 +2684,27 @@ export default function App() {
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ ...panelStyle, padding: 16, background: "#FCFBF8" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: C.faint,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginBottom: 10,
+                }}
+              >
+                Workspace
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                <SidebarNavButton active={mode === "dashboard"} label="Dashboard" hint="Overview and readiness" onClick={() => setMode("dashboard")} />
+                <SidebarNavButton active={mode === "flashcard"} label="Flashcards" hint="Focused card review" badge={flashcards.length || ""} onClick={() => setMode("flashcard")} />
+                <SidebarNavButton active={mode === "quiz"} label="Quiz" hint="Board-style drills" badge={quiz.length || ""} onClick={() => setMode("quiz")} />
+                <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => setMode("notes")} />
+                <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions" badge={reviewSessions.length || ""} onClick={() => setMode("history")} />
+              </div>
+            </div>
             <div style={panelStyle}>
               <div
                 style={{
@@ -2630,6 +2859,115 @@ export default function App() {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {mode === "dashboard" ? (
+              <AnalyticsCard
+                title="Dashboard Overview"
+                footer={
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => setMode("flashcard")}
+                      style={{
+                        padding: "10px 16px",
+                        borderRadius: 12,
+                        border: "none",
+                        background: C.accent,
+                        color: "#fff",
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Open Flashcards
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode("quiz");
+                        if (!quiz.length) {
+                          generateQuiz();
+                        }
+                      }}
+                      style={{
+                        padding: "10px 16px",
+                        borderRadius: 12,
+                        border: `1px solid ${C.border}`,
+                        background: C.surface,
+                        color: C.text,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Start Quiz
+                    </button>
+                  </div>
+                }
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: width < 900 ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                    gap: 14,
+                  }}
+                >
+                  {[
+                    {
+                      key: "accuracy",
+                      title: "Accuracy",
+                      value: `${accuracy}%`,
+                      helper: Object.keys(ratings).length ? `${Object.keys(ratings).length} cards rated` : "No ratings yet",
+                      body: `${Object.values(ratings).filter((value) => value === "easy").length} strong responses and ${weakCardIds.length} weak cards logged so far.`,
+                    },
+                    {
+                      key: "weak",
+                      title: "Weak Cards",
+                      value: weakCardIds.length,
+                      helper: weakCardIds.length ? "Needs another pass" : "Looking stable",
+                      body: weakCardIds.length
+                        ? "Use Focus Weak Cards to re-run only the concepts you marked as missed or unsure."
+                        : "No weak-card backlog at the moment.",
+                    },
+                    {
+                      key: "history",
+                      title: "Review History",
+                      value: reviewSessions.length,
+                      helper: reviewSessions[0] ? `${reviewSessions[0].subject} was most recent` : "No saved sessions yet",
+                      body: reviewSessions[0]
+                        ? `Latest score: ${reviewSessions[0].score || 0}% in ${buildSessionLabel(reviewSessions[0])}.`
+                        : "Submit a flashcard or quiz session to build your review trail.",
+                    },
+                  ].map((item) => {
+                    const active = metricHover === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setMetricHover(active ? "" : item.key)}
+                        style={{
+                          borderRadius: 18,
+                          padding: 18,
+                          border: `1px solid ${active ? "#BFD1E5" : C.border}`,
+                          background: active ? "#F2F7FB" : "#FCFBF8",
+                          textAlign: "left",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          {item.title}
+                        </div>
+                        <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, letterSpacing: "-0.05em" }}>{item.value}</div>
+                        <div style={{ marginTop: 6, fontSize: 13, color: C.muted }}>{item.helper}</div>
+                        {active ? (
+                          <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.7, color: C.text }}>
+                            {item.body}
+                          </div>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </AnalyticsCard>
+            ) : null}
+
             {mode === "flashcard" ? (
               <div style={panelStyle}>
                 <div
