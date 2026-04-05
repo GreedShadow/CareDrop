@@ -382,6 +382,22 @@ function getAuthRedirectUrl() {
   return window.location.origin;
 }
 
+function normalizeAuthErrorMessage(error, context = "auth") {
+  const message = String(error?.message || error || "").toLowerCase();
+
+  if (message.includes("email rate limit exceeded") || message.includes("rate limit")) {
+    return context === "reset"
+      ? "Too many reset emails were requested recently. Wait a few minutes, then try again once."
+      : "Too many verification emails were requested recently. Wait a few minutes before creating another account, then use only the newest email link.";
+  }
+
+  if (message.includes("otp_expired") || message.includes("email link is invalid or has expired")) {
+    return "That email link is no longer valid. Request a fresh email and open the newest link only once.";
+  }
+
+  return error?.message || String(error || "");
+}
+
 function buildStudyText(noteText, uploadedText) {
   return [uploadedText, noteText].filter(Boolean).join("\n\n").trim();
 }
@@ -3006,7 +3022,7 @@ export default function App() {
       });
       setAuthMode("login");
     } catch (error) {
-      setAuthError(error.message || "We couldn't send the reset email right now.");
+      setAuthError(normalizeAuthErrorMessage(error, "reset") || "We couldn't send the reset email right now.");
     } finally {
       setForgotPasswordLoading(false);
     }
@@ -3166,7 +3182,7 @@ export default function App() {
       setAuthConfirmPassword("");
       setTermsAccepted(false);
     } catch (error) {
-      setAuthError(error.message || "Unable to complete sign in right now.");
+      setAuthError(normalizeAuthErrorMessage(error, authMode) || "Unable to complete sign in right now.");
     } finally {
       setAuthLoading(false);
     }
