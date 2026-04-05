@@ -2429,9 +2429,11 @@ export default function App() {
   const [authReady, setAuthReady] = useState(!supabaseConfigured);
   const [cloudSyncReady, setCloudSyncReady] = useState(supabaseConfigured);
   const [cloudSyncStatus, setCloudSyncStatus] = useState("");
-  const [subject, setSubject] = useState(persisted?.subject || "Pharmacology");
+  const [subject, setSubject] = useState("");
   const [difficulty, setDifficulty] = useState(persisted?.difficulty || "All");
   const [topicFilter, setTopicFilter] = useState(persisted?.topicFilter || "");
+  const [topicInput, setTopicInput] = useState(persisted?.topicFilter || "");
+  const [focusAction, setFocusAction] = useState("flashcard");
   const [mode, setMode] = useState(persisted?.mode || "flashcard");
   const [flashcards, setFlashcards] = useState([]);
   const [cardIdx, setCardIdx] = useState(0);
@@ -2486,14 +2488,17 @@ export default function App() {
   const recentQuizPromptsRef = useRef(recentQuizPrompts);
   const remoteProgressLoadedRef = useRef(false);
 
-  function applyPersistedSnapshot(snapshot) {
+  function applyPersistedSnapshot(snapshot, options = {}) {
+    const { restoreSubject = false } = options;
+
     if (!snapshot) {
       return;
     }
 
-    setSubject(snapshot.subject || "Pharmacology");
+    setSubject(restoreSubject ? snapshot.subject || "" : "");
     setDifficulty(snapshot.difficulty || "All");
     setTopicFilter(snapshot.topicFilter || "");
+    setTopicInput(snapshot.topicFilter || "");
     setMode(snapshot.mode || "flashcard");
     setRatings(snapshot.ratings || {});
     setSessions(Number(snapshot.sessions || 0));
@@ -2845,6 +2850,7 @@ export default function App() {
 
   const studyText = buildStudyText(noteText, uploadedText);
   const hasCustomSource = Boolean(studyText);
+  const subjectDisplay = subject || "Select a subject";
   const customEntries = useMemo(
     () => (hasCustomSource ? buildCustomEntries(studyText, subject) : []),
     [hasCustomSource, studyText, subject]
@@ -2962,6 +2968,7 @@ export default function App() {
           setSubject(mostRecentSession.subject || subject);
           setDifficulty(mostRecentSession.difficulty || difficulty);
           setTopicFilter(mostRecentSession.topic || "");
+          setTopicInput(mostRecentSession.topic || "");
           if (mostRecentSession.mode === "quiz") {
             setMode("quiz");
             if (!quiz.length) {
@@ -2978,10 +2985,17 @@ export default function App() {
     }
 
     return {
-      title: "Start your first focused session",
-      body: "Open a 10-card flashcard set or a short quiz, then let the dashboard begin tracking your accuracy, streak, and weak areas.",
-      cta: "Open flashcards",
+      title: subject ? "Start your first focused session" : "Choose a subject to begin",
+      body: subject
+        ? "Open a 10-card flashcard set or a short quiz, then let the dashboard begin tracking your accuracy, streak, and weak areas."
+        : "Pick a subject in Review Filters, choose flashcards or quiz, and CareDrop will prepare your first focused set.",
+      cta: subject ? "Open flashcards" : "Go to filters",
       onClick: () => {
+        if (!subject) {
+          setStatusMessage("Choose a subject in Review Filters to start your first session.");
+          return;
+        }
+
         setMode("flashcard");
         if (!flashcards.length) {
           loadLocalFlashcardSet();
@@ -2999,6 +3013,15 @@ export default function App() {
     setApiError("");
     setStatusMessage("");
     setUploadError("");
+  }
+
+  function ensureSubjectSelected(actionLabel = "continue") {
+    if (subject) {
+      return true;
+    }
+
+    setApiError(`Select a subject first before you ${actionLabel}.`);
+    return false;
   }
 
   function clearRequestDraft() {
@@ -3235,9 +3258,9 @@ export default function App() {
     setRecentFlashcardIds((prev) => [...prev, ...deck.map((card) => card.id)].slice(-RECENT_MEMORY_LIMIT));
   }
 
-  function buildLocalFlashcardSet() {
+  function buildLocalFlashcardSet(activeTopic = topicFilter) {
     let candidates = uniqueBy(
-      getExactEntries(activeEntries, subject, difficulty, topicFilter).flatMap((entry) => buildFlashcardVariants(entry)),
+      getExactEntries(activeEntries, subject, difficulty, activeTopic).flatMap((entry) => buildFlashcardVariants(entry)),
       (card) => card.id
     );
 
@@ -3254,8 +3277,21 @@ export default function App() {
     );
   }
 
-  function loadLocalFlashcardSet(message) {
-    const deck = buildLocalFlashcardSet();
+  function loadLocalFlashcardSet(message, activeTopic = topicFilter) {
+    if (!subject) {
+      setFlashcards([]);
+      setCardIdx(0);
+      setFlashcardSessionRatings({});
+      setFlashcardSessionSubmitted(false);
+
+      if (message) {
+        setStatusMessage("Select a subject first to prepare your flashcard set.");
+      }
+
+      return;
+    }
+
+    const deck = buildLocalFlashcardSet(activeTopic);
     setFlashcards(deck);
     setCardIdx(0);
     setFlashcardSessionRatings({});
@@ -3273,9 +3309,13 @@ export default function App() {
 
   useEffect(() => {
     loadLocalFlashcardSet("");
-  }, [subject, difficulty, topicFilter, filterWeakOnly]);
+  }, [subject, difficulty, filterWeakOnly]);
 
-  async function generateClaudeFlashcards() {
+  async function generateClaudeFlashcards(activeTopic = topicFilter) {
+    if (!ensureSubjectSelected("generate flashcards")) {
+      return;
+    }
+
     clearMessages();
     setApiLoading(true);
 
@@ -3283,7 +3323,7 @@ export default function App() {
       const data = await postJson("/api/claude/cards", {
         notes: studyText,
         subject,
-        topic: topicFilter,
+        topic: activeTopic,
         difficulty: difficulty === "All" ? "mixed" : difficulty,
         count: FLASHCARD_SET_SIZE,
         excludeQuestions: hasCustomSource
@@ -3295,16 +3335,17 @@ export default function App() {
         data.cards,
         subject,
         difficulty,
-        topicFilter,
+        activeTopic,
         usedFlashcardIdsRef.current,
         hasCustomSource
       );
       const needed = Math.max(0, FLASHCARD_SET_SIZE - aiCards.length);
       const fallback = needed
-        ? buildLocalFlashcardSet()
+        ? buildLocalFlashcardSet(activeTopic)
             .filter((card) => !aiCards.some((item) => item.id === card.id))
             .slice(0, needed)
         : [];
+      const aiNeeded = activeTopic && deckLowOnTopicFocus(aiCards, needed);
       const deck = [...aiCards, ...fallback].slice(0, FLASHCARD_SET_SIZE);
 
       setFlashcards(deck);
@@ -3315,20 +3356,30 @@ export default function App() {
       markFlashcardsAsUsed(deck);
       setStatusMessage(
         deck.length >= FLASHCARD_SET_SIZE
-          ? topicFilter
-            ? `Gemini generated another ${FLASHCARD_SET_SIZE}-card focus set for ${topicFilter}.`
+          ? activeTopic
+            ? aiNeeded
+              ? `Gemini expanded a fresh ${FLASHCARD_SET_SIZE}-card focus set for ${activeTopic}.`
+              : `Gemini generated another ${FLASHCARD_SET_SIZE}-card focus set for ${activeTopic}.`
             : "Gemini generated a fresh 10-card flashcard set."
           : `Gemini returned ${deck.length} cards for this focus.`
       );
     } catch (error) {
       setApiError(error.message || "Gemini flashcards failed. Using local cards instead.");
-      loadLocalFlashcardSet("Gemini flashcards were unavailable, so the local deck was loaded.");
+      loadLocalFlashcardSet("Gemini flashcards were unavailable, so the local deck was loaded.", activeTopic);
     } finally {
       setApiLoading(false);
     }
   }
 
-  async function generateQuiz() {
+  function deckLowOnTopicFocus(aiCards, needed) {
+    return aiCards.length < FLASHCARD_SET_SIZE || needed > 0;
+  }
+
+  async function generateQuiz(activeTopic = topicFilter) {
+    if (!ensureSubjectSelected("generate a quiz")) {
+      return;
+    }
+
     clearMessages();
     setApiLoading(true);
     setShowFeedback(false);
@@ -3338,18 +3389,18 @@ export default function App() {
       const data = await postJson("/api/claude/quiz", {
         notes: studyText,
         subject,
-        topic: topicFilter,
+        topic: activeTopic,
         difficulty: difficulty === "All" ? "mixed" : difficulty,
         count: QUIZ_SET_SIZE,
         excludeQuestions: hasCustomSource ? [] : usedQuizPromptsRef.current,
       });
 
-      const aiQuestions = sanitizeQuizQuestions(data.questions, subject, difficulty, topicFilter, [], true);
+      const aiQuestions = sanitizeQuizQuestions(data.questions, subject, difficulty, activeTopic, [], true);
       const fallback = buildLocalQuizFallback(
         activeEntries,
         subject,
         difficulty,
-        topicFilter,
+        activeTopic,
         QUIZ_SET_SIZE - aiQuestions.length,
         []
       );
@@ -3366,8 +3417,10 @@ export default function App() {
       setMode("quiz");
       setStatusMessage(
         questions.length >= QUIZ_SET_SIZE
-          ? topicFilter
-            ? `Gemini generated another ${QUIZ_SET_SIZE}-question focus quiz for ${topicFilter}.`
+          ? activeTopic
+            ? aiQuestions.length < QUIZ_SET_SIZE
+              ? `Gemini expanded a fresh ${QUIZ_SET_SIZE}-question focus quiz for ${activeTopic}.`
+              : `Gemini generated another ${QUIZ_SET_SIZE}-question focus quiz for ${activeTopic}.`
             : "A fresh 10-question quiz is ready for review."
           : `Loaded ${questions.length} questions for this focus.`
       );
@@ -3388,7 +3441,7 @@ export default function App() {
         activeEntries,
         subject,
         difficulty,
-        topicFilter,
+        activeTopic,
         QUIZ_SET_SIZE,
         []
       );
@@ -3739,7 +3792,7 @@ export default function App() {
         type: requestType,
         name: requestName.trim() || currentUser?.name || currentUser?.email || "",
         message: requestMessage.trim(),
-        appContext: `Submitted from CareDrop | subject=${subject} | difficulty=${difficulty} | topic=${topicFilter || "none"}`,
+        appContext: `Submitted from CareDrop | subject=${subject || "none-selected"} | difficulty=${difficulty} | topic=${topicFilter || "none"}`,
       });
 
       setRequestHistory((prev) => [data.request, ...prev].slice(0, 20));
@@ -3760,6 +3813,32 @@ export default function App() {
       clearRequestDraft();
       setRequestModalOpen(false);
     }
+  }
+
+  async function submitReviewFocus() {
+    clearMessages();
+
+    if (!ensureSubjectSelected(`open ${focusAction === "quiz" ? "a quiz" : "flashcards"}`)) {
+      return;
+    }
+
+    const nextTopic = topicInput.trim();
+    setTopicFilter(nextTopic);
+
+    if (focusAction === "quiz") {
+      setMode("quiz");
+      await generateQuiz(nextTopic);
+      return;
+    }
+
+    setMode("flashcard");
+
+    if (nextTopic || hasCustomSource) {
+      await generateClaudeFlashcards(nextTopic);
+      return;
+    }
+
+    loadLocalFlashcardSet("Your next flashcard set is prepared.", nextTopic);
   }
 
   const bentoItems = [
@@ -4187,6 +4266,7 @@ export default function App() {
 
                   <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Subject</label>
                   <select value={subject} onChange={(event) => setSubject(event.target.value)} style={selectStyle}>
+                    <option value="">Select a subject</option>
                     {SUBJECT_OPTIONS.map((value) => (
                       <option key={value} value={value}>
                         {value}
@@ -4196,14 +4276,64 @@ export default function App() {
 
                   <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Topic Focus</label>
                   <input
-                    value={topicFilter}
-                    onChange={(event) => setTopicFilter(event.target.value)}
+                    value={topicInput}
+                    onChange={(event) => setTopicInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        submitReviewFocus();
+                      }
+                    }}
                     placeholder="cardiac drugs, dengue, delegation..."
                     style={{
                       ...selectStyle,
                       cursor: "text",
                     }}
                   />
+
+                  <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Preferred Action</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {[
+                      ["flashcard", "Flashcards"],
+                      ["quiz", "Quiz"],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFocusAction(value)}
+                        style={{
+                          padding: "11px 12px",
+                          borderRadius: 12,
+                          border: focusAction === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
+                          background: focusAction === value ? C.accentLight : C.surface,
+                          color: focusAction === value ? C.accent : C.text,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={submitReviewFocus}
+                    disabled={apiLoading}
+                    style={{
+                      marginTop: 4,
+                      padding: "11px 14px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: apiLoading ? C.border : C.accent,
+                      color: apiLoading ? C.muted : "#fff",
+                      fontWeight: 800,
+                      cursor: apiLoading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {apiLoading
+                      ? "Preparing..."
+                      : `Generate ${focusAction === "quiz" ? "Quiz" : "Flashcards"}`}
+                  </button>
                 </div>
               </div>
 
@@ -4667,7 +4797,7 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 17 }}>Flashcards</div>
                     <div style={{ fontSize: 12, color: C.muted }}>
-                      {subject} | {difficulty === "All" ? "all difficulties" : difficulty} | {topicFilter || "all topics"} | target {FLASHCARD_SET_SIZE} cards per set
+                      {subjectDisplay} | {difficulty === "All" ? "all difficulties" : difficulty} | {topicFilter || "all topics"} | target {FLASHCARD_SET_SIZE} cards per set
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -4813,7 +4943,9 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    No card data exists for this exact filter yet. Try another focus or upload a document to build more cards.
+                    {subject
+                      ? "No card data exists for this exact filter yet. Try another focus or upload a document to build more cards."
+                      : "Select a subject in Review Filters, then generate a flashcard set for that focus."}
                   </div>
                 )}
               </div>
@@ -4882,7 +5014,9 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    Generate a quiz to load a 10-question session for this subject and topic focus.
+                    {subject
+                      ? "Generate a quiz to load a 10-question session for this subject and topic focus."
+                      : "Select a subject in Review Filters, then generate a focused quiz session."}
                   </div>
                 ) : (
                   <>
