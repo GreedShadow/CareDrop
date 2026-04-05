@@ -6,6 +6,7 @@ const STORAGE_KEY = "caredrop-dashboard-v2";
 const REQUEST_STORAGE_KEY = "caredrop-feedback-v1";
 const AUTH_SESSION_KEY = "caredrop-auth-session-v1";
 const ACCOUNT_STORAGE_KEY = "caredrop-auth-accounts-v1";
+const AUTH_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 8;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 const FLASHCARD_SET_SIZE = 10;
 const QUIZ_SET_SIZE = 10;
@@ -756,7 +757,20 @@ function loadAuthSession() {
 
   try {
     const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const parsed = raw ? JSON.parse(raw) : null;
+
+    if (!parsed) {
+      return null;
+    }
+
+    const lastAuthenticatedAt = Number(parsed.lastAuthenticatedAt || 0);
+
+    if (lastAuthenticatedAt && Date.now() - lastAuthenticatedAt > AUTH_SESSION_MAX_AGE_MS) {
+      clearAuthSession();
+      return null;
+    }
+
+    return parsed;
   } catch {
     return null;
   }
@@ -767,7 +781,13 @@ function saveAuthSession(user) {
     return;
   }
 
-  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user));
+  window.localStorage.setItem(
+    AUTH_SESSION_KEY,
+    JSON.stringify({
+      ...user,
+      lastAuthenticatedAt: Date.now(),
+    })
+  );
 }
 
 function clearAuthSession() {
@@ -3086,6 +3106,8 @@ export default function App() {
             setCurrentUser(nextUser);
           }
 
+          setAuthName("");
+          setAuthEmail("");
           setAuthPassword("");
           setAuthConfirmPassword("");
           setTermsAccepted(false);
@@ -3094,6 +3116,7 @@ export default function App() {
             applyPersistedSnapshot(loadPersisted(data.user.id));
           } else {
             setAuthMode("login");
+            setAuthEmail("");
             setAuthNotice({
               title: "Verify your email",
               body: "Your account was created. If Supabase email confirmation is enabled, open the verification email first, then come back to sign in and continue your review sessions.",
@@ -3157,6 +3180,11 @@ export default function App() {
           saveAuthSession({ id: nextUser.id, name: nextUser.name, email: nextUser.email, provider: "local" });
           setCurrentUser({ id: nextUser.id, name: nextUser.name, email: nextUser.email, provider: "local" });
           applyPersistedSnapshot(loadPersisted(nextUser.id));
+          setAuthName("");
+          setAuthEmail("");
+          setAuthPassword("");
+          setAuthConfirmPassword("");
+          setTermsAccepted(false);
           setStatusMessage("Account created and saved on this device.");
         } else {
           const matched = accounts.find((account) => String(account.email || "").trim().toLowerCase() === email);
@@ -3176,11 +3204,13 @@ export default function App() {
         }
       }
 
-      setAuthName("");
-      setAuthEmail("");
-      setAuthPassword("");
-      setAuthConfirmPassword("");
-      setTermsAccepted(false);
+      if (authMode !== "register") {
+        setAuthName("");
+        setAuthEmail("");
+        setAuthPassword("");
+        setAuthConfirmPassword("");
+        setTermsAccepted(false);
+      }
     } catch (error) {
       setAuthError(normalizeAuthErrorMessage(error, authMode) || "Unable to complete sign in right now.");
     } finally {
