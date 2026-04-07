@@ -6,7 +6,7 @@ const STORAGE_KEY = "caredrop-dashboard-v2";
 const REQUEST_STORAGE_KEY = "caredrop-feedback-v1";
 const AUTH_SESSION_KEY = "caredrop-auth-session-v1";
 const ACCOUNT_STORAGE_KEY = "caredrop-auth-accounts-v1";
-const AUTH_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 8;
+const AUTH_SESSION_MAX_AGE_MS = 1000 * 60 * 10;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 const FLASHCARD_SET_SIZE = 10;
 const QUIZ_SET_SIZE = 10;
@@ -503,7 +503,7 @@ function buildCustomEntries(text, selectedSubject) {
 }
 
 function matchesStudyFilter(entry, subject, difficulty, topic) {
-  const matchesSubject = subject === "Mixed Review" ? true : entry.subject === subject;
+  const matchesSubject = !subject || subject === "Mixed Review" ? true : entry.subject === subject;
   const matchesDifficulty = difficulty === "All" ? true : entry.difficulty === difficulty;
   const matchesTopic = topic
     ? `${entry.topic || ""} ${entry.q || entry.prompt || ""} ${entry.a || entry.answer || ""} ${entry.rationale || ""}`
@@ -512,6 +512,37 @@ function matchesStudyFilter(entry, subject, difficulty, topic) {
     : true;
 
   return matchesSubject && matchesDifficulty && matchesTopic;
+}
+
+function cleanQuizPrompt(prompt) {
+  return String(prompt || "")
+    .replace(/^\s*(question\s*:|q\s*:)\s*/i, "")
+    .replace(/\b(answer\s*:|instruction\s*:|directions\s*:).*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanQuizOption(option) {
+  return String(option || "")
+    .replace(/^\s*[A-D][.)]\s*/i, "")
+    .replace(/^\s*-\s*/, "")
+    .replace(/\b(correct answer|answer|instruction|directions)\b\s*:?.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isInstructionLikeOption(option) {
+  const value = normalize(option);
+  return (
+    !value ||
+    value.startsWith("instruction") ||
+    value.startsWith("directions") ||
+    value.startsWith("answer") ||
+    value.includes("choose the best answer") ||
+    value.includes("select the best answer") ||
+    value.includes("all of the above") ||
+    value.includes("none of the above")
+  );
 }
 
 function toFlashcard(entry, subject) {
@@ -682,13 +713,14 @@ function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRep
 function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompts, allowRepeat) {
   return uniqueBy(
     (Array.isArray(questions) ? questions : []).map((item) => {
-      const prompt = String(item.prompt || item.question || "").trim();
+      const prompt = cleanQuizPrompt(item.prompt || item.question || "");
       const options = uniqueBy(
         (Array.isArray(item.options) ? item.options : [])
-          .map((option) => String(option || "").trim())
-          .filter(Boolean),
+          .map((option) => cleanQuizOption(option))
+          .filter((option) => option && !isInstructionLikeOption(option)),
         (option) => normalize(option)
       );
+      const correctAnswer = cleanQuizOption(item.correctAnswer || "");
 
       return {
         id: item.id || uid(),
@@ -696,16 +728,16 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
         difficulty: ["easy", "medium", "hard"].includes(item.difficulty) ? item.difficulty : "medium",
         topic: topic || item.topic || "ai review",
         prompt,
-        correctAnswer: String(item.correctAnswer || "").trim(),
+        correctAnswer,
         options,
-        rationale: String(item.rationale || item.correctAnswer || "").trim(),
+        rationale: String(item.rationale || correctAnswer || "").trim(),
         notes: String(item.notes || `Topic focus: ${topic || "general review"}.`),
         userAnswer: item.userAnswer ?? null,
       };
     }),
     (item) => normalize(item.prompt)
   ).filter((item) => {
-    const valid = item.prompt && item.correctAnswer && item.options.length >= 4;
+    const valid = item.prompt && item.prompt.length > 18 && item.correctAnswer && item.options.length >= 4;
     const notUsed = allowRepeat ? true : !usedPrompts.includes(normalize(item.prompt));
     const includesCorrect = item.options.some((option) => normalize(option) === normalize(item.correctAnswer));
     return (
@@ -2441,6 +2473,7 @@ export default function App() {
   const [flashcardSessionSubmitted, setFlashcardSessionSubmitted] = useState(false);
   const [quiz, setQuiz] = useState([]);
   const [quizIdx, setQuizIdx] = useState(0);
+  const [selectedQuizOption, setSelectedQuizOption] = useState("");
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [ratings, setRatings] = useState(persisted?.ratings || {});
@@ -2487,6 +2520,8 @@ export default function App() {
   const recentFlashcardIdsRef = useRef(recentFlashcardIds);
   const recentQuizPromptsRef = useRef(recentQuizPrompts);
   const remoteProgressLoadedRef = useRef(false);
+  const lastActivityAtRef = useRef(Date.now());
+  const lastActivityPersistedAtRef = useRef(0);
 
   function applyPersistedSnapshot(snapshot, options = {}) {
     const { restoreSubject = false } = options;
@@ -2850,7 +2885,7 @@ export default function App() {
 
   const studyText = buildStudyText(noteText, uploadedText);
   const hasCustomSource = Boolean(studyText);
-  const subjectDisplay = subject || "Select a subject";
+  const subjectDisplay = subject || (topicFilter ? "Topic Focus" : "Select a subject");
   const customEntries = useMemo(
     () => (hasCustomSource ? buildCustomEntries(studyText, subject) : []),
     [hasCustomSource, studyText, subject]
@@ -3007,6 +3042,7 @@ export default function App() {
   useEffect(() => {
     setAiResponse("");
     setQuestion("");
+    setSelectedQuizOption("");
   }, [quizIdx, quiz.length]);
 
   function clearMessages() {
@@ -3021,6 +3057,15 @@ export default function App() {
     }
 
     setApiError(`Select a subject first before you ${actionLabel}.`);
+    return false;
+  }
+
+  function ensureReviewTargetSelected(actionLabel, activeTopic = "") {
+    if (subject || String(activeTopic || "").trim()) {
+      return true;
+    }
+
+    setApiError(`Select a subject or enter a topic focus first before you ${actionLabel}.`);
     return false;
   }
 
@@ -3250,6 +3295,62 @@ export default function App() {
     window.location.reload();
   }
 
+  useEffect(() => {
+    if (!currentUser) {
+      return undefined;
+    }
+
+    let signingOut = false;
+
+    const markActivity = () => {
+      const now = Date.now();
+      lastActivityAtRef.current = now;
+
+      if (now - lastActivityPersistedAtRef.current > 30000) {
+        saveAuthSession(currentUser);
+        lastActivityPersistedAtRef.current = now;
+      }
+    };
+
+    const checkActivity = window.setInterval(async () => {
+      if (signingOut) {
+        return;
+      }
+
+      if (Date.now() - lastActivityAtRef.current < AUTH_SESSION_MAX_AGE_MS) {
+        return;
+      }
+
+      signingOut = true;
+
+      if (supabaseConfigured && supabase && currentUser?.provider === "supabase") {
+        await supabase.auth.signOut();
+      }
+
+      clearAuthSession();
+      setCurrentUser(null);
+      setAuthMode("login");
+      setAuthPassword("");
+      setAuthConfirmPassword("");
+      setTermsAccepted(false);
+      setAuthNotice({
+        title: "Session expired",
+        body: "You were signed out after 10 minutes of inactivity. Sign in again to continue where you left off.",
+        actionLabel: "Sign in again",
+      });
+    }, 30000);
+
+    const activityEvents = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, markActivity, { passive: true }));
+
+    markActivity();
+
+    return () => {
+      window.clearInterval(checkActivity);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, markActivity));
+    };
+  }, [currentUser]);
+
   function markFlashcardsAsUsed(deck) {
     setUsedFlashcardIds((prev) => uniqueBy([...prev, ...deck.map((card) => card.id)], (value) => value));
     setUsedFlashcardQuestions((prev) =>
@@ -3278,14 +3379,14 @@ export default function App() {
   }
 
   function loadLocalFlashcardSet(message, activeTopic = topicFilter) {
-    if (!subject) {
+    if (!subject && !String(activeTopic || "").trim()) {
       setFlashcards([]);
       setCardIdx(0);
       setFlashcardSessionRatings({});
       setFlashcardSessionSubmitted(false);
 
       if (message) {
-        setStatusMessage("Select a subject first to prepare your flashcard set.");
+        setStatusMessage("Select a subject or enter a topic focus first to prepare your flashcard set.");
       }
 
       return;
@@ -3312,7 +3413,7 @@ export default function App() {
   }, [subject, difficulty, filterWeakOnly]);
 
   async function generateClaudeFlashcards(activeTopic = topicFilter) {
-    if (!ensureSubjectSelected("generate flashcards")) {
+    if (!ensureReviewTargetSelected("generate flashcards", activeTopic)) {
       return;
     }
 
@@ -3376,7 +3477,7 @@ export default function App() {
   }
 
   async function generateQuiz(activeTopic = topicFilter) {
-    if (!ensureSubjectSelected("generate a quiz")) {
+    if (!ensureReviewTargetSelected("generate a quiz", activeTopic)) {
       return;
     }
 
@@ -3620,12 +3721,20 @@ export default function App() {
       return;
     }
 
+    setSelectedQuizOption(option);
+  }
+
+  function submitQuizAnswer() {
+    if (!quizItem || quizItem.userAnswer !== null || !selectedQuizOption) {
+      return;
+    }
+
     setQuiz((prev) =>
       prev.map((item, index) =>
         index === quizIdx
           ? {
               ...item,
-              userAnswer: option,
+              userAnswer: selectedQuizOption,
             }
           : item
       )
@@ -3818,11 +3927,11 @@ export default function App() {
   async function submitReviewFocus() {
     clearMessages();
 
-    if (!ensureSubjectSelected(`open ${focusAction === "quiz" ? "a quiz" : "flashcards"}`)) {
+    const nextTopic = topicInput.trim();
+    if (!ensureReviewTargetSelected(`open ${focusAction === "quiz" ? "a quiz" : "flashcards"}`, nextTopic)) {
       return;
     }
 
-    const nextTopic = topicInput.trim();
     setTopicFilter(nextTopic);
 
     if (focusAction === "quiz") {
@@ -4486,19 +4595,6 @@ export default function App() {
               </div>
             ) : null}
 
-            <div style={panelStyle}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 10 }}>
-                Review Source
-              </div>
-              <div style={{ fontSize: 13, lineHeight: 1.65, color: C.text }}>
-                {hasCustomSource
-                  ? `Focused source loaded${uploadedFileName ? `: ${uploadedFileName}` : ""}. Repeats are allowed so the app can stay centered on your document.`
-                  : "Using the CareDrop review bank. Sessions stay balanced, filtered, and non-repeating until you reset rotation."}
-              </div>
-              <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
-                {cloudSyncStatus || (supabaseConfigured ? "Cloud sync is ready once you sign in with Supabase." : "Cloud sync is waiting for free Supabase keys in the environment settings.")}
-              </div>
-            </div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -4943,7 +5039,7 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    {subject
+                    {subject || topicFilter
                       ? "No card data exists for this exact filter yet. Try another focus or upload a document to build more cards."
                       : "Select a subject in Review Filters, then generate a flashcard set for that focus."}
                   </div>
@@ -5014,7 +5110,7 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    {subject
+                    {subject || topicFilter
                       ? "Generate a quiz to load a 10-question session for this subject and topic focus."
                       : "Select a subject in Review Filters, then generate a focused quiz session."}
                   </div>
@@ -5083,7 +5179,7 @@ export default function App() {
 
                     <div key={`${quizItem.id}-options`} style={{ marginTop: 16, display: "grid", gap: 10, animation: "caredropFadeSlide 0.24s ease" }}>
                       {quizItem.options.map((option) => {
-                        const selected = quizItem.userAnswer === option;
+                        const selected = quizItem.userAnswer !== null ? quizItem.userAnswer === option : selectedQuizOption === option;
                         const correct = normalize(option) === normalize(quizItem.correctAnswer);
                         const background = showFeedback && correct
                           ? "#ECFDF5"
@@ -5097,27 +5193,57 @@ export default function App() {
                             : C.panelNeutralDark;
 
                         return (
-                          <button
+                          <label
                             key={option}
-                            onClick={() => handleQuizAnswer(option)}
-                            disabled={quizItem.userAnswer !== null}
                             style={{
                               textAlign: "left",
                               padding: "14px 16px",
                               borderRadius: 14,
                               border: `1px solid ${borderColor}`,
                               background,
-                              cursor: quizItem.userAnswer !== null ? "not-allowed" : "pointer",
+                              cursor: quizItem.userAnswer !== null ? "default" : "pointer",
                               fontSize: 14,
                               lineHeight: 1.6,
                               transition: "transform 0.18s ease, border-color 0.18s ease, background 0.18s ease",
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: 12,
                             }}
                           >
-                            {option}
-                          </button>
+                            <input
+                              type="radio"
+                              name={`quiz-${quizItem.id}`}
+                              checked={selected}
+                              disabled={quizItem.userAnswer !== null}
+                              onChange={() => handleQuizAnswer(option)}
+                              style={{ marginTop: 4 }}
+                            />
+                            <span>{option}</span>
+                          </label>
                         );
                       })}
                     </div>
+
+                    {!showFeedback && quizItem.userAnswer === null ? (
+                      <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          type="button"
+                          onClick={submitQuizAnswer}
+                          disabled={!selectedQuizOption}
+                          style={{
+                            padding: "10px 16px",
+                            borderRadius: 10,
+                            border: "none",
+                            background: selectedQuizOption ? C.accent : C.border,
+                            color: selectedQuizOption ? "#fff" : C.muted,
+                            fontWeight: 700,
+                            cursor: selectedQuizOption ? "pointer" : "not-allowed",
+                          }}
+                        >
+                          Submit Answer
+                        </button>
+                      </div>
+                    ) : null}
 
                     {showFeedback && quizItem.userAnswer !== null ? (
                       <div
