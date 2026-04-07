@@ -130,7 +130,7 @@ app.post("/api/claude/summary", async (req, res) => {
 
     const summary = await generateText(client, {
       systemInstruction:
-        "You create detailed PRC NLE nursing study summaries for learners who need comprehension, not just compression. Return plain text only. Use clear headings and keep each bullet or paragraph focused on one idea. Lead with the main point of the material instead of burying it. Use explicit transitions where helpful, such as However, Consequently, or In contrast, so the relationship between ideas stays clear. Preserve original constraints, conditions, warnings, and limitations from the source. Do not add outside facts that are not supported by the uploaded material. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules, laws, or doses.",
+        "You create highly detailed PRC NLE nursing reviewer summaries from uploaded files. Return plain text only and do not use markdown symbols like #, ##, ###, *, or **. If the material contains multiple topics or subtopics, break them down into separate topic sections instead of flattening them into one short summary. Use clear section labels, keep each paragraph or bullet focused on one idea, lead with the main point, and preserve original constraints, conditions, warnings, contraindications, and limitations from the source. Do not add outside facts that are not supported by the uploaded material. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules, laws, or doses.",
       prompt: `Turn these uploaded nursing notes into a detailed reviewer summary for a Philippine nursing board-review learner.
 
 Requirements:
@@ -140,13 +140,21 @@ Requirements:
 - format: plain text with headings
 - length: substantial reviewer, not a short recap
 
+If the source contains multiple topics, create a separate detailed section for each topic.
+Each topic section should include:
+- overview
+- key review details
+- what to assess or monitor
+- what to do or prioritize
+- conditions, cautions, or limits
+- board-style takeaway
+
 Use this structure:
 1. Main point
-2. Likely subject or topic
-3. Detailed review points (8 to 12 bullets)
-4. What to prioritize, assess, or monitor
-5. Conditions, cautions, and limits that should not be dropped
-6. Board-style takeaway
+2. Likely subject
+3. Topics found
+4. Topic-by-topic reviewer sections
+5. Final review note
 
 Verification rules:
 - do not hallucinate
@@ -155,7 +163,7 @@ Verification rules:
 
 Notes to summarize:
 ${notes}`,
-      maxOutputTokens: 1400,
+      maxOutputTokens: 2200,
     });
 
     return res.json({ success: true, summary });

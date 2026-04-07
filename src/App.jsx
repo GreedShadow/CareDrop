@@ -403,73 +403,96 @@ function buildStudyText(noteText, uploadedText) {
   return [uploadedText, noteText].filter(Boolean).join("\n\n").trim();
 }
 
+function formatTopicHeading(value) {
+  return String(value || "General Review")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 function buildLocalSummary(text) {
   const cleaned = String(text || "").replace(/\r/g, " ").trim();
   if (!cleaned) {
     return "Paste notes or upload a document to generate a reviewer summary.";
   }
 
-  const parts = cleaned
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 8);
+  const parts = sentenceSplit(cleaned).slice(0, 28);
 
   if (!parts.length) {
     return "Paste notes or upload a document to generate a reviewer summary.";
   }
 
   const inferredSubject = inferSubject(cleaned);
-  const inferredTopic = inferTopic(cleaned);
   const keywordLines = extractKeywords(cleaned).slice(0, 6);
-  const memoryCue = parts[0];
-  const cautionCue =
-    parts.find((line) =>
-      /(priority|first|unsafe|critical|warning|monitor|withhold|notify|emergency|contraindicat|risk)/i.test(line)
-    ) || parts[1] || parts[0];
-  const assessmentCue =
-    parts.find((line) =>
-      /(assess|monitor|observe|check|evaluate|vital signs|inspect|palpate|auscultate)/i.test(line)
-    ) || parts[2] || parts[0];
-  const interventionCue =
-    parts.find((line) =>
-      /(intervention|administer|position|teach|educate|withhold|notify|support|oxygen|fluids|medication)/i.test(line)
-    ) || parts[3] || parts[1] || parts[0];
-  const limitationCue =
-    parts.find((line) =>
-      /(unless|only if|avoid|do not|contraindicat|except|limit|caution|risk|warning)/i.test(line)
-    ) || "";
+  const topicGroups = new Map();
+
+  parts.forEach((line) => {
+    const topic = inferTopic(line);
+    if (!topicGroups.has(topic)) {
+      topicGroups.set(topic, []);
+    }
+    topicGroups.get(topic).push(line);
+  });
+
+  const groupedTopics = Array.from(topicGroups.entries())
+    .sort((left, right) => right[1].length - left[1].length)
+    .slice(0, 5);
 
   const lines = [
-    `Review Summary`,
+    `DETAILED REVIEWER SUMMARY`,
     `Likely focus: ${inferredSubject}`,
-    `Topic thread: ${inferredTopic}`,
+    `Topics found: ${groupedTopics.map(([topic]) => formatTopicHeading(topic)).join(", ")}`,
     "",
-    `Overview`,
-    `This reviewer was generated from the attached study material. It keeps the original meaning and surfaces the details that are most useful for active recall and board-style review.`,
-    "",
-    `High-yield points`,
-    ...parts.map((line, index) => `${index + 1}. ${line}`),
-    "",
-    `Clinical emphasis`,
-    `- Main recall cue: ${memoryCue}`,
-    `- Priority clue: ${cautionCue}`,
-    `- Assessment focus: ${assessmentCue}`,
-    `- Intervention focus: ${interventionCue}`,
+    `MAIN POINT`,
+    parts[0],
   ];
 
   if (keywordLines.length) {
-    lines.push(`- Keywords: ${keywordLines.join(", ")}`);
+    lines.push("", "KEYWORDS", keywordLines.join(", "));
   }
 
-  if (limitationCue) {
-    lines.push("", "Conditions and cautions", `- Do not lose this qualifier: ${limitationCue}`);
-  }
+  groupedTopics.forEach(([topic, topicLines], index) => {
+    const overview = topicLines[0];
+    const detailPoints = topicLines.slice(0, 5);
+    const assessmentCue =
+      topicLines.find((line) =>
+        /(assess|monitor|observe|check|evaluate|vital signs|inspect|palpate|auscultate)/i.test(line)
+      ) || topicLines[1] || overview;
+    const interventionCue =
+      topicLines.find((line) =>
+        /(intervention|administer|position|teach|educate|withhold|notify|support|oxygen|fluids|medication|manage)/i.test(line)
+      ) || topicLines[2] || overview;
+    const cautionCue =
+      topicLines.find((line) =>
+        /(priority|first|unsafe|critical|warning|monitor|withhold|notify|emergency|contraindicat|risk|avoid|do not|unless|only if)/i.test(line)
+      ) || "";
+
+    lines.push(
+      "",
+      `TOPIC ${index + 1}: ${formatTopicHeading(topic)}`,
+      `Overview: ${overview}`,
+      `Key review details:`
+    );
+
+    detailPoints.forEach((line, detailIndex) => {
+      lines.push(`${detailIndex + 1}) ${line}`);
+    });
+
+    lines.push(`Assessment focus: ${assessmentCue}`);
+    lines.push(`Intervention focus: ${interventionCue}`);
+
+    if (cautionCue) {
+      lines.push(`Condition or caution: ${cautionCue}`);
+    }
+
+    lines.push(`Board takeaway: Focus on the nursing priority, clue words, and what must be assessed or acted on first for ${formatTopicHeading(topic)}.`);
+  });
 
   lines.push(
     "",
-    "Board takeaway",
-    "Use this reviewer to understand the note first, then convert it into flashcards or a quiz for active recall without dropping the original context."
+    "FINAL REVIEW NOTE",
+    "Use each topic block as a separate review target. After reading this summary, convert the same file into flashcards or quiz questions so the learner can practice each topic one by one."
   );
 
   return lines.join("\n");
