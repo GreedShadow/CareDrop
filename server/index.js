@@ -130,9 +130,32 @@ app.post("/api/claude/summary", async (req, res) => {
 
     const summary = await generateText(client, {
       systemInstruction:
-        "You create detailed PRC NLE nursing study summaries. Return plain text only. Organize the response with short headings and concise bullets. Include: 1) likely topic or subject, 2) 6 to 10 high-yield review points, 3) what to prioritize or monitor, 4) one short memory aid or recall cue, and 5) a brief board-exam takeaway. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules, laws, or doses.",
-      prompt: `Turn these uploaded nursing notes into a more detailed reviewer summary for a Philippine nursing board-review learner. Make it useful for someone who wants to understand the notes, not just skim them:\n\n${notes}`,
-      maxOutputTokens: 1100,
+        "You create detailed PRC NLE nursing study summaries for learners who need comprehension, not just compression. Return plain text only. Use clear headings and keep each bullet or paragraph focused on one idea. Lead with the main point of the material instead of burying it. Use explicit transitions where helpful, such as However, Consequently, or In contrast, so the relationship between ideas stays clear. Preserve original constraints, conditions, warnings, and limitations from the source. Do not add outside facts that are not supported by the uploaded material. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules, laws, or doses.",
+      prompt: `Turn these uploaded nursing notes into a detailed reviewer summary for a Philippine nursing board-review learner.
+
+Requirements:
+- audience: nursing student preparing for exams
+- goal: understand the attached material clearly, not just shorten it
+- approach: abstractive summary, but preserve key technical terms, constraints, conditions, warnings, and limitations from the source
+- format: plain text with headings
+- length: substantial reviewer, not a short recap
+
+Use this structure:
+1. Main point
+2. Likely subject or topic
+3. Detailed review points (8 to 12 bullets)
+4. What to prioritize, assess, or monitor
+5. Conditions, cautions, and limits that should not be dropped
+6. Board-style takeaway
+
+Verification rules:
+- do not hallucinate
+- do not add personal opinion
+- do not remove important context such as "only if", "unless", warnings, or contraindications
+
+Notes to summarize:
+${notes}`,
+      maxOutputTokens: 1400,
     });
 
     return res.json({ success: true, summary });

@@ -420,30 +420,57 @@ function buildLocalSummary(text) {
   }
 
   const inferredSubject = inferSubject(cleaned);
+  const inferredTopic = inferTopic(cleaned);
   const keywordLines = extractKeywords(cleaned).slice(0, 6);
   const memoryCue = parts[0];
   const cautionCue =
     parts.find((line) =>
       /(priority|first|unsafe|critical|warning|monitor|withhold|notify|emergency|contraindicat|risk)/i.test(line)
     ) || parts[1] || parts[0];
+  const assessmentCue =
+    parts.find((line) =>
+      /(assess|monitor|observe|check|evaluate|vital signs|inspect|palpate|auscultate)/i.test(line)
+    ) || parts[2] || parts[0];
+  const interventionCue =
+    parts.find((line) =>
+      /(intervention|administer|position|teach|educate|withhold|notify|support|oxygen|fluids|medication)/i.test(line)
+    ) || parts[3] || parts[1] || parts[0];
+  const limitationCue =
+    parts.find((line) =>
+      /(unless|only if|avoid|do not|contraindicat|except|limit|caution|risk|warning)/i.test(line)
+    ) || "";
 
   const lines = [
     `Review Summary`,
     `Likely focus: ${inferredSubject}`,
+    `Topic thread: ${inferredTopic}`,
+    "",
+    `Overview`,
+    `This reviewer was generated from the attached study material. It keeps the original meaning and surfaces the details that are most useful for active recall and board-style review.`,
     "",
     `High-yield points`,
     ...parts.map((line, index) => `${index + 1}. ${line}`),
     "",
-    `What to remember`,
+    `Clinical emphasis`,
     `- Main recall cue: ${memoryCue}`,
     `- Priority clue: ${cautionCue}`,
+    `- Assessment focus: ${assessmentCue}`,
+    `- Intervention focus: ${interventionCue}`,
   ];
 
   if (keywordLines.length) {
     lines.push(`- Keywords: ${keywordLines.join(", ")}`);
   }
 
-  lines.push("", "Use this as a quick reviewer, then turn the same notes into flashcards or a quiz for active recall.");
+  if (limitationCue) {
+    lines.push("", "Conditions and cautions", `- Do not lose this qualifier: ${limitationCue}`);
+  }
+
+  lines.push(
+    "",
+    "Board takeaway",
+    "Use this reviewer to understand the note first, then convert it into flashcards or a quiz for active recall without dropping the original context."
+  );
 
   return lines.join("\n");
 }
