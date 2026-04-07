@@ -413,13 +413,39 @@ function buildLocalSummary(text) {
     .split(/(?<=[.!?])\s+|\n+/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .slice(0, 6);
+    .slice(0, 8);
 
   if (!parts.length) {
     return "Paste notes or upload a document to generate a reviewer summary.";
   }
 
-  return parts.map((line, index) => `${index + 1}. ${line}`).join("\n");
+  const inferredSubject = inferSubject(cleaned);
+  const keywordLines = extractKeywords(cleaned).slice(0, 6);
+  const memoryCue = parts[0];
+  const cautionCue =
+    parts.find((line) =>
+      /(priority|first|unsafe|critical|warning|monitor|withhold|notify|emergency|contraindicat|risk)/i.test(line)
+    ) || parts[1] || parts[0];
+
+  const lines = [
+    `Review Summary`,
+    `Likely focus: ${inferredSubject}`,
+    "",
+    `High-yield points`,
+    ...parts.map((line, index) => `${index + 1}. ${line}`),
+    "",
+    `What to remember`,
+    `- Main recall cue: ${memoryCue}`,
+    `- Priority clue: ${cautionCue}`,
+  ];
+
+  if (keywordLines.length) {
+    lines.push(`- Keywords: ${keywordLines.join(", ")}`);
+  }
+
+  lines.push("", "Use this as a quick reviewer, then turn the same notes into flashcards or a quiz for active recall.");
+
+  return lines.join("\n");
 }
 
 function sentenceSplit(text) {

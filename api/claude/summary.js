@@ -21,9 +21,9 @@ export default async function handler(req, res) {
 
     const summary = await generateText(client, {
       systemInstruction:
-        "You create concise PRC NLE nursing study summaries. Return plain text only. Use 5 to 8 numbered lines. Focus on safety, prioritization, assessment, and high-yield recall points. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules or doses.",
-      prompt: `Summarize these nursing notes into a quick reviewer for a Philippine nursing board-review learner:\n\n${notes}`,
-      maxOutputTokens: 700,
+        "You create detailed PRC NLE nursing study summaries. Return plain text only. Organize the response with short headings and concise bullets. Include: 1) likely topic or subject, 2) 6 to 10 high-yield review points, 3) what to prioritize or monitor, 4) one short memory aid or recall cue, and 5) a brief board-exam takeaway. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules, laws, or doses.",
+      prompt: `Turn these uploaded nursing notes into a more detailed reviewer summary for a Philippine nursing board-review learner. Make it useful for someone who wants to understand the notes, not just skim them:\n\n${notes}`,
+      maxOutputTokens: 1100,
     });
 
     return sendJson(res, 200, {
