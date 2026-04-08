@@ -46,6 +46,20 @@ import {
   useWindowWidth,
 } from "./caredrop/app-utils";
 import { clamp, formatTopicHeading, normalize, shuffle, uid, uniqueBy } from "./caredrop/helpers";
+import {
+  buildCalendarDays,
+  formatDateKey,
+  getDateInputValue,
+  getMonthLabel,
+  getOverduePlannerItems,
+  getPlannerCompletionRate,
+  getUpcomingEvents,
+  PLANNER_EVENT_TYPES,
+  PLANNER_MODE_OPTIONS,
+  shiftMonth,
+  sortByDateAsc,
+  sortByDateDesc,
+} from "./caredrop/planning";
 import { C } from "./caredrop/theme";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 
@@ -1819,6 +1833,24 @@ export default function App() {
   const [subjectShortcutsOpen, setSubjectShortcutsOpen] = useState(
     persisted?.subjectShortcutsOpen !== false
   );
+  const [calendarMonth, setCalendarMonth] = useState(
+    persisted?.calendarMonth ? new Date(persisted.calendarMonth) : new Date()
+  );
+  const [calendarSelectedDate, setCalendarSelectedDate] = useState(
+    persisted?.calendarSelectedDate || getDateInputValue()
+  );
+  const [calendarEvents, setCalendarEvents] = useState(persisted?.calendarEvents || []);
+  const [calendarDraftTitle, setCalendarDraftTitle] = useState("");
+  const [calendarDraftType, setCalendarDraftType] = useState("Study");
+  const [calendarDraftSubject, setCalendarDraftSubject] = useState("");
+  const [calendarDraftNote, setCalendarDraftNote] = useState("");
+  const [plannerItems, setPlannerItems] = useState(persisted?.plannerItems || []);
+  const [plannerTitle, setPlannerTitle] = useState("");
+  const [plannerSubject, setPlannerSubject] = useState("");
+  const [plannerMode, setPlannerMode] = useState("mixed");
+  const [plannerDueDate, setPlannerDueDate] = useState(getDateInputValue());
+  const [plannerNotes, setPlannerNotes] = useState("");
+  const [adminView, setAdminView] = useState(persisted?.adminView || "overview");
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
   const usedFlashcardQuestionsRef = useRef(usedFlashcardQuestions);
@@ -1855,6 +1887,11 @@ export default function App() {
     setSummaryText(snapshot.summaryText || "Paste notes or upload a document to generate a reviewer summary.");
     setFilterWeakOnly(Boolean(snapshot.filterWeakOnly));
     setSubjectShortcutsOpen(snapshot.subjectShortcutsOpen !== false);
+    setCalendarMonth(snapshot.calendarMonth ? new Date(snapshot.calendarMonth) : new Date());
+    setCalendarSelectedDate(snapshot.calendarSelectedDate || getDateInputValue());
+    setCalendarEvents(snapshot.calendarEvents || []);
+    setPlannerItems(snapshot.plannerItems || []);
+    setAdminView(snapshot.adminView || "overview");
     setFlashcards(snapshot.flashcards || []);
     setCardIdx(clamp(Number(snapshot.cardIdx || 0), 0, Math.max((snapshot.flashcards || []).length - 1, 0)));
     setFlashcardSessionRatings(snapshot.flashcardSessionRatings || {});
@@ -1982,6 +2019,11 @@ export default function App() {
         summaryText,
         filterWeakOnly,
         subjectShortcutsOpen,
+        calendarMonth: calendarMonth.toISOString(),
+        calendarSelectedDate,
+        calendarEvents,
+        plannerItems,
+        adminView,
       })
     );
   }, [
@@ -2018,6 +2060,11 @@ export default function App() {
     summaryText,
     filterWeakOnly,
     subjectShortcutsOpen,
+    calendarMonth,
+    calendarSelectedDate,
+    calendarEvents,
+    plannerItems,
+    adminView,
   ]);
 
   useEffect(() => {
@@ -2058,6 +2105,11 @@ export default function App() {
       summaryText,
       filterWeakOnly,
       subjectShortcutsOpen,
+      calendarMonth: calendarMonth.toISOString(),
+      calendarSelectedDate,
+      calendarEvents,
+      plannerItems,
+      adminView,
     };
 
     const timeoutId = window.setTimeout(async () => {
@@ -2116,6 +2168,11 @@ export default function App() {
     summaryText,
     filterWeakOnly,
     subjectShortcutsOpen,
+    calendarMonth,
+    calendarSelectedDate,
+    calendarEvents,
+    plannerItems,
+    adminView,
   ]);
 
   useEffect(() => {
@@ -2412,7 +2469,88 @@ export default function App() {
     mostRecentSession?.subject ||
     "";
   const isFirstVisit = !reviewSessions.length && !Object.keys(ratings).length;
+  const calendarDays = useMemo(
+    () => buildCalendarDays(calendarMonth, calendarEvents),
+    [calendarMonth, calendarEvents]
+  );
+  const selectedDateEvents = useMemo(
+    () =>
+      sortByDateAsc(
+        calendarEvents.filter(
+          (event) => formatDateKey(event.date || event.dateKey || event.createdAt || new Date()) === calendarSelectedDate
+        ),
+        "date"
+      ),
+    [calendarEvents, calendarSelectedDate]
+  );
+  const upcomingEvents = useMemo(() => getUpcomingEvents(calendarEvents, 5), [calendarEvents]);
+  const overduePlannerItems = useMemo(() => getOverduePlannerItems(plannerItems), [plannerItems]);
+  const plannerCompletionRate = useMemo(() => getPlannerCompletionRate(plannerItems), [plannerItems]);
+  const plannerOpenItems = plannerItems.filter((item) => !item.completed);
+  const plannerModeSummary = useMemo(
+    () =>
+      Object.entries(
+        plannerItems.reduce((accumulator, item) => {
+          const key = item.mode || "mixed";
+          accumulator[key] = (accumulator[key] || 0) + 1;
+          return accumulator;
+        }, {})
+      ).sort((left, right) => Number(right[1]) - Number(left[1])),
+    [plannerItems]
+  );
+  const scheduledSubjectSummary = useMemo(
+    () =>
+      Object.entries(
+        calendarEvents.reduce((accumulator, item) => {
+          if (!item.subject) {
+            return accumulator;
+          }
+          accumulator[item.subject] = (accumulator[item.subject] || 0) + 1;
+          return accumulator;
+        }, {})
+      ).sort((left, right) => Number(right[1]) - Number(left[1])),
+    [calendarEvents]
+  );
+  const plannerRecommendedItem =
+    sortByDateAsc(
+      plannerOpenItems.filter((item) => item.dueDate),
+      "dueDate"
+    )[0] || plannerOpenItems[0] || null;
+  const plannerSummaryLine = plannerRecommendedItem
+    ? `${plannerRecommendedItem.title}${plannerRecommendedItem.subject ? ` | ${plannerRecommendedItem.subject}` : ""}`
+    : "No active planner items yet";
+  const featureUsageSummary = [
+    { label: "Flashcard sets", value: reviewSessions.filter((session) => session.mode === "flashcard").length },
+    { label: "Quiz sessions", value: reviewSessions.filter((session) => session.mode === "quiz").length },
+    { label: "Simulation runs", value: reviewSessions.filter((session) => session.mode === "simulation").length },
+    { label: "Planner items", value: plannerItems.length },
+    { label: "Calendar events", value: calendarEvents.length },
+  ];
+  const adminFeedbackItems = useMemo(
+    () => sortByDateDesc(requestHistory, "createdAt"),
+    [requestHistory]
+  );
+  const adminRecentSessions = reviewSessions.slice(0, 8);
   const recommendedAction = (() => {
+    if (overduePlannerItems.length) {
+      const nextOverdue = overduePlannerItems[0];
+      return {
+        title: "Clear an overdue study target",
+        body: `${nextOverdue.title}${nextOverdue.subject ? ` in ${nextOverdue.subject}` : ""} is already past due. Reopen it now so the planner stays useful instead of becoming a guilt list.`,
+        cta: "Open planner",
+        onClick: () => setMode("planner"),
+      };
+    }
+
+    if (plannerRecommendedItem) {
+      return {
+        title: "Follow your next planned review",
+        body: `${plannerRecommendedItem.title}${plannerRecommendedItem.subject ? ` in ${plannerRecommendedItem.subject}` : ""}${plannerRecommendedItem.dueDate ? ` is due on ${plannerRecommendedItem.dueDate}` : " is ready now"}. Keeping one promise to yourself today is enough to keep momentum alive.`,
+        cta: "Open planner",
+        onClick: () => setMode("planner"),
+      };
+    }
+
     if (savedSessionWaiting) {
       return {
         title: "Resume a saved review session",
@@ -2534,6 +2672,109 @@ export default function App() {
     setRequestName("");
     setRequestMessage("");
     setRequestStatus("");
+  }
+
+  function resetCalendarDraft() {
+    setCalendarDraftTitle("");
+    setCalendarDraftType("Study");
+    setCalendarDraftSubject("");
+    setCalendarDraftNote("");
+  }
+
+  function addCalendarEvent() {
+    if (!calendarDraftTitle.trim()) {
+      setStatusMessage("Add a short title first so the calendar entry is clear.");
+      return;
+    }
+
+    const nextEvent = {
+      id: uid(),
+      title: calendarDraftTitle.trim(),
+      type: calendarDraftType,
+      subject: calendarDraftSubject || "",
+      note: calendarDraftNote.trim(),
+      date: calendarSelectedDate,
+      completed: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    setCalendarEvents((current) => sortByDateAsc([...current, nextEvent], "date"));
+    resetCalendarDraft();
+    setStatusMessage("Calendar event saved.");
+  }
+
+  function toggleCalendarEvent(eventId) {
+    setCalendarEvents((current) =>
+      current.map((item) =>
+        item.id === eventId ? { ...item, completed: !item.completed } : item
+      )
+    );
+  }
+
+  function deleteCalendarEvent(eventId) {
+    setCalendarEvents((current) => current.filter((item) => item.id !== eventId));
+    setStatusMessage("Calendar event removed.");
+  }
+
+  function addPlannerItem() {
+    if (!plannerTitle.trim()) {
+      setStatusMessage("Add a planner title first.");
+      return;
+    }
+
+    const nextItem = {
+      id: uid(),
+      title: plannerTitle.trim(),
+      subject: plannerSubject || "",
+      mode: plannerMode,
+      dueDate: plannerDueDate || "",
+      notes: plannerNotes.trim(),
+      completed: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    setPlannerItems((current) => sortByDateAsc([...current, nextItem], "dueDate"));
+    setPlannerTitle("");
+    setPlannerSubject("");
+    setPlannerMode("mixed");
+    setPlannerDueDate(getDateInputValue());
+    setPlannerNotes("");
+    setStatusMessage("Planner item saved.");
+  }
+
+  function togglePlannerItem(itemId) {
+    setPlannerItems((current) =>
+      current.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              completed: !item.completed,
+              completedAt: !item.completed ? new Date().toISOString() : null,
+            }
+          : item
+      )
+    );
+  }
+
+  function deletePlannerItem(itemId) {
+    setPlannerItems((current) => current.filter((item) => item.id !== itemId));
+    setStatusMessage("Planner item removed.");
+  }
+
+  function addPlannerItemToCalendar(item) {
+    const nextEvent = {
+      id: uid(),
+      title: item.title,
+      type: item.mode === "simulation" ? "Simulation" : item.mode === "quiz" ? "Quiz" : "Study",
+      subject: item.subject || "",
+      note: item.notes || "Planned from the CareDrop study planner.",
+      date: item.dueDate || getDateInputValue(),
+      completed: Boolean(item.completed),
+      createdAt: new Date().toISOString(),
+    };
+
+    setCalendarEvents((current) => sortByDateAsc([...current, nextEvent], "date"));
+    setStatusMessage("Planner item added to the calendar.");
   }
 
   async function handleForgotPassword() {
@@ -4194,6 +4435,8 @@ export default function App() {
                   <SidebarNavButton active={mode === "flashcard"} label="Flashcards" hint="Focused card review" badge={flashcards.length || ""} onClick={() => setMode("flashcard")} />
                   <SidebarNavButton active={mode === "quiz"} label="Quiz" hint="Board-style drills" badge={quiz.length || ""} onClick={() => setMode("quiz")} />
                   <SidebarNavButton active={mode === "simulation"} label="Simulation Exam" hint="Mixed 50-500 item exam mode" badge={simulationQuestions.length || ""} onClick={() => setMode("simulation")} />
+                  <SidebarNavButton active={mode === "calendar"} label="Calendar" hint="Study schedule and date notes" badge={upcomingEvents.length || ""} onClick={() => setMode("calendar")} />
+                  <SidebarNavButton active={mode === "planner"} label="Planner" hint="Goals, due dates, and next study targets" badge={plannerOpenItems.length || ""} onClick={() => setMode("planner")} />
                   <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => setMode("notes")} />
                   <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions and returns" badge={reviewSessions.length || ""} onClick={() => setMode("history")} />
                   {isAdminUser ? (
@@ -4626,7 +4869,7 @@ export default function App() {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: width < 980 ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                      gridTemplateColumns: width < 980 ? "1fr" : "repeat(4, minmax(0, 1fr))",
                       gap: 14,
                     }}
                   >
@@ -4773,11 +5016,64 @@ export default function App() {
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                         {isAdminUser ? "Admin Snapshot" : "CareDrop Snapshot"}
                       </div>
-                      <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 13, color: C.text }}>
-                        <div><strong>{reviewSessions.length}</strong> tracked sessions in this dashboard</div>
-                        <div><strong>{requestHistory.length}</strong> request/report items saved</div>
-                        <div><strong>{savedSessionWaiting ? 1 : 0}</strong> saved session waiting to reopen</div>
-                        <div><strong>{isOnline ? "Online" : "Offline"}</strong> system state | {cloudSyncStatus || "Cloud sync standing by"}</div>
+                        <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 13, color: C.text }}>
+                          <div><strong>{reviewSessions.length}</strong> tracked sessions in this dashboard</div>
+                          <div><strong>{requestHistory.length}</strong> request/report items saved</div>
+                          <div><strong>{savedSessionWaiting ? 1 : 0}</strong> saved session waiting to reopen</div>
+                          <div><strong>{isOnline ? "Online" : "Offline"}</strong> system state | {cloudSyncStatus || "Cloud sync standing by"}</div>
+                        </div>
+                      </div>
+
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Planning
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em" }}>
+                        {plannerOpenItems.length ? plannerOpenItems.length : 0} active
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7, color: C.text }}>
+                        {plannerRecommendedItem
+                          ? `Next due: ${plannerSummaryLine}${plannerRecommendedItem.dueDate ? ` on ${plannerRecommendedItem.dueDate}` : ""}.`
+                          : "No active planner items yet. Build a study plan so CareDrop can surface what to tackle next."}
+                      </div>
+                      <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => setMode("planner")}
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 12,
+                            border: "none",
+                            background: C.accent,
+                            color: "#fff",
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Open planner
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMode("calendar")}
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 12,
+                            border: `1px solid ${C.border}`,
+                            background: C.surface,
+                            color: C.text,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Open calendar
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -4860,6 +5156,38 @@ export default function App() {
                 <div style={{ display: "grid", gap: 16 }}>
                   <div
                     style={{
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {[
+                      ["overview", "Overview"],
+                      ["feedback", "Feedback"],
+                      ["planning", "Planning"],
+                      ["activity", "Activity"],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setAdminView(value)}
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: 12,
+                          border: adminView === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
+                          background: adminView === value ? C.accentLight : "#FCFBF8",
+                          color: adminView === value ? C.accent : C.text,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{
                       display: "grid",
                       gridTemplateColumns: width < 980 ? "1fr" : "repeat(4, minmax(0, 1fr))",
                       gap: 14,
@@ -4911,7 +5239,7 @@ export default function App() {
 
                   <div
                     style={{
-                      display: "grid",
+                      display: adminView === "overview" ? "grid" : "none",
                       gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.15fr) minmax(300px, 0.85fr)",
                       gap: 14,
                     }}
@@ -5030,6 +5358,7 @@ export default function App() {
 
                   <div
                     style={{
+                      display: adminView === "feedback" ? "block" : "none",
                       borderRadius: 18,
                       padding: 18,
                       border: `1px solid ${C.border}`,
@@ -5050,8 +5379,8 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                      {requestHistory.length ? (
-                        requestHistory.slice(0, 6).map((entry) => (
+                      {adminFeedbackItems.length ? (
+                        adminFeedbackItems.slice(0, 8).map((entry) => (
                           <div
                             key={entry.id || entry.number || entry.createdAt}
                             style={{
@@ -5099,6 +5428,200 @@ export default function App() {
                           No requests have been submitted yet. Once learners start sending fixes, topic requests, or bug reports, they will appear here.
                         </div>
                       )}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: adminView === "planning" ? "grid" : "none",
+                      gridTemplateColumns: width < 980 ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Feature Adoption
+                      </div>
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {featureUsageSummary.map((item) => (
+                          <div
+                            key={item.label}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 12,
+                              padding: "12px 14px",
+                              borderRadius: 14,
+                              background: "#FFFFFF",
+                              border: `1px solid ${C.border}`,
+                              fontSize: 13,
+                              color: C.text,
+                              fontWeight: 700,
+                            }}
+                          >
+                            <span>{item.label}</span>
+                            <span>{item.value}</span>
+                          </div>
+                        ))}
+                        {plannerModeSummary.length ? (
+                          <div style={{ marginTop: 4, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+                            Planner mix: {plannerModeSummary.slice(0, 3).map(([modeName, count]) => `${modeName} (${count})`).join(", ")}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Planning Pressure Points
+                      </div>
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                          Upcoming calendar events: <strong>{upcomingEvents.length}</strong>
+                        </div>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                          Planner completion rate: <strong>{plannerCompletionRate}%</strong>
+                        </div>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                          Overdue planner items: <strong>{overduePlannerItems.length}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Scheduled Subjects
+                      </div>
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {scheduledSubjectSummary.length ? (
+                          scheduledSubjectSummary.slice(0, 6).map(([subjectName, count]) => (
+                            <div
+                              key={subjectName}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 12,
+                                padding: "12px 14px",
+                                borderRadius: 14,
+                                background: "#FFFFFF",
+                                border: `1px solid ${C.border}`,
+                                fontSize: 13,
+                                color: C.text,
+                                fontWeight: 700,
+                              }}
+                            >
+                              <span>{subjectName}</span>
+                              <span>{count}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                            No subject-tagged calendar entries yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: adminView === "activity" ? "grid" : "none",
+                      gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.1fr) minmax(300px, 0.9fr)",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Recent Session Activity
+                      </div>
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {adminRecentSessions.length ? (
+                          adminRecentSessions.map((session) => (
+                            <div
+                              key={session.id}
+                              style={{
+                                padding: "14px 16px",
+                                borderRadius: 14,
+                                background: "#FFFFFF",
+                                border: `1px solid ${C.border}`,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                  <Badge label={buildSessionLabel(session)} color="blue" />
+                                  {session.subject ? <Badge label={session.subject} color="gray" /> : null}
+                                  {typeof session.score === "number" ? (
+                                    <Badge label={`${session.score}%`} color={session.score >= 75 ? "green" : session.score >= 60 ? "amber" : "red"} />
+                                  ) : null}
+                                </div>
+                                <div style={{ fontSize: 12, color: C.muted }}>{getLocalDateLabel(session.createdAt)}</div>
+                              </div>
+                              <div style={{ marginTop: 8, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                                {session.answeredCount || 0} answered | {session.saved ? "saved for return" : "completed in one pass"}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                            No study sessions yet. Once learners begin reviewing, their recent activity trail will appear here.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                        display: "grid",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Retention Signals
+                      </div>
+                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        Current study streak: <strong>{studyStreak}</strong> day{studyStreak === 1 ? "" : "s"}
+                      </div>
+                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        Answered today: <strong>{todayAnsweredCount}</strong> / {dailyGoalTarget}
+                      </div>
+                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        Saved sessions waiting: <strong>{savedSessionCount}</strong>
+                      </div>
+                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        Readiness score snapshot: <strong>{readinessScore}%</strong>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -6463,27 +6986,641 @@ export default function App() {
               </div>
             ) : null}
 
-            <div style={panelStyle}>
-              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>
-                Review History
+            {mode === "calendar" ? (
+              <div style={panelStyle}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    flexWrap: "wrap",
+                    marginBottom: 18,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 17 }}>Study Calendar</div>
+                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+                      Schedule review blocks, note important dates, and keep your next study commitments visible.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMonth((value) => shiftMonth(value, -1))}
+                      style={{
+                        padding: "9px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${C.border}`,
+                        background: C.surface,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Prev Month
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMonth(new Date())}
+                      style={{
+                        padding: "9px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${C.border}`,
+                        background: C.surface,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Today
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMonth((value) => shiftMonth(value, 1))}
+                      style={{
+                        padding: "9px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${C.border}`,
+                        background: C.surface,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Next Month
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: width < 1100 ? "1fr" : "minmax(0, 1.1fr) minmax(320px, 0.9fr)",
+                    gap: 18,
+                  }}
+                >
+                  <div
+                    style={{
+                      borderRadius: 18,
+                      border: `1px solid ${C.border}`,
+                      background: "#FCFBF8",
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 14 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800 }}>{getMonthLabel(calendarMonth)}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>
+                        {calendarEvents.length ? `${calendarEvents.length} total entries` : "No entries yet"}
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                        gap: 8,
+                        marginBottom: 10,
+                      }}
+                    >
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+                        <div
+                          key={label}
+                          style={{
+                            textAlign: "center",
+                            fontSize: 11,
+                            color: C.faint,
+                            fontWeight: 800,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {label}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 8 }}>
+                      {calendarDays.map((day) => {
+                        const active = day.key === calendarSelectedDate;
+                        const today = day.key === formatDateKey(new Date());
+                        const completedCount = day.events.filter((event) => event.completed).length;
+                        return (
+                          <button
+                            key={day.key}
+                            type="button"
+                            onClick={() => setCalendarSelectedDate(day.key)}
+                            style={{
+                              minHeight: width < 640 ? 68 : 86,
+                              borderRadius: 14,
+                              border: active
+                                ? `1px solid ${C.accent}`
+                                : today
+                                  ? `1px solid #BFD1E5`
+                                  : `1px solid ${C.border}`,
+                              background: active ? C.accentLight : day.inMonth ? "#FFFFFF" : "#F4F1EB",
+                              color: day.inMonth ? C.text : C.faint,
+                              padding: 10,
+                              textAlign: "left",
+                              cursor: "pointer",
+                              display: "flex",
+                              flexDirection: "column",
+                              justifyContent: "space-between",
+                              gap: 8,
+                            }}
+                          >
+                            <div style={{ fontSize: 13, fontWeight: 800 }}>{day.date.getDate()}</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              {day.events.length ? (
+                                <div style={{ fontSize: 10, fontWeight: 800, color: active ? C.accent : "#355E8A" }}>
+                                  {day.events.length} item{day.events.length === 1 ? "" : "s"}
+                                </div>
+                              ) : null}
+                              {completedCount ? (
+                                <div style={{ fontSize: 10, color: C.accent }}>
+                                  {completedCount} done
+                                </div>
+                              ) : null}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 14 }}>
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                        padding: 18,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Selected Date
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 22, fontWeight: 900 }}>
+                        {new Date(calendarSelectedDate).toLocaleDateString([], {
+                          weekday: "long",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </div>
+                      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                        <input
+                          value={calendarDraftTitle}
+                          onChange={(event) => setCalendarDraftTitle(event.target.value)}
+                          placeholder="Title for this date"
+                          style={{ ...selectStyle, cursor: "text" }}
+                        />
+                        <select
+                          value={calendarDraftType}
+                          onChange={(event) => setCalendarDraftType(event.target.value)}
+                          style={selectStyle}
+                        >
+                          {PLANNER_EVENT_TYPES.map((type) => (
+                            <option key={type} value={type}>
+                              {type}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={calendarDraftSubject}
+                          onChange={(event) => setCalendarDraftSubject(event.target.value)}
+                          style={selectStyle}
+                        >
+                          <option value="">No subject tag</option>
+                          {SUBJECT_OPTIONS.filter((value) => value !== "Mixed Review").map((value) => (
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
+                          ))}
+                        </select>
+                        <textarea
+                          value={calendarDraftNote}
+                          onChange={(event) => setCalendarDraftNote(event.target.value)}
+                          placeholder="Optional note for this date"
+                          style={{
+                            ...selectStyle,
+                            minHeight: 90,
+                            resize: "vertical",
+                            cursor: "text",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={addCalendarEvent}
+                          style={{
+                            padding: "11px 14px",
+                            borderRadius: 12,
+                            border: "none",
+                            background: C.accent,
+                            color: "#fff",
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Save calendar entry
+                        </button>
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 14,
+                          borderTop: `1px solid ${C.border}`,
+                          paddingTop: 14,
+                          display: "grid",
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          Entries On This Date
+                        </div>
+                        {selectedDateEvents.length ? (
+                          selectedDateEvents.map((event) => (
+                            <div
+                              key={event.id}
+                              style={{
+                                padding: "12px 14px",
+                                borderRadius: 14,
+                                background: "#FFFFFF",
+                                border: `1px solid ${C.border}`,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                  <Badge label={event.type} color="blue" />
+                                  {event.subject ? <Badge label={event.subject} color="gray" /> : null}
+                                  {event.completed ? <Badge label="done" color="green" /> : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCalendarEvent(event.id)}
+                                  style={{
+                                    padding: "7px 10px",
+                                    borderRadius: 10,
+                                    border: `1px solid ${C.border}`,
+                                    background: C.surface,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  {event.completed ? "Reopen" : "Done"}
+                                </button>
+                              </div>
+                              <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800 }}>{event.title}</div>
+                              {event.note ? (
+                                <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+                                  {event.note}
+                                </div>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => deleteCalendarEvent(event.id)}
+                                style={{
+                                  marginTop: 8,
+                                  padding: 0,
+                                  border: "none",
+                                  background: "transparent",
+                                  color: C.red,
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                            Nothing is scheduled for this date yet.
+                          </div>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 14,
+                          borderTop: `1px solid ${C.border}`,
+                          paddingTop: 14,
+                          display: "grid",
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          Upcoming
+                        </div>
+                        {upcomingEvents.length ? (
+                          upcomingEvents.map((event) => (
+                            <div
+                              key={`${event.id}-upcoming`}
+                              style={{
+                                padding: "10px 12px",
+                                borderRadius: 12,
+                                background: "#FFFFFF",
+                                border: `1px solid ${C.border}`,
+                                fontSize: 12,
+                                lineHeight: 1.7,
+                              }}
+                            >
+                              <strong style={{ color: C.text }}>{event.title}</strong>
+                              <div style={{ color: C.muted }}>
+                                {event.date} | {event.type}{event.subject ? ` | ${event.subject}` : ""}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                            No upcoming calendar entries yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              {reviewSessions.length ? (
-                <div style={{ display: "grid", gap: 12 }}>
-                  {reviewSessions.map((session) => (
-                    <SavedSessionCard
-                      key={session.id}
-                      session={session}
-                      onOpen={openSavedQuiz}
-                      onDelete={deleteSavedQuiz}
-                    />
-                  ))}
+            ) : null}
+
+            {mode === "planner" ? (
+              <div style={panelStyle}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    flexWrap: "wrap",
+                    marginBottom: 18,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 17 }}>Study Planner</div>
+                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+                      Turn weak areas and upcoming study blocks into named targets with due dates you can revisit.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Badge label={`${plannerCompletionRate}% complete`} color={plannerCompletionRate >= 60 ? "green" : plannerCompletionRate >= 30 ? "amber" : "gray"} />
+                    {overduePlannerItems.length ? <Badge label={`${overduePlannerItems.length} overdue`} color="red" /> : null}
+                  </div>
                 </div>
-              ) : (
-                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
-                  Submit a flashcard or quiz session and it will appear here for review later.
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: width < 1100 ? "1fr" : "minmax(320px, 0.9fr) minmax(0, 1.1fr)",
+                    gap: 18,
+                  }}
+                >
+                  <div
+                    style={{
+                      borderRadius: 18,
+                      border: `1px solid ${C.border}`,
+                      background: "#FCFBF8",
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      Add Planner Item
+                    </div>
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      <input
+                        value={plannerTitle}
+                        onChange={(event) => setPlannerTitle(event.target.value)}
+                        placeholder="What do you want to complete?"
+                        style={{ ...selectStyle, cursor: "text" }}
+                      />
+                      <select value={plannerSubject} onChange={(event) => setPlannerSubject(event.target.value)} style={selectStyle}>
+                        <option value="">No subject tag</option>
+                        {SUBJECT_OPTIONS.filter((value) => value !== "Mixed Review").map((value) => (
+                          <option key={value} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
+                      <select value={plannerMode} onChange={(event) => setPlannerMode(event.target.value)} style={selectStyle}>
+                        {PLANNER_MODE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="date"
+                        value={plannerDueDate}
+                        onChange={(event) => setPlannerDueDate(event.target.value)}
+                        style={{ ...selectStyle, cursor: "pointer" }}
+                      />
+                      <textarea
+                        value={plannerNotes}
+                        onChange={(event) => setPlannerNotes(event.target.value)}
+                        placeholder="Optional note, strategy, or reminder"
+                        style={{
+                          ...selectStyle,
+                          minHeight: 96,
+                          resize: "vertical",
+                          cursor: "text",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={addPlannerItem}
+                        style={{
+                          padding: "11px 14px",
+                          borderRadius: 12,
+                          border: "none",
+                          background: C.accent,
+                          color: "#fff",
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Save planner item
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 14 }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: width < 900 ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                        gap: 12,
+                      }}
+                    >
+                      {[
+                        {
+                          label: "Open items",
+                          value: plannerOpenItems.length,
+                          helper: plannerRecommendedItem ? plannerSummaryLine : "Nothing active yet",
+                        },
+                        {
+                          label: "Completed",
+                          value: plannerItems.filter((item) => item.completed).length,
+                          helper: plannerItems.length ? "Tracked in this account" : "No completions yet",
+                        },
+                        {
+                          label: "Overdue",
+                          value: overduePlannerItems.length,
+                          helper: overduePlannerItems.length ? "Needs rescheduling or completion" : "Everything is on schedule",
+                        },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          style={{
+                            borderRadius: 16,
+                            padding: 16,
+                            border: `1px solid ${C.border}`,
+                            background: "#FCFBF8",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            {item.label}
+                          </div>
+                          <div style={{ marginTop: 10, fontSize: 30, fontWeight: 900 }}>{item.value}</div>
+                          <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>{item.helper}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                        padding: 18,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Active Planner Items
+                      </div>
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {plannerItems.length ? (
+                          sortByDateAsc(plannerItems, "dueDate").map((item) => (
+                            <div
+                              key={item.id}
+                              style={{
+                                padding: "14px 16px",
+                                borderRadius: 14,
+                                background: "#FFFFFF",
+                                border: `1px solid ${item.completed ? "#BEE5C9" : item.dueDate && item.dueDate < formatDateKey(new Date()) ? "#F5B9C0" : C.border}`,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                  <Badge label={item.completed ? "complete" : "active"} color={item.completed ? "green" : item.dueDate && item.dueDate < formatDateKey(new Date()) ? "red" : "blue"} />
+                                  {item.subject ? <Badge label={item.subject} color="gray" /> : null}
+                                </div>
+                                <div style={{ fontSize: 12, color: C.muted }}>
+                                  {item.dueDate ? `Due ${item.dueDate}` : "No due date"}
+                                </div>
+                              </div>
+                              <div style={{ marginTop: 10, fontSize: 15, fontWeight: 800 }}>{item.title}</div>
+                              {item.notes ? (
+                                <div style={{ marginTop: 6, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                                  {item.notes}
+                                </div>
+                              ) : null}
+                              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => togglePlannerItem(item.id)}
+                                  style={{
+                                    padding: "8px 12px",
+                                    borderRadius: 10,
+                                    border: `1px solid ${C.border}`,
+                                    background: C.surface,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  {item.completed ? "Mark open" : "Mark complete"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => addPlannerItemToCalendar(item)}
+                                  style={{
+                                    padding: "8px 12px",
+                                    borderRadius: 10,
+                                    border: `1px solid ${C.border}`,
+                                    background: C.surface,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Add to calendar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (item.subject) {
+                                      setSubject(item.subject);
+                                    }
+                                    setMode(item.mode === "mixed" ? "flashcard" : item.mode);
+                                    setStatusMessage("Planner target opened in the workspace.");
+                                  }}
+                                  style={{
+                                    padding: "8px 12px",
+                                    borderRadius: 10,
+                                    border: `1px solid ${C.accentMid}`,
+                                    background: C.accentLight,
+                                    color: C.accent,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Open workspace
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deletePlannerItem(item.id)}
+                                  style={{
+                                    padding: "8px 12px",
+                                    borderRadius: 10,
+                                    border: `1px solid ${C.red}`,
+                                    background: C.redLight,
+                                    color: C.red,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                            No planner items yet. Add one on the left to turn the dashboard into a real study plan.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            ) : null}
+
+            {mode === "history" ? (
+              <div style={panelStyle}>
+                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>
+                  Review History
+                </div>
+                {reviewSessions.length ? (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {reviewSessions.map((session) => (
+                      <SavedSessionCard
+                        key={session.id}
+                        session={session}
+                        onOpen={openSavedQuiz}
+                        onDelete={deleteSavedQuiz}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                    Submit a flashcard or quiz session and it will appear here for review later.
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
