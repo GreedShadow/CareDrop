@@ -52,6 +52,8 @@ export default async function handler(req, res) {
     const topic = String(body?.topic || "").trim();
     const difficulty = String(body?.difficulty || "medium");
     const count = Math.max(6, Math.min(20, Number(body?.count || 10)));
+    const examMode = Boolean(body?.examMode);
+    const examLength = Math.max(count, Math.min(500, Number(body?.examLength || count)));
     const excludeQuestions = Array.isArray(body?.excludeQuestions) ? body.excludeQuestions.slice(0, 160) : [];
     const context = buildStudyContext({ notes, subject, topic });
 
@@ -63,6 +65,9 @@ export default async function handler(req, res) {
       difficulty === "mixed"
         ? "Use a balanced mix of easy, medium, and hard questions."
         : `Every question must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
+    const examInstruction = examMode
+      ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form board review: broad subject coverage, clinically varied stems, strong prioritization language, and no repetitive wording.`
+      : "Make the set feel like a focused quiz batch.";
 
     const parsed = await generateJson(client, {
       systemInstruction:
@@ -70,6 +75,7 @@ export default async function handler(req, res) {
       prompt: [
         `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
         difficultyInstruction,
+        examInstruction,
         context,
         "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
         excludeQuestions.length

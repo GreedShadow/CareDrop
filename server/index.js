@@ -254,6 +254,8 @@ app.post("/api/claude/quiz", async (req, res) => {
     const topic = String(req.body?.topic || "").trim();
     const difficulty = String(req.body?.difficulty || "medium");
     const count = Math.max(6, Math.min(20, Number(req.body?.count || 10)));
+    const examMode = Boolean(req.body?.examMode);
+    const examLength = Math.max(count, Math.min(500, Number(req.body?.examLength || count)));
     const excludeQuestions = Array.isArray(req.body?.excludeQuestions) ? req.body.excludeQuestions.slice(0, 160) : [];
     const context = buildStudyContext({ notes, subject, topic });
 
@@ -265,6 +267,9 @@ app.post("/api/claude/quiz", async (req, res) => {
       difficulty === "mixed"
         ? "Use a balanced mix of easy, medium, and hard questions."
         : `Every question must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
+    const examInstruction = examMode
+      ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form board review: broad subject coverage, clinically varied stems, strong prioritization language, and no repetitive wording.`
+      : "Make the set feel like a focused quiz batch.";
 
     const parsed = await generateJson(client, {
       systemInstruction:
@@ -272,6 +277,7 @@ app.post("/api/claude/quiz", async (req, res) => {
       prompt: [
         `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
         difficultyInstruction,
+        examInstruction,
         context,
         "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
         excludeQuestions.length

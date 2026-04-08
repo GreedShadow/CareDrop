@@ -11,7 +11,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 const FLASHCARD_SET_SIZE = 10;
 const QUIZ_SET_SIZE = 10;
 const SIMULATION_BATCH_SIZE = 20;
-const SIMULATION_SIZE_OPTIONS = [50, 100];
+const SIMULATION_SIZE_OPTIONS = [50, 100, 500];
 const RECENT_MEMORY_LIMIT = 12;
 const SUPPORTED_UPLOAD_EXTENSIONS = [".doc", ".docx", ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt"];
 const LOGO_SRC = "/favicon.svg";
@@ -399,6 +399,22 @@ function normalizeAuthErrorMessage(error, context = "auth") {
   }
 
   return error?.message || String(error || "");
+}
+
+function normalizeAiErrorMessage(error) {
+  const message = String(error?.message || error || "");
+  const lowered = message.toLowerCase();
+
+  if (
+    lowered.includes("currently experiencing high demand") ||
+    lowered.includes("\"status\":\"unavailable\"") ||
+    lowered.includes("\"code\":503") ||
+    lowered.includes("service unavailable")
+  ) {
+    return "Gemini is busy right now. CareDrop will keep using the local review bank while the AI service recovers.";
+  }
+
+  return message;
 }
 
 function buildStudyText(noteText, uploadedText) {
@@ -1014,7 +1030,12 @@ async function postJson(path, payload) {
   }
 
   if (!response.ok) {
-    throw new Error(data.error || "AI request failed.");
+    const errorMessage =
+      data?.error?.message ||
+      data?.message ||
+      data?.error ||
+      "AI request failed.";
+    throw new Error(normalizeAiErrorMessage(errorMessage));
   }
 
   return data;
@@ -3643,17 +3664,34 @@ export default function App() {
     return aiCards.length < FLASHCARD_SET_SIZE || needed > 0;
   }
 
-  async function requestQuizBatch(activeTopic, count, excludePrompts = []) {
+  async function requestQuizBatch(activeTopic, count, excludePrompts = [], options = {}) {
+    const {
+      subjectOverride = subject,
+      difficultyOverride = difficulty === "All" ? "mixed" : difficulty,
+      examMode = false,
+      examLength = count,
+      topicOverride = activeTopic,
+    } = options;
+
     const data = await postJson("/api/claude/quiz", {
       notes: studyText,
-      subject,
-      topic: activeTopic,
-      difficulty: difficulty === "All" ? "mixed" : difficulty,
+      subject: subjectOverride,
+      topic: topicOverride,
+      difficulty: difficultyOverride,
       count,
       excludeQuestions: excludePrompts,
+      examMode,
+      examLength,
     });
 
-    return sanitizeQuizQuestions(data.questions, subject, difficulty, activeTopic, [], true);
+    return sanitizeQuizQuestions(
+      data.questions,
+      subjectOverride,
+      difficultyOverride === "mixed" ? "All" : difficultyOverride,
+      topicOverride,
+      [],
+      true
+    );
   }
 
   async function generateQuiz(activeTopic = topicFilter) {
@@ -3751,11 +3789,12 @@ export default function App() {
   }
 
   async function generateSimulationExam(targetSize = simulationSize, activeTopic = topicFilter) {
-    if (!ensureReviewTargetSelected("start a simulation exam", activeTopic)) {
-      return;
-    }
-
     const finalTarget = SIMULATION_SIZE_OPTIONS.includes(Number(targetSize)) ? Number(targetSize) : 50;
+    const simulationSubject = "Mixed Review";
+    const simulationDifficulty = "mixed";
+    const simulationTopic = "";
+    const maxAiQuestions = finalTarget >= 500 ? 120 : finalTarget >= 100 ? 60 : 40;
+    const aiBatchCap = Math.ceil(maxAiQuestions / SIMULATION_BATCH_SIZE);
     clearMessages();
     setApiLoading(true);
     setSimulationSubmitted(false);
@@ -3765,9 +3804,9 @@ export default function App() {
       const localPool = selectSessionItems(
         buildLocalQuizFallback(
           activeEntries,
-          subject,
-          difficulty,
-          activeTopic,
+          "",
+          "All",
+          "",
           Math.max(finalTarget, 60),
           []
         ),
@@ -3781,17 +3820,24 @@ export default function App() {
       const shouldAskAi = Boolean(activeTopic || hasCustomSource || combined.length < finalTarget);
 
       if (shouldAskAi) {
-        const maxBatches = Math.ceil(finalTarget / SIMULATION_BATCH_SIZE);
+        const maxBatches = Math.min(Math.ceil(finalTarget / SIMULATION_BATCH_SIZE), aiBatchCap);
 
         for (let batchIndex = 0; batchIndex < maxBatches && combined.length < finalTarget; batchIndex += 1) {
           const requestedCount = Math.min(SIMULATION_BATCH_SIZE, finalTarget - combined.length);
           const aiBatch = await requestQuizBatch(
-            activeTopic,
+            simulationTopic,
             requestedCount,
             uniqueBy(
               [...combined.map((item) => item.prompt), ...(hasCustomSource ? [] : usedQuizPromptsRef.current)],
               (value) => normalize(value)
-            )
+            ),
+            {
+              subjectOverride: simulationSubject,
+              difficultyOverride: simulationDifficulty,
+              examMode: true,
+              examLength: finalTarget,
+              topicOverride: simulationTopic,
+            }
           );
 
           if (!aiBatch.length) {
@@ -3818,8 +3864,8 @@ export default function App() {
       setSimulationUsedAi(combined.length > localPool.length);
       setStatusMessage(
         combined.length > localPool.length
-          ? `Simulation exam ready. Gemini helped expand this ${finalTarget}-question set.`
-          : `Simulation exam ready. Your ${finalTarget}-question set is prepared.`
+          ? `Simulation exam ready. Gemini helped shape this mixed ${finalTarget}-question exam.`
+          : `Simulation exam ready. Your mixed ${finalTarget}-question exam is prepared.`
       );
 
       if (!hasCustomSource) {
@@ -3837,9 +3883,9 @@ export default function App() {
       const fallback = selectSessionItems(
         buildLocalQuizFallback(
           activeEntries,
-          subject,
-          difficulty,
-          activeTopic,
+          "",
+          "All",
+          "",
           Math.max(finalTarget, 60),
           []
         ),
@@ -3855,9 +3901,8 @@ export default function App() {
       setSimulationSubmitted(false);
       setMode("simulation");
       setSimulationUsedAi(false);
-      setApiError(
-        error.message || `Gemini simulation generation failed. A local ${finalTarget}-question simulation was loaded instead.`
-      );
+      setApiError(normalizeAiErrorMessage(error) || `Gemini simulation generation failed. A local ${finalTarget}-question simulation was loaded instead.`);
+      setStatusMessage(`Loaded a mixed ${finalTarget}-question simulation from the CareDrop bank.`);
     } finally {
       setApiLoading(false);
     }
@@ -4122,9 +4167,9 @@ export default function App() {
       id: uid(),
       createdAt: new Date().toISOString(),
       mode: "simulation",
-      subject: subject || "Mixed Review",
-      difficulty,
-      topic: topicFilter,
+      subject: "Mixed Review",
+      difficulty: "mixed",
+      topic: "",
       sourceLabel: simulationUsedAi
         ? "Simulation built from the CareDrop bank with Gemini support"
         : "Simulation built from the CareDrop review bank",
@@ -4707,7 +4752,7 @@ export default function App() {
                   <SidebarNavButton active={mode === "dashboard"} label="Dashboard" hint="Overview and next steps" onClick={() => setMode("dashboard")} />
                   <SidebarNavButton active={mode === "flashcard"} label="Flashcards" hint="Focused card review" badge={flashcards.length || ""} onClick={() => setMode("flashcard")} />
                   <SidebarNavButton active={mode === "quiz"} label="Quiz" hint="Board-style drills" badge={quiz.length || ""} onClick={() => setMode("quiz")} />
-                  <SidebarNavButton active={mode === "simulation"} label="Simulation Exam" hint="50-100 item exam mode" badge={simulationQuestions.length || ""} onClick={() => setMode("simulation")} />
+                  <SidebarNavButton active={mode === "simulation"} label="Simulation Exam" hint="Mixed 50-500 item exam mode" badge={simulationQuestions.length || ""} onClick={() => setMode("simulation")} />
                   <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => setMode("notes")} />
                   <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions and returns" badge={reviewSessions.length || ""} onClick={() => setMode("history")} />
                 </div>
@@ -5802,7 +5847,7 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Simulation Exam</div>
                     <div style={{ fontSize: 12, color: C.muted, maxWidth: 720 }}>
-                      Build a longer board-style exam from the review bank. Topic focus can trigger Gemini to expand the set when the local pool starts repeating too quickly.
+                      Build a mixed board-style exam across the full CareDrop bank. Gemini helps expand parts of the set so the simulation feels broader and closer to a real long-form review exam.
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -5840,7 +5885,7 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    Select a subject or enter a topic focus, then generate a 50- or 100-question simulation exam.
+                    Generate a mixed 50-, 100-, or 500-question simulation exam. This mode ignores the current subject filter so the learner gets a broader board-style exam experience.
                   </div>
                 ) : (
                   <>
@@ -6077,7 +6122,7 @@ export default function App() {
                       <div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
                         {simulationSubmitted
                           ? simulationUsedAi
-                            ? "This exam mixed the CareDrop bank with Gemini-generated expansion so the set stayed broad and less repetitive."
+                            ? "This exam mixed the CareDrop bank with Gemini-generated expansion so the set stayed broad, less repetitive, and closer to a real board-style review session."
                             : "This exam came from the CareDrop bank and was saved to Review History after submission."
                           : "Answers stay hidden while the simulation is active so the flow feels closer to an actual long-form exam."}
                       </div>
