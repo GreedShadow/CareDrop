@@ -8,6 +8,10 @@ const AUTH_SESSION_KEY = "caredrop-auth-session-v1";
 const ACCOUNT_STORAGE_KEY = "caredrop-auth-accounts-v1";
 const AUTH_SESSION_MAX_AGE_MS = 1000 * 60 * 10;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+const ADMIN_EMAILS = String(import.meta.env.VITE_ADMIN_EMAILS || "")
+  .split(",")
+  .map((value) => value.trim().toLowerCase())
+  .filter(Boolean);
 const FLASHCARD_SET_SIZE = 10;
 const QUIZ_SET_SIZE = 10;
 const SIMULATION_BATCH_SIZE = 20;
@@ -67,6 +71,16 @@ const SEED_QUESTION_BANK = {
     { q: "When a patient refuses a prescribed treatment, what is the nurse's best response?", a: "Assess understanding, explore concerns, provide clear information, and respect the patient's right while documenting and escalating appropriately.", difficulty: "medium", topic: "patient rights" },
     { q: "Which patient needs the highest priority assessment: new confusion, mild nausea, or chronic shoulder pain?", a: "New confusion because an acute change in mentation may be the earliest sign of serious deterioration.", difficulty: "hard", topic: "priority setting" },
     { q: "What is the nurse's first action if a medication dose seems unusually high?", a: "Pause before administration, verify the order, check the reference if needed, and clarify the dose rather than guessing.", difficulty: "easy", topic: "medication safety" },
+    { q: "What is the safest first response when a post-fall patient insists they are fine and tries to stand up immediately?", a: "Stop the patient from standing, assess for injury and neurologic change first, and only mobilize again after safety is re-established.", difficulty: "medium", topic: "fall response" },
+    { q: "Why is pain reassessment required after an analgesic is given?", a: "It confirms whether the intervention worked, whether the dose was adequate, and whether adverse effects or escalating pain are developing.", difficulty: "easy", topic: "pain management" },
+    { q: "What should the nurse prioritize when a patient with dysphagia is about to receive oral medication?", a: "Confirm swallowing safety first and use the approved route or formulation because aspiration risk overrides routine administration.", difficulty: "hard", topic: "aspiration prevention" },
+    { q: "Which finding after prolonged bed rest suggests orthostatic intolerance?", a: "Dizziness or weakness during position change suggests the patient may not tolerate sudden standing and needs slower mobilization.", difficulty: "medium", topic: "mobility" },
+    { q: "Why are time-outs required before invasive procedures?", a: "They confirm the correct patient, procedure, and site and reduce preventable wrong-site or wrong-patient events.", difficulty: "easy", topic: "patient safety" },
+    { q: "What should the nurse do first when a patient with a seizure history says an aura is starting?", a: "Protect the patient from injury, keep the airway environment safe, and prepare for seizure precautions before the event progresses.", difficulty: "hard", topic: "seizure precautions" },
+    { q: "What is the best action when a confused patient tries to remove an oxygen mask repeatedly?", a: "Assess the cause of agitation, support oxygenation, reorient calmly, and address reversible triggers rather than escalating force immediately.", difficulty: "medium", topic: "behavioral safety" },
+    { q: "Why does the nurse verify allergies even when a patient says a drug was taken before without problems?", a: "Allergy status can change, prior exposure does not guarantee safety, and verification remains part of safe medication administration.", difficulty: "easy", topic: "medication safety" },
+    { q: "What is the nursing priority when a patient suddenly reports difficulty breathing while lying flat?", a: "Raise the head of the bed, assess oxygenation, and escalate quickly because orthopnea can signal acute cardiopulmonary compromise.", difficulty: "hard", topic: "respiratory priority" },
+    { q: "Why is hourly rounding useful on a busy unit?", a: "It anticipates pain, position, personal needs, and safety concerns before they become falls, delays, or call-light emergencies.", difficulty: "easy", topic: "preventive care" },
   ],
   Pharmacology: [
     { q: "What is the priority assessment before administering digoxin?", a: "Check the apical pulse for 1 full minute and hold if it is below the ordered parameter. Also review potassium because hypokalemia increases toxicity risk.", difficulty: "medium", topic: "cardiac drugs" },
@@ -106,6 +120,16 @@ const SEED_QUESTION_BANK = {
     { q: "What does black, tarry stool usually suggest in Med-Surg review?", a: "Melena, which often points to upper GI bleeding and should not be dismissed as a minor finding.", difficulty: "easy", topic: "gastrointestinal" },
     { q: "What finding matters most after insulin administration in a patient who is suddenly diaphoretic and shaky?", a: "Suspect hypoglycemia first and confirm rapidly so treatment can start without delay.", difficulty: "easy", topic: "endocrine" },
     { q: "Why is neurovascular assessment important after casting a fractured limb?", a: "Circulation, movement, and sensation can worsen quickly if swelling compromises the extremity.", difficulty: "medium", topic: "musculoskeletal" },
+    { q: "Which finding is most concerning in a patient with suspected bowel obstruction?", a: "Persistent vomiting, distention, worsening pain, and absent bowel function together suggest escalating obstruction that needs urgent review.", difficulty: "hard", topic: "gastrointestinal" },
+    { q: "What is the priority concern when a patient with diabetic ketoacidosis becomes increasingly drowsy?", a: "Worsening metabolic instability or cerebral compromise needs urgent reassessment because declining mentation is never routine in DKA.", difficulty: "hard", topic: "endocrine" },
+    { q: "Why is a sudden drop in blood pressure with cool clammy skin after surgery alarming?", a: "It can reflect shock from bleeding or poor perfusion and requires rapid assessment rather than routine observation.", difficulty: "hard", topic: "post-op care" },
+    { q: "What should the nurse suspect when a patient with asthma has a suddenly quiet chest and worsening distress?", a: "Minimal air movement in a struggling patient may signal severe obstruction and impending respiratory failure.", difficulty: "hard", topic: "respiratory" },
+    { q: "What is the safest nursing interpretation of new unilateral calf swelling and warmth?", a: "Suspect DVT and avoid unnecessary manipulation while urgent evaluation is arranged.", difficulty: "medium", topic: "vascular" },
+    { q: "Why is daily weight more reliable than edema alone in heart-failure monitoring?", a: "Fluid retention often appears in weight first, making daily weights one of the most sensitive trend markers.", difficulty: "medium", topic: "cardiac" },
+    { q: "Which neurologic change after head injury is most urgent to escalate?", a: "A new decline in responsiveness or pupil change suggests rising intracranial danger and requires urgent escalation.", difficulty: "hard", topic: "neurologic" },
+    { q: "What does coffee-ground emesis suggest in a Med-Surg patient?", a: "Partially digested blood, often from upper GI bleeding, which still needs urgent assessment even if active bright-red bleeding is not seen.", difficulty: "medium", topic: "gastrointestinal" },
+    { q: "What is the nursing priority for a patient with severe hyperglycemia and signs of dehydration?", a: "Assess perfusion and mental status, support fluids as ordered, and treat it as a potentially unstable metabolic emergency.", difficulty: "medium", topic: "endocrine" },
+    { q: "Why is anuria after surgery more urgent than reduced output alone?", a: "Complete absence of urine can point to obstruction or severe renal compromise and needs immediate clarification.", difficulty: "hard", topic: "renal" },
   ],
   "Maternal & Newborn": [
     { q: "Late decelerations during labor usually mean what?", a: "Uteroplacental insufficiency. Reposition, give oxygen, increase fluids, stop oxytocin, and notify the provider.", difficulty: "hard", topic: "fetal monitoring" },
@@ -417,6 +441,11 @@ function normalizeAiErrorMessage(error) {
   return message;
 }
 
+function isAdminEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  return normalized ? ADMIN_EMAILS.includes(normalized) : false;
+}
+
 function buildStudyText(noteText, uploadedText) {
   return [uploadedText, noteText].filter(Boolean).join("\n\n").trim();
 }
@@ -594,6 +623,47 @@ function buildCustomEntries(text, selectedSubject) {
     }),
     (entry) => `${entry.subject}-${normalize(entry.q)}-${normalize(entry.a)}`
   );
+}
+
+function collectIncorrectQuestions(sessions = []) {
+  return (sessions || []).flatMap((session) =>
+    (session.questions || [])
+      .filter(
+        (item) =>
+          item &&
+          item.userAnswer &&
+          normalize(item.userAnswer) !== normalize(item.correctAnswer)
+      )
+      .map((item) => ({
+        subject: item.subject || session.subject || "Mixed Review",
+        topic: item.topic || session.topic || "",
+        difficulty: item.difficulty || session.difficulty || "medium",
+        prompt: item.prompt || "",
+      }))
+  );
+}
+
+function buildRemediationEntries(sourceEntries, incorrectItems, weakSubject) {
+  const targeted = sourceEntries.filter((entry) =>
+    incorrectItems.some(
+      (item) =>
+        (!item.subject || item.subject === "Mixed Review" || item.subject === entry.subject) &&
+        (!item.topic || normalize(entry.topic).includes(normalize(item.topic)) || normalize(item.prompt).includes(normalize(entry.topic)))
+    )
+  );
+
+  if (targeted.length) {
+    return targeted;
+  }
+
+  if (weakSubject) {
+    const weakSubjectEntries = sourceEntries.filter((entry) => entry.subject === weakSubject);
+    if (weakSubjectEntries.length) {
+      return weakSubjectEntries;
+    }
+  }
+
+  return sourceEntries;
 }
 
 function matchesStudyFilter(entry, subject, difficulty, topic) {
@@ -2580,6 +2650,7 @@ export default function App() {
   const persisted = initialUser ? loadPersisted(initialUser.id) : null;
   const legacySavedSessions = persisted?.savedQuizSessions || [];
   const persistedRequests = loadRequestPersisted();
+  const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [currentUser, setCurrentUser] = useState(initialUser);
   const [authMode, setAuthMode] = useState("login");
   const [authName, setAuthName] = useState("");
@@ -2615,6 +2686,7 @@ export default function App() {
   const [simulationSize, setSimulationSize] = useState(50);
   const [simulationUsedAi, setSimulationUsedAi] = useState(false);
   const [simulationAnswerSheetOpen, setSimulationAnswerSheetOpen] = useState(false);
+  const [remediationContext, setRemediationContext] = useState(persisted?.remediationContext || null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [ratings, setRatings] = useState(persisted?.ratings || {});
   const [sessions, setSessions] = useState(persisted?.sessions || 0);
@@ -2703,6 +2775,7 @@ export default function App() {
     setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(snapshot.simulationSize)) ? Number(snapshot.simulationSize) : 50);
     setSimulationUsedAi(Boolean(snapshot.simulationUsedAi));
     setSimulationAnswerSheetOpen(false);
+    setRemediationContext(snapshot.remediationContext || null);
   }
 
   useEffect(() => {
@@ -2731,6 +2804,23 @@ export default function App() {
     }, 8000);
 
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const markOnline = () => setIsOnline(true);
+    const markOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", markOnline);
+    window.addEventListener("offline", markOffline);
+
+    return () => {
+      window.removeEventListener("online", markOnline);
+      window.removeEventListener("offline", markOffline);
+    };
   }, []);
 
   useEffect(() => {
@@ -2786,6 +2876,7 @@ export default function App() {
         simulationSubmitted,
         simulationSize,
         simulationUsedAi,
+        remediationContext,
         usedFlashcardIds,
         usedFlashcardQuestions,
         usedQuizPrompts,
@@ -2821,6 +2912,7 @@ export default function App() {
     simulationSubmitted,
     simulationSize,
     simulationUsedAi,
+    remediationContext,
     usedFlashcardIds,
     usedFlashcardQuestions,
     usedQuizPrompts,
@@ -2860,6 +2952,7 @@ export default function App() {
       simulationSubmitted,
       simulationSize,
       simulationUsedAi,
+      remediationContext,
       usedFlashcardIds,
       usedFlashcardQuestions,
       usedQuizPrompts,
@@ -2917,6 +3010,7 @@ export default function App() {
     simulationSubmitted,
     simulationSize,
     simulationUsedAi,
+    remediationContext,
     usedFlashcardIds,
     usedFlashcardQuestions,
     usedQuizPrompts,
@@ -3144,6 +3238,7 @@ export default function App() {
     : 0;
   const hasRequestDraft = Boolean(requestName.trim() || requestMessage.trim() || requestStatus);
   const overallAnsweredCount = reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0);
+  const incorrectReviewItems = useMemo(() => collectIncorrectQuestions(reviewSessions), [reviewSessions]);
   const quizSessionCount = reviewSessions.filter((session) => session.mode === "quiz").length;
   const quizAverage = quizSessionCount
     ? Math.round(
@@ -3169,6 +3264,7 @@ export default function App() {
     reviewSessions.find((session) => session.saved && session.mode === "quiz") ||
     reviewSessions.find((session) => session.saved);
   const studyStreak = getStudyStreak(reviewSessions);
+  const isAdminUser = isAdminEmail(currentUser?.email);
   const todayKey = getDateKey();
   const todayAnsweredCount = reviewSessions
     .filter((session) => getDateKey(session.createdAt) === todayKey)
@@ -3180,6 +3276,13 @@ export default function App() {
     0,
     100
   );
+  const simulationFlaggedCount = simulationQuestions.filter((item) => item.flagged).length;
+  const remediationFocusSubject =
+    remediationContext?.weakestSubject ||
+    simulationWeakSubjects[0]?.subject ||
+    weakestSubject ||
+    mostRecentSession?.subject ||
+    "";
   const isFirstVisit = !reviewSessions.length && !Object.keys(ratings).length;
   const recommendedAction = (() => {
     if (savedSessionWaiting) {
@@ -3188,6 +3291,17 @@ export default function App() {
         body: `You already have ${buildSessionLabel(savedSessionWaiting)} waiting. Reopen it and keep your momentum instead of starting from zero.`,
         cta: "Resume saved session",
         onClick: () => openSavedQuiz(savedSessionWaiting),
+      };
+    }
+
+    if (incorrectReviewItems.length) {
+      return {
+        title: "Turn recent misses into a recovery set",
+        body: remediationFocusSubject
+          ? `Your recent wrong answers are clustering around ${remediationFocusSubject}. A short remediation quiz will tighten those weak spots faster than starting broad again.`
+          : "You have enough recent misses for a targeted recovery quiz. Use it to revisit what went wrong while the details are still fresh.",
+        cta: "Open remediation quiz",
+        onClick: () => startRemediationMode(),
       };
     }
 
@@ -3612,6 +3726,7 @@ export default function App() {
 
     const deck = buildLocalFlashcardSet(activeTopic);
     setFlashcards(deck);
+    setRemediationContext(null);
     setCardIdx(0);
     setFlashcardSessionRatings({});
     setFlashcardSessionSubmitted(false);
@@ -3636,6 +3751,12 @@ export default function App() {
     }
 
     clearMessages();
+
+    if (!isOnline) {
+      loadLocalFlashcardSet("Offline mode: CareDrop loaded a local flashcard set so you can keep studying.", activeTopic);
+      return;
+    }
+
     setApiLoading(true);
 
     try {
@@ -3668,6 +3789,7 @@ export default function App() {
       const deck = [...aiCards, ...fallback].slice(0, FLASHCARD_SET_SIZE);
 
       setFlashcards(deck);
+      setRemediationContext(null);
       setCardIdx(0);
       setMode("flashcard");
       setFlashcardSessionRatings({});
@@ -3730,6 +3852,31 @@ export default function App() {
     }
 
     clearMessages();
+    if (!isOnline) {
+      const fallbackPool = buildLocalQuizFallback(
+        activeEntries,
+        subject,
+        difficulty,
+        activeTopic,
+        QUIZ_SET_SIZE,
+        []
+      );
+      const fallback = selectSessionItems(
+        fallbackPool,
+        QUIZ_SET_SIZE,
+        hasCustomSource ? [] : usedQuizPromptsRef.current,
+        recentQuizPromptsRef.current,
+        (item) => normalize(item.prompt)
+      );
+      setQuiz(fallback);
+      setQuizIdx(0);
+      setMode("quiz");
+      setShowFeedback(false);
+      setQuizSubmitted(false);
+      setStatusMessage("Offline mode: CareDrop prepared a local 10-question quiz from the stored review bank.");
+      return;
+    }
+
     setApiLoading(true);
     setShowFeedback(false);
     setQuizSubmitted(false);
@@ -3757,6 +3904,7 @@ export default function App() {
       );
 
       setQuiz(questions);
+      setRemediationContext(null);
       setQuizIdx(0);
       setMode("quiz");
       setStatusMessage(
@@ -3797,6 +3945,7 @@ export default function App() {
         (item) => normalize(item.prompt)
       );
       setQuiz(fallback);
+      setRemediationContext(null);
       setQuizIdx(0);
       setMode("quiz");
       setApiError(
@@ -3847,7 +3996,7 @@ export default function App() {
       );
 
       let combined = [...localPool];
-      const shouldAskAi = Boolean(activeTopic || hasCustomSource || combined.length < finalTarget);
+      const shouldAskAi = isOnline && Boolean(activeTopic || hasCustomSource || combined.length < finalTarget);
 
       if (shouldAskAi) {
         const maxBatches = Math.min(Math.ceil(finalTarget / SIMULATION_BATCH_SIZE), aiBatchCap);
@@ -3887,6 +4036,7 @@ export default function App() {
       );
 
       setSimulationQuestions(questions);
+      setRemediationContext(null);
       setSimulationIdx(0);
       setSimulationSize(finalTarget);
       setSimulationSubmitted(false);
@@ -3927,6 +4077,7 @@ export default function App() {
       );
 
       setSimulationQuestions(fallback);
+      setRemediationContext(null);
       setSimulationIdx(0);
       setSimulationSize(finalTarget);
       setSimulationSubmitted(false);
@@ -3948,6 +4099,13 @@ export default function App() {
     }
 
     clearMessages();
+
+    if (!isOnline) {
+      setSummaryText(buildLocalSummary(notes));
+      setStatusMessage("Offline mode: CareDrop built a local reviewer summary from your notes.");
+      return;
+    }
+
     setApiLoading(true);
 
     try {
@@ -3968,6 +4126,12 @@ export default function App() {
     }
 
     clearMessages();
+    if (!isOnline) {
+      setApiError("AI review help needs an internet connection. You can still use the rationale and memory tip for this item.");
+      setAiResponse("");
+      return;
+    }
+
     setApiLoading(true);
     setAiResponse("");
 
@@ -4015,9 +4179,11 @@ export default function App() {
       subject,
       difficulty,
       topic: topicFilter,
-      sourceLabel: hasCustomSource
-        ? uploadedFileName || "Focused notes session"
-        : "Generated from CareDrop subject bank",
+      sourceLabel: remediationContext
+        ? `Remediation set${remediationContext.weakestSubject ? ` for ${remediationContext.weakestSubject}` : ""}`
+        : hasCustomSource
+          ? uploadedFileName || "Focused notes session"
+          : "Generated from CareDrop subject bank",
       cards: flashcards,
       currentIndex: cardIdx,
       cardRatings: flashcardSessionRatings,
@@ -4045,9 +4211,11 @@ export default function App() {
       subject,
       difficulty,
       topic: topicFilter,
-      sourceLabel: hasCustomSource
-        ? uploadedFileName || "Focused notes session"
-        : "Generated from CareDrop subject bank",
+      sourceLabel: remediationContext
+        ? `Remediation set${remediationContext.weakestSubject ? ` for ${remediationContext.weakestSubject}` : ""}`
+        : hasCustomSource
+          ? uploadedFileName || "Focused notes session"
+          : "Generated from CareDrop subject bank",
       questions: quiz,
       currentIndex: quizIdx,
       score: quiz.length ? Math.round((correctCount / quiz.length) * 100) : 0,
@@ -4106,6 +4274,23 @@ export default function App() {
     );
   }
 
+  function toggleSimulationFlag() {
+    if (!simulationItem || simulationSubmitted) {
+      return;
+    }
+
+    setSimulationQuestions((prev) =>
+      prev.map((item, index) =>
+        index === simulationIdx
+          ? {
+              ...item,
+              flagged: !item.flagged,
+            }
+          : item
+      )
+    );
+  }
+
   function submitQuizAnswer() {
     if (!quizItem || quizItem.userAnswer !== null || !selectedQuizOption) {
       return;
@@ -4153,6 +4338,8 @@ export default function App() {
   }
 
   function openSavedQuiz(session) {
+    setRemediationContext(null);
+
     if (session.mode === "flashcard") {
       setFlashcards(session.cards || []);
       setCardIdx(clamp(session.currentIndex || 0, 0, Math.max((session.cards || []).length - 1, 0)));
@@ -4217,6 +4404,81 @@ export default function App() {
     setReviewSessions((prev) => prev.filter((session) => session.id !== sessionId));
   }
 
+  function startRemediationMode(sourceSession = null) {
+    clearMessages();
+
+    const baseSession =
+      sourceSession ||
+      reviewSessions.find((session) =>
+        ["simulation", "quiz"].includes(session.mode) &&
+        Number(session.correctCount || 0) < Number(session.answeredCount || 0)
+      ) ||
+      mostRecentSession;
+
+    const incorrectItems = baseSession?.questions
+      ? baseSession.questions
+          .filter((item) => item.userAnswer && normalize(item.userAnswer) !== normalize(item.correctAnswer))
+          .map((item) => ({
+            subject: item.subject || baseSession.subject || "",
+            topic: item.topic || baseSession.topic || "",
+            prompt: item.prompt || "",
+          }))
+      : incorrectReviewItems;
+
+    const remediationEntries = buildRemediationEntries(activeEntries, incorrectItems, weakestSubject);
+    const targetedSubject =
+      (baseSession?.subject && baseSession.subject !== "Mixed Review" ? baseSession.subject : "") ||
+      weakestSubject ||
+      "";
+    const targetedTopic =
+      incorrectItems.find((item) => item.topic)?.topic ||
+      topicFilter ||
+      "";
+
+    const questions = selectSessionItems(
+      buildLocalQuizFallback(
+        remediationEntries,
+        targetedSubject,
+        "All",
+        targetedTopic,
+        QUIZ_SET_SIZE * 2,
+        []
+      ),
+      QUIZ_SET_SIZE,
+      [],
+      [],
+      (item) => normalize(item.prompt)
+    );
+
+    if (!questions.length) {
+      setApiError("CareDrop could not build a remediation set from the current weak areas yet.");
+      return;
+    }
+
+    setQuiz(
+      questions.map((item) => ({
+        ...item,
+        notes: `${item.notes} Remediation focus: revisit why the safest answer wins for this topic.`,
+      }))
+    );
+    setQuizIdx(0);
+    setSelectedQuizOption("");
+    setShowFeedback(false);
+    setQuizSubmitted(false);
+    setMode("quiz");
+    setRemediationContext({
+      sourceSessionId: baseSession?.id || "",
+      weakestSubject: targetedSubject || remediationEntries[0]?.subject || "",
+      topic: targetedTopic,
+      createdAt: new Date().toISOString(),
+    });
+    setStatusMessage(
+      targetedSubject
+        ? `Remediation mode is ready. This quiz focuses on the areas you missed most in ${targetedSubject}.`
+        : "Remediation mode is ready. This quiz focuses on the questions and topics you missed most recently."
+    );
+  }
+
   function resetRotation() {
     setUsedFlashcardIds([]);
     setUsedFlashcardQuestions([]);
@@ -4249,6 +4511,13 @@ export default function App() {
     }
 
     clearMessages();
+
+    if (!isOnline && extension !== ".txt") {
+      setUploadState("failed");
+      setUploadError("You are offline right now. DOC, PDF, and image extraction need a connection. TXT files can still be loaded locally.");
+      return;
+    }
+
     setUploadState("uploading");
 
     try {
@@ -4628,6 +4897,24 @@ export default function App() {
           </div>
         ) : null}
 
+        {!isOnline ? (
+          <div
+            style={{
+              ...panelStyle,
+              padding: 16,
+              borderColor: "#C7D6E5",
+              background: "#EEF4FB",
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#17355E" }}>
+              Offline Review Mode
+            </div>
+            <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.7, color: C.text }}>
+              CareDrop can still load local flashcards, quizzes, saved sessions, and your review history while offline. AI generation, upload extraction, and cloud sync will resume automatically when your connection returns.
+            </div>
+          </div>
+        ) : null}
+
         <style>
           {`
             @keyframes caredropFadeSlide {
@@ -4999,6 +5286,58 @@ export default function App() {
                     Resume Saved Session
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => startRemediationMode()}
+                  disabled={!incorrectReviewItems.length && !weakCardIds.length}
+                  style={{
+                    padding: "11px 14px",
+                    borderRadius: 12,
+                    border: `1px solid ${C.border}`,
+                    background: incorrectReviewItems.length || weakCardIds.length ? "#F3FBF6" : C.border,
+                    color: incorrectReviewItems.length || weakCardIds.length ? C.accent : C.muted,
+                    fontWeight: 700,
+                    cursor: incorrectReviewItems.length || weakCardIds.length ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {incorrectReviewItems.length || weakCardIds.length ? "Start Remediation Set" : "Remediation unlocks after misses"}
+                </button>
+              </div>
+
+              <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}`, display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  System Status
+                </div>
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    background: isOnline ? "#F3FBF6" : "#EEF4FB",
+                    border: `1px solid ${isOnline ? "#B9E3CA" : "#C7D6E5"}`,
+                    fontSize: 13,
+                    lineHeight: 1.7,
+                    color: C.text,
+                  }}
+                >
+                  <strong>{isOnline ? "Online" : "Offline"}</strong>
+                  {" · "}
+                  {cloudSyncStatus || (cloudSyncReady ? "Cloud sync standing by." : "Cloud sync not connected yet.")}
+                </div>
+                {remediationContext ? (
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: 12,
+                      background: C.surface,
+                      border: `1px solid ${C.border}`,
+                      fontSize: 12,
+                      lineHeight: 1.7,
+                      color: C.muted,
+                    }}
+                  >
+                    Latest remediation focus: <strong style={{ color: C.text }}>{remediationContext.weakestSubject || remediationContext.topic || "mixed weak areas"}</strong>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -5229,6 +5568,95 @@ export default function App() {
                         </button>
                       );
                     })}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: width < 980 ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Retention
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em" }}>
+                        {savedSessionWaiting ? "Resume is ready" : "Stay in rhythm"}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7, color: C.text }}>
+                        {savedSessionWaiting
+                          ? `You still have ${buildSessionLabel(savedSessionWaiting)} waiting. Reopening saved work is one of the easiest ways to keep your review streak healthy.`
+                          : studyStreak
+                            ? `You are on a ${studyStreak}-day streak. One more short set today protects that rhythm.`
+                            : "No streak yet. One completed session today is enough to start a steady review pattern."}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Remediation
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em" }}>
+                        {incorrectReviewItems.length || weakCardIds.length ? "Weak-area recovery ready" : "Build it after your first misses"}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7, color: C.text }}>
+                        {incorrectReviewItems.length || weakCardIds.length
+                          ? `${incorrectReviewItems.length || weakCardIds.length} review misses are available to turn into a fresh remediation quiz, with extra emphasis on ${remediationFocusSubject || "your weakest subjects"}.`
+                          : "Once quiz or simulation misses begin to appear, CareDrop can turn them into a short recovery set instead of making you search manually."}
+                      </div>
+                      {incorrectReviewItems.length || weakCardIds.length ? (
+                        <button
+                          type="button"
+                          onClick={() => startRemediationMode()}
+                          style={{
+                            marginTop: 14,
+                            padding: "10px 14px",
+                            borderRadius: 12,
+                            border: "none",
+                            background: C.accent,
+                            color: "#fff",
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Open remediation quiz
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        {isAdminUser ? "Admin Snapshot" : "CareDrop Snapshot"}
+                      </div>
+                      <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 13, color: C.text }}>
+                        <div><strong>{reviewSessions.length}</strong> tracked sessions in this dashboard</div>
+                        <div><strong>{requestHistory.length}</strong> request/report items saved</div>
+                        <div><strong>{savedSessionWaiting ? 1 : 0}</strong> saved session waiting to reopen</div>
+                        <div><strong>{isOnline ? "Online" : "Offline"}</strong> system state | {cloudSyncStatus || "Cloud sync standing by"}</div>
+                      </div>
+                    </div>
                   </div>
 
                   <div
@@ -5487,7 +5915,9 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 17 }}>Quiz</div>
                     <div style={{ fontSize: 12, color: C.muted }}>
-                      Target {QUIZ_SET_SIZE} questions | strict difficulty filter | saved sessions supported
+                      {remediationContext
+                        ? `Remediation set | ${remediationContext.weakestSubject || remediationContext.topic || "recent weak areas"} | ${QUIZ_SET_SIZE} questions`
+                        : `Target ${QUIZ_SET_SIZE} questions | strict difficulty filter | saved sessions supported`}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -5834,6 +6264,32 @@ export default function App() {
                           >
                             {quizSubmitted ? "Quiz Session Submitted" : "Submit Quiz Session"}
                           </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              startRemediationMode({
+                                id: uid(),
+                                mode: "quiz",
+                                subject: subject || quizItem?.subject || "",
+                                topic: topicFilter || quizItem?.topic || "",
+                                questions: quiz,
+                                correctCount,
+                                answeredCount,
+                              })
+                            }
+                            disabled={answeredCount < quiz.length}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: `1px solid ${C.border}`,
+                              background: answeredCount < quiz.length ? C.border : C.surface,
+                              color: answeredCount < quiz.length ? C.muted : C.text,
+                              fontWeight: 700,
+                              cursor: answeredCount < quiz.length ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Build Remediation Set
+                          </button>
                           {quizSubmitted ? (
                             <button
                               onClick={generateQuiz}
@@ -5931,6 +6387,60 @@ export default function App() {
                     </div>
 
                     <div
+                      style={{
+                        marginTop: 14,
+                        display: "grid",
+                        gap: 8,
+                        gridTemplateColumns: width < 900 ? "repeat(6, minmax(0, 1fr))" : "repeat(10, minmax(0, 1fr))",
+                      }}
+                    >
+                      {simulationQuestions
+                        .slice(
+                          simulationQuestions.length <= 100
+                            ? 0
+                            : clamp(simulationIdx - 49, 0, Math.max(simulationQuestions.length - 100, 0)),
+                          simulationQuestions.length <= 100
+                            ? simulationQuestions.length
+                            : clamp(simulationIdx - 49, 0, Math.max(simulationQuestions.length - 100, 0)) + 100
+                        )
+                        .map((item, localIndex) => {
+                        const startIndex =
+                          simulationQuestions.length <= 100
+                            ? 0
+                            : clamp(simulationIdx - 49, 0, Math.max(simulationQuestions.length - 100, 0));
+                        const index = startIndex + localIndex;
+                        const answered = item.userAnswer !== null;
+                        const active = index === simulationIdx;
+                        return (
+                          <button
+                            key={`${item.id}-jump`}
+                            type="button"
+                            onClick={() => setSimulationIdx(index)}
+                            style={{
+                              padding: "8px 0",
+                              borderRadius: 10,
+                              border: active ? `1px solid ${C.accent}` : `1px solid ${item.flagged ? C.amber : C.border}`,
+                              background: active ? C.accentLight : item.flagged ? C.amberLight : C.surface,
+                              color: active ? C.accent : item.flagged ? C.amber : answered ? C.text : C.muted,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              fontSize: 12,
+                            }}
+                            title={item.flagged ? "Flagged for review" : answered ? "Answered" : "Unanswered"}
+                          >
+                            {index + 1}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12, color: C.muted }}>
+                      <div>{simulationFlaggedCount} flagged</div>
+                      <div>{simulationQuestions.length - simulationAnsweredCount} unanswered</div>
+                      <div>{simulationSize}-item target</div>
+                      {simulationQuestions.length > 100 ? <div>Palette shows the questions around your current position</div> : null}
+                    </div>
+
+                    <div
                       key={simulationItem.id}
                       style={{
                         marginTop: 18,
@@ -5954,6 +6464,7 @@ export default function App() {
                                 : "green"
                           }
                         />
+                        {simulationItem.flagged ? <Badge label="flagged" color="amber" /> : null}
                       </div>
 
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
@@ -6024,6 +6535,26 @@ export default function App() {
                           {simulationItem.userAnswer
                             ? "Answer saved. You can still move back and change it before the final submission."
                             : "Choose an answer, move to the next question, and review any item before the final submission."}
+                        </div>
+                      ) : null}
+
+                      {!simulationSubmitted ? (
+                        <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            onClick={toggleSimulationFlag}
+                            style={{
+                              padding: "9px 14px",
+                              borderRadius: 10,
+                              border: `1px solid ${simulationItem.flagged ? C.amber : C.border}`,
+                              background: simulationItem.flagged ? C.amberLight : C.surface,
+                              color: simulationItem.flagged ? C.amber : C.text,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {simulationItem.flagged ? "Unflag Question" : "Flag for Review"}
+                          </button>
                         </div>
                       ) : null}
 
@@ -6248,6 +6779,49 @@ export default function App() {
                             ))}
                           </div>
 
+                          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                startRemediationMode({
+                                  id: uid(),
+                                  mode: "simulation",
+                                  subject: "Mixed Review",
+                                  topic: "",
+                                  questions: simulationQuestions,
+                                  correctCount: simulationCorrectCount,
+                                  answeredCount: simulationAnsweredCount,
+                                })
+                              }
+                              style={{
+                                padding: "10px 14px",
+                                borderRadius: 12,
+                                border: "none",
+                                background: C.accent,
+                                color: "#fff",
+                                fontWeight: 800,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Build Remediation Quiz
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => generateSimulationExam(simulationSize)}
+                              style={{
+                                padding: "10px 14px",
+                                borderRadius: 12,
+                                border: `1px solid ${C.border}`,
+                                background: C.surface,
+                                color: C.text,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Start Another Simulation
+                            </button>
+                          </div>
+
                           {simulationAnswerSheetOpen ? (
                             <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
                               {simulationQuestions.map((item, index) => {
@@ -6266,6 +6840,7 @@ export default function App() {
                                       <Badge label={`Q ${index + 1}`} color="blue" />
                                       <Badge label={item.subject} color="gray" />
                                       <Badge label={item.topic} color="gray" />
+                                      {item.flagged ? <Badge label="flagged" color="amber" /> : null}
                                       <Badge
                                         label={isCorrect ? "Correct" : "Incorrect"}
                                         color={isCorrect ? "green" : "red"}
@@ -6422,7 +6997,7 @@ export default function App() {
                   }}
                 />
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                <div style={{ display: "grid", gap: 10, gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, max-content))", marginTop: 14 }}>
                   <button
                     onClick={generateSummary}
                     disabled={apiLoading || !studyText.trim()}
@@ -6556,10 +7131,11 @@ export default function App() {
         <div
           style={{
             position: "fixed",
-            right: 18,
-            bottom: 82,
+            right: isMobile ? 12 : 18,
+            left: isMobile ? 12 : "auto",
+            bottom: isMobile ? 76 : 82,
             zIndex: 95,
-            maxWidth: 360,
+            maxWidth: isMobile ? "none" : 360,
             padding: "12px 14px",
             borderRadius: 14,
             border: `1px solid ${C.accentMid}`,
@@ -6588,15 +7164,15 @@ export default function App() {
         }}
         style={{
           position: "fixed",
-          right: 18,
-          bottom: 18,
+          right: isMobile ? 12 : 18,
+          bottom: isMobile ? 12 : 18,
           zIndex: 90,
           border: "none",
           borderRadius: 999,
           background: C.accent,
           color: "#fff",
-          width: 52,
-          height: 52,
+          width: isMobile ? 48 : 52,
+          height: isMobile ? 48 : 52,
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
@@ -6613,8 +7189,8 @@ export default function App() {
         <div
           style={{
             position: "fixed",
-            right: 18,
-            bottom: 78,
+            right: isMobile ? 12 : 18,
+            bottom: isMobile ? 68 : 78,
             zIndex: 89,
             padding: "8px 12px",
             borderRadius: 999,
