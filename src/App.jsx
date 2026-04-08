@@ -3259,12 +3259,46 @@ export default function App() {
   }, {});
   const weakestSubject =
     Object.entries(weakSubjectCounts).sort((left, right) => Number(right[1]) - Number(left[1]))[0]?.[0] || "";
+  const subjectPerformanceSummary = useMemo(
+    () =>
+      Object.values(
+        reviewSessions.reduce((accumulator, session) => {
+          const key = session.subject || "Mixed Review";
+          if (!accumulator[key]) {
+            accumulator[key] = { subject: key, attempts: 0, scoreTotal: 0, answered: 0 };
+          }
+
+          accumulator[key].attempts += 1;
+          accumulator[key].scoreTotal += Number(session.score || 0);
+          accumulator[key].answered += Number(session.answeredCount || 0);
+          return accumulator;
+        }, {})
+      )
+        .map((item) => ({
+          ...item,
+          average: item.attempts ? Math.round(item.scoreTotal / item.attempts) : 0,
+        }))
+        .sort((left, right) => right.average - left.average),
+    [reviewSessions]
+  );
+  const requestTypeSummary = useMemo(
+    () =>
+      Object.entries(
+        requestHistory.reduce((accumulator, item) => {
+          const key = item.type || "General Feedback";
+          accumulator[key] = (accumulator[key] || 0) + 1;
+          return accumulator;
+        }, {})
+      ).sort((left, right) => Number(right[1]) - Number(left[1])),
+    [requestHistory]
+  );
   const mostRecentSession = reviewSessions[0] || null;
   const savedSessionWaiting =
     reviewSessions.find((session) => session.saved && session.mode === "quiz") ||
     reviewSessions.find((session) => session.saved);
   const studyStreak = getStudyStreak(reviewSessions);
   const isAdminUser = isAdminEmail(currentUser?.email);
+  const savedSessionCount = reviewSessions.filter((session) => session.saved).length;
   const todayKey = getDateKey();
   const todayAnsweredCount = reviewSessions
     .filter((session) => getDateKey(session.createdAt) === todayKey)
@@ -5068,6 +5102,15 @@ export default function App() {
                   <SidebarNavButton active={mode === "simulation"} label="Simulation Exam" hint="Mixed 50-500 item exam mode" badge={simulationQuestions.length || ""} onClick={() => setMode("simulation")} />
                   <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => setMode("notes")} />
                   <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions and returns" badge={reviewSessions.length || ""} onClick={() => setMode("history")} />
+                  {isAdminUser ? (
+                    <SidebarNavButton
+                      active={mode === "admin"}
+                      label="Admin"
+                      hint="Feedback, trends, and product signals"
+                      badge={requestHistory.length || ""}
+                      onClick={() => setMode("admin")}
+                    />
+                  ) : null}
                 </div>
               </div>
 
@@ -5254,20 +5297,6 @@ export default function App() {
                   }}
                 >
                   {filterWeakOnly ? "Showing Weak Cards Only" : "Focus Weak Cards"}
-                </button>
-                <button
-                  onClick={resetRotation}
-                  style={{
-                    padding: "11px 14px",
-                    borderRadius: 12,
-                    border: `1px solid ${C.border}`,
-                    background: C.pill,
-                    color: C.text,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Reset Non-Repeat Rotation
                 </button>
                 {savedSessionWaiting ? (
                   <button
@@ -5727,6 +5756,256 @@ export default function App() {
                         ))}
                       </div>
                     ) : null}
+                  </div>
+                </div>
+              </AnalyticsCard>
+            ) : null}
+
+            {mode === "admin" && isAdminUser ? (
+              <AnalyticsCard title="Admin Overview">
+                <div style={{ display: "grid", gap: 16 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: width < 980 ? "1fr" : "repeat(4, minmax(0, 1fr))",
+                      gap: 14,
+                    }}
+                  >
+                    {[
+                      {
+                        label: "Tracked Sessions",
+                        value: reviewSessions.length,
+                        helper: reviewSessions.length ? `${reviewSessionAverage}% average session score` : "No sessions tracked yet",
+                      },
+                      {
+                        label: "Saved Sessions",
+                        value: savedSessionCount,
+                        helper: savedSessionCount ? "Learners can return to these later" : "Nothing saved yet",
+                      },
+                      {
+                        label: "Feedback Inbox",
+                        value: requestHistory.length,
+                        helper: requestConfigured ? "Central inbox connected" : "Currently falling back to local saves",
+                      },
+                      {
+                        label: "Cloud / Network",
+                        value: isOnline ? "Online" : "Offline",
+                        helper: cloudSyncStatus || (cloudSyncReady ? "Cloud sync available" : "Cloud sync not configured"),
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        style={{
+                          borderRadius: 18,
+                          padding: 18,
+                          border: `1px solid ${C.border}`,
+                          background: "#FCFBF8",
+                        }}
+                      >
+                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          {item.label}
+                        </div>
+                        <div style={{ marginTop: 10, fontSize: typeof item.value === "number" ? 34 : 24, fontWeight: 900, letterSpacing: "-0.05em" }}>
+                          {item.value}
+                        </div>
+                        <div style={{ marginTop: 8, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                          {item.helper}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.15fr) minmax(300px, 0.85fr)",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Subject Performance Trend
+                      </div>
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {subjectPerformanceSummary.length ? (
+                          subjectPerformanceSummary.slice(0, 8).map((item) => (
+                            <div
+                              key={item.subject}
+                              style={{
+                                padding: "12px 14px",
+                                borderRadius: 14,
+                                background: C.surface,
+                                border: `1px solid ${C.border}`,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                                <div style={{ fontSize: 14, fontWeight: 800 }}>{item.subject}</div>
+                                <Badge label={`${item.average}% avg`} color={item.average >= 75 ? "green" : item.average >= 60 ? "amber" : "red"} />
+                              </div>
+                              <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#E8E4DC", overflow: "hidden" }}>
+                                <div
+                                  style={{
+                                    width: `${item.average}%`,
+                                    height: "100%",
+                                    background: item.average >= 75 ? "#2D6A4F" : item.average >= 60 ? "#E7A93B" : "#C1121F",
+                                  }}
+                                />
+                              </div>
+                              <div style={{ marginTop: 8, fontSize: 12, color: C.muted }}>
+                                {item.attempts} session{item.attempts === 1 ? "" : "s"} | {item.answered} answered overall
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                            Once learners submit flashcards, quizzes, or simulations, subject performance trends will appear here.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                        display: "grid",
+                        gap: 14,
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          Feedback Types
+                        </div>
+                        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                          {requestTypeSummary.length ? (
+                            requestTypeSummary.slice(0, 6).map(([type, count]) => (
+                              <div
+                                key={type}
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 12,
+                                  padding: "12px 14px",
+                                  borderRadius: 14,
+                                  background: C.surface,
+                                  border: `1px solid ${C.border}`,
+                                  fontSize: 13,
+                                  color: C.text,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                <span>{type}</span>
+                                <span>{count}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                              No feedback items are stored yet. Request and report activity will show here once learners start sending notes.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          Product Signals
+                        </div>
+                        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                          <div style={{ padding: "12px 14px", borderRadius: 14, background: C.surface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                            Weak-card backlog: <strong>{weakCardIds.length}</strong>{weakestSubject ? `, strongest pull in ${weakestSubject}` : ""}
+                          </div>
+                          <div style={{ padding: "12px 14px", borderRadius: 14, background: C.surface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                            Recent misses ready for remediation: <strong>{incorrectReviewItems.length}</strong>
+                          </div>
+                          <div style={{ padding: "12px 14px", borderRadius: 14, background: C.surface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                            Simulation flagged questions in current run: <strong>{simulationFlaggedCount}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 18,
+                      padding: 18,
+                      border: `1px solid ${C.border}`,
+                      background: "#FCFBF8",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          Recent Requests
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                          The latest request or report items collected through CareDrop.
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, color: requestConfigured ? C.accent : C.amber, fontWeight: 800 }}>
+                        {requestConfigured ? "Central inbox connected" : "Local fallback mode"}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                      {requestHistory.length ? (
+                        requestHistory.slice(0, 6).map((entry) => (
+                          <div
+                            key={entry.id || entry.number || entry.createdAt}
+                            style={{
+                              padding: "14px 16px",
+                              borderRadius: 14,
+                              background: C.surface,
+                              border: `1px solid ${C.border}`,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                <Badge label={entry.type || "General Feedback"} color="gray" />
+                                {entry.state === "local" ? <Badge label="local only" color="amber" /> : null}
+                                {entry.number ? <Badge label={`#${entry.number}`} color="blue" /> : null}
+                              </div>
+                              <div style={{ fontSize: 12, color: C.muted }}>{getLocalDateLabel(entry.createdAt)}</div>
+                            </div>
+                            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.7, color: C.text }}>
+                              {entry.message}
+                            </div>
+                            <div style={{ marginTop: 8, fontSize: 12, color: C.muted }}>
+                              Submitted by: <strong style={{ color: C.text }}>{entry.submittedBy || entry.name || "Anonymous"}</strong>
+                            </div>
+                            {entry.url ? (
+                              <a
+                                href={entry.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  marginTop: 10,
+                                  display: "inline-block",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  color: C.accent,
+                                  textDecoration: "none",
+                                }}
+                              >
+                                Open linked issue
+                              </a>
+                            ) : null}
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                          No requests have been submitted yet. Once learners start sending fixes, topic requests, or bug reports, they will appear here.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </AnalyticsCard>
