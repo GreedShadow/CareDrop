@@ -2611,10 +2611,10 @@ export default function App() {
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [simulationQuestions, setSimulationQuestions] = useState([]);
   const [simulationIdx, setSimulationIdx] = useState(0);
-  const [selectedSimulationOption, setSelectedSimulationOption] = useState("");
   const [simulationSubmitted, setSimulationSubmitted] = useState(false);
   const [simulationSize, setSimulationSize] = useState(50);
   const [simulationUsedAi, setSimulationUsedAi] = useState(false);
+  const [simulationAnswerSheetOpen, setSimulationAnswerSheetOpen] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [ratings, setRatings] = useState(persisted?.ratings || {});
   const [sessions, setSessions] = useState(persisted?.sessions || 0);
@@ -2702,6 +2702,7 @@ export default function App() {
     setSimulationSubmitted(Boolean(snapshot.simulationSubmitted));
     setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(snapshot.simulationSize)) ? Number(snapshot.simulationSize) : 50);
     setSimulationUsedAi(Boolean(snapshot.simulationUsedAi));
+    setSimulationAnswerSheetOpen(false);
   }
 
   useEffect(() => {
@@ -3091,6 +3092,39 @@ export default function App() {
   const simulationProgressPercent = simulationQuestions.length
     ? Math.round((simulationAnsweredCount / simulationQuestions.length) * 100)
     : 0;
+  const simulationScore = simulationQuestions.length
+    ? Math.round((simulationCorrectCount / simulationQuestions.length) * 100)
+    : 0;
+  const simulationIncorrectCount = Math.max(simulationQuestions.length - simulationCorrectCount, 0);
+  const simulationSubjectBreakdown = useMemo(
+    () =>
+      Object.values(
+        simulationQuestions.reduce((accumulator, item) => {
+          const key = item.subject || "Mixed Review";
+          if (!accumulator[key]) {
+            accumulator[key] = { subject: key, total: 0, correct: 0 };
+          }
+
+          accumulator[key].total += 1;
+          if (item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer)) {
+            accumulator[key].correct += 1;
+          }
+
+          return accumulator;
+        }, {})
+      )
+        .map((item) => ({
+          ...item,
+          percent: item.total ? Math.round((item.correct / item.total) * 100) : 0,
+        }))
+        .sort((left, right) => right.percent - left.percent),
+    [simulationQuestions]
+  );
+  const simulationStrongSubjects = simulationSubjectBreakdown.filter((item) => item.percent >= 75).slice(0, 3);
+  const simulationWeakSubjects = [...simulationSubjectBreakdown]
+    .sort((left, right) => left.percent - right.percent)
+    .filter((item) => item.percent < 65)
+    .slice(0, 3);
   const currentCorrect =
     !!quizItem &&
     quizItem.userAnswer !== null &&
@@ -3228,10 +3262,6 @@ export default function App() {
     setQuestion("");
     setSelectedQuizOption("");
   }, [quizIdx, quiz.length]);
-
-  useEffect(() => {
-    setSelectedSimulationOption("");
-  }, [simulationIdx, simulationQuestions.length]);
 
   function clearMessages() {
     setApiError("");
@@ -3862,6 +3892,7 @@ export default function App() {
       setSimulationSubmitted(false);
       setMode("simulation");
       setSimulationUsedAi(combined.length > localPool.length);
+      setSimulationAnswerSheetOpen(false);
       setStatusMessage(
         combined.length > localPool.length
           ? `Simulation exam ready. Gemini helped shape this mixed ${finalTarget}-question exam.`
@@ -3901,6 +3932,7 @@ export default function App() {
       setSimulationSubmitted(false);
       setMode("simulation");
       setSimulationUsedAi(false);
+      setSimulationAnswerSheetOpen(false);
       setApiError(normalizeAiErrorMessage(error) || `Gemini simulation generation failed. A local ${finalTarget}-question simulation was loaded instead.`);
       setStatusMessage(`Loaded a mixed ${finalTarget}-question simulation from the CareDrop bank.`);
     } finally {
@@ -4058,11 +4090,20 @@ export default function App() {
   }
 
   function handleSimulationAnswer(option) {
-    if (!simulationItem || simulationSubmitted || simulationItem.userAnswer !== null) {
+    if (!simulationItem || simulationSubmitted) {
       return;
     }
 
-    setSelectedSimulationOption(option);
+    setSimulationQuestions((prev) =>
+      prev.map((item, index) =>
+        index === simulationIdx
+          ? {
+              ...item,
+              userAnswer: option,
+            }
+          : item
+      )
+    );
   }
 
   function submitQuizAnswer() {
@@ -4081,23 +4122,6 @@ export default function App() {
       )
     );
     setShowFeedback(true);
-  }
-
-  function submitSimulationAnswer() {
-    if (!simulationItem || simulationSubmitted || simulationItem.userAnswer !== null || !selectedSimulationOption) {
-      return;
-    }
-
-    setSimulationQuestions((prev) =>
-      prev.map((item, index) =>
-        index === simulationIdx
-          ? {
-              ...item,
-              userAnswer: selectedSimulationOption,
-            }
-          : item
-      )
-    );
   }
 
   function saveCurrentQuiz() {
@@ -4145,6 +4169,7 @@ export default function App() {
       setSimulationSubmitted(true);
       setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(session.simulationSize)) ? Number(session.simulationSize) : 50);
       setSimulationUsedAi(Boolean(session.usedAi));
+      setSimulationAnswerSheetOpen(false);
       setMode("simulation");
       setStatusMessage(`Loaded saved session: ${buildSessionLabel(session)}.`);
       return;
@@ -4184,6 +4209,7 @@ export default function App() {
 
     recordReviewSession(session);
     setSimulationSubmitted(true);
+    setSimulationAnswerSheetOpen(false);
     setStatusMessage("Simulation submitted. Your full result is now saved in Review History.");
   }
 
@@ -5939,10 +5965,7 @@ export default function App() {
 
                       <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
                         {simulationItem.options.map((option) => {
-                          const selected =
-                            simulationItem.userAnswer !== null
-                              ? simulationItem.userAnswer === option
-                              : selectedSimulationOption === option;
+                          const selected = simulationItem.userAnswer === option;
                           const correct = normalize(option) === normalize(simulationItem.correctAnswer);
                           const background = simulationSubmitted && correct
                             ? "#ECFDF5"
@@ -5966,7 +5989,7 @@ export default function App() {
                                 borderRadius: 14,
                                 background,
                                 border: `1px solid ${borderColor}`,
-                                cursor: simulationItem.userAnswer !== null ? "default" : "pointer",
+                                cursor: simulationSubmitted ? "default" : "pointer",
                                 fontSize: 14,
                                 lineHeight: 1.6,
                               }}
@@ -5975,7 +5998,7 @@ export default function App() {
                                 type="radio"
                                 name={`simulation-${simulationItem.id}`}
                                 checked={selected}
-                                disabled={simulationItem.userAnswer !== null}
+                                disabled={simulationSubmitted}
                                 onChange={() => handleSimulationAnswer(option)}
                                 style={{ marginTop: 4 }}
                               />
@@ -5985,28 +6008,7 @@ export default function App() {
                         })}
                       </div>
 
-                      {!simulationSubmitted && simulationItem.userAnswer === null ? (
-                        <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-                          <button
-                            type="button"
-                            onClick={submitSimulationAnswer}
-                            disabled={!selectedSimulationOption}
-                            style={{
-                              padding: "10px 16px",
-                              borderRadius: 10,
-                              border: "none",
-                              background: selectedSimulationOption ? C.accent : C.border,
-                              color: selectedSimulationOption ? "#fff" : C.muted,
-                              fontWeight: 700,
-                              cursor: selectedSimulationOption ? "pointer" : "not-allowed",
-                            }}
-                          >
-                            Submit Answer
-                          </button>
-                        </div>
-                      ) : null}
-
-                      {!simulationSubmitted && simulationItem.userAnswer !== null ? (
+                      {!simulationSubmitted ? (
                         <div
                           style={{
                             marginTop: 14,
@@ -6019,29 +6021,9 @@ export default function App() {
                             lineHeight: 1.7,
                           }}
                         >
-                          Answer saved. Continue through the full exam, then submit the simulation to review your score and rationale.
-                        </div>
-                      ) : null}
-
-                      {simulationSubmitted ? (
-                        <div
-                          style={{
-                            marginTop: 16,
-                            borderRadius: 16,
-                            padding: 16,
-                            background: "#FFFFFF",
-                            border: `1px solid ${simulationCurrentCorrect ? "#10B981" : "#F43F5E"}`,
-                          }}
-                        >
-                          <div style={{ display: "grid", gap: 8, fontSize: 14, lineHeight: 1.7 }}>
-                            <div><strong>Your answer:</strong> {simulationItem.userAnswer}</div>
-                            <div><strong>Correct answer:</strong> {simulationItem.correctAnswer}</div>
-                            <div><strong>Rationale:</strong> {simulationItem.rationale}</div>
-                            <div><strong>Memory tip:</strong> {simulationItem.notes}</div>
-                            {!simulationCurrentCorrect ? (
-                              <div><strong>Why your answer was weaker:</strong> It did not match the strongest nursing priority or board clue as closely as the correct answer.</div>
-                            ) : null}
-                          </div>
+                          {simulationItem.userAnswer
+                            ? "Answer saved. You can still move back and change it before the final submission."
+                            : "Choose an answer, move to the next question, and review any item before the final submission."}
                         </div>
                       ) : null}
 
@@ -6080,7 +6062,7 @@ export default function App() {
                             Next Question
                           </button>
                         </div>
-                        {!simulationSubmitted ? (
+                        {!simulationSubmitted && simulationIdx === simulationQuestions.length - 1 ? (
                           <button
                             type="button"
                             onClick={submitSimulationExam}
@@ -6110,22 +6092,204 @@ export default function App() {
                         border: `1px solid ${C.panelNeutralDark}`,
                       }}
                     >
-                      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>Simulation Overview</div>
-                      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 14 }}>
-                        <div>Answered: <strong>{simulationAnsweredCount}</strong></div>
-                        <div>Remaining: <strong>{Math.max(simulationQuestions.length - simulationAnsweredCount, 0)}</strong></div>
-                        <div>Current target: <strong>{simulationSize} questions</strong></div>
-                        {simulationSubmitted ? (
-                          <div>Score: <strong>{simulationQuestions.length ? Math.round((simulationCorrectCount / simulationQuestions.length) * 100) : 0}%</strong></div>
-                        ) : null}
-                      </div>
-                      <div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
-                        {simulationSubmitted
-                          ? simulationUsedAi
-                            ? "This exam mixed the CareDrop bank with Gemini-generated expansion so the set stayed broad, less repetitive, and closer to a real board-style review session."
-                            : "This exam came from the CareDrop bank and was saved to Review History after submission."
-                          : "Answers stay hidden while the simulation is active so the flow feels closer to an actual long-form exam."}
-                      </div>
+                      {!simulationSubmitted ? (
+                        <>
+                          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>Simulation Overview</div>
+                          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 14 }}>
+                            <div>Answered: <strong>{simulationAnsweredCount}</strong></div>
+                            <div>Remaining: <strong>{Math.max(simulationQuestions.length - simulationAnsweredCount, 0)}</strong></div>
+                            <div>Current target: <strong>{simulationSize} questions</strong></div>
+                          </div>
+                          <div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                            Answers stay hidden while the simulation is active so the flow feels closer to an actual long-form exam. Move back through earlier questions anytime if you want to review or change an answer before the final submit on the last item.
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "flex-start",
+                              gap: 16,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Simulation Results</div>
+                              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, maxWidth: 760 }}>
+                                {simulationUsedAi
+                                  ? "This mixed simulation combined the CareDrop bank with Gemini-generated expansion to make the exam feel broader and closer to a real board-style review."
+                                  : "This mixed simulation came from the CareDrop bank and is now saved in Review History for later review."}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSimulationAnswerSheetOpen((value) => !value)}
+                              style={{
+                                padding: "10px 14px",
+                                borderRadius: 10,
+                                border: `1px solid ${C.border}`,
+                                background: C.surface,
+                                color: C.text,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {simulationAnswerSheetOpen ? "Hide answer sheet" : "View answer sheet"}
+                            </button>
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: 14,
+                              display: "grid",
+                              gap: 12,
+                              gridTemplateColumns: width < 760 ? "1fr" : "repeat(4, minmax(0, 1fr))",
+                            }}
+                          >
+                            {[
+                              { label: "Overall score", value: `${simulationScore}%`, hint: `${simulationCorrectCount}/${simulationQuestions.length} correct` },
+                              { label: "Answered", value: `${simulationAnsweredCount}`, hint: "Full exam submitted" },
+                              { label: "Correct", value: `${simulationCorrectCount}`, hint: "Strong answers recorded" },
+                              { label: "Incorrect", value: `${simulationIncorrectCount}`, hint: "Items to review again" },
+                            ].map((item) => (
+                              <div
+                                key={item.label}
+                                style={{
+                                  padding: "14px 16px",
+                                  borderRadius: 14,
+                                  background: C.surface,
+                                  border: `1px solid ${C.border}`,
+                                }}
+                              >
+                                <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, marginBottom: 6 }}>{item.label}</div>
+                                <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.04em" }}>{item.value}</div>
+                                <div style={{ marginTop: 6, fontSize: 12, color: C.muted }}>{item.hint}</div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: 14,
+                              display: "grid",
+                              gap: 12,
+                              gridTemplateColumns: width < 920 ? "1fr" : "1fr 1fr",
+                            }}
+                          >
+                            <div
+                              style={{
+                                padding: "16px 18px",
+                                borderRadius: 16,
+                                background: C.surface,
+                                border: `1px solid ${C.border}`,
+                              }}
+                            >
+                              <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>Subjects You Handled Well</div>
+                              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                                {simulationStrongSubjects.length
+                                  ? simulationStrongSubjects.map((item) => `${item.subject} (${item.percent}%)`).join(" • ")
+                                  : "No single subject clearly pulled ahead in this exam yet. Your score is still spread across the full mixed review."}
+                              </div>
+                            </div>
+                            <div
+                              style={{
+                                padding: "16px 18px",
+                                borderRadius: 16,
+                                background: C.surface,
+                                border: `1px solid ${C.border}`,
+                              }}
+                            >
+                              <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>Subjects To Review Again</div>
+                              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                                {simulationWeakSubjects.length
+                                  ? simulationWeakSubjects.map((item) => `${item.subject} (${item.percent}%)`).join(" • ")
+                                  : "No major weak subject cluster stood out in this run. Review the answer sheet to see the exact items you missed."}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: 14,
+                              display: "grid",
+                              gap: 10,
+                              gridTemplateColumns: width < 920 ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                            }}
+                          >
+                            {simulationSubjectBreakdown.map((item) => (
+                              <div
+                                key={item.subject}
+                                style={{
+                                  padding: "14px 16px",
+                                  borderRadius: 14,
+                                  background: C.surface,
+                                  border: `1px solid ${C.border}`,
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                                  <div style={{ fontSize: 14, fontWeight: 800 }}>{item.subject}</div>
+                                  <Badge label={`${item.percent}%`} color={item.percent >= 75 ? "green" : item.percent >= 60 ? "amber" : "red"} />
+                                </div>
+                                <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#E8E4DC", overflow: "hidden" }}>
+                                  <div
+                                    style={{
+                                      width: `${item.percent}%`,
+                                      height: "100%",
+                                      background: item.percent >= 75 ? "#2D6A4F" : item.percent >= 60 ? "#E7A93B" : "#C1121F",
+                                    }}
+                                  />
+                                </div>
+                                <div style={{ marginTop: 8, fontSize: 12, color: C.muted }}>
+                                  {item.correct}/{item.total} correct
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {simulationAnswerSheetOpen ? (
+                            <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+                              {simulationQuestions.map((item, index) => {
+                                const isCorrect = !!item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer);
+                                return (
+                                  <div
+                                    key={item.id}
+                                    style={{
+                                      padding: "16px 18px",
+                                      borderRadius: 16,
+                                      background: C.surface,
+                                      border: `1px solid ${isCorrect ? "#10B981" : "#F43F5E"}`,
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                                      <Badge label={`Q ${index + 1}`} color="blue" />
+                                      <Badge label={item.subject} color="gray" />
+                                      <Badge label={item.topic} color="gray" />
+                                      <Badge
+                                        label={isCorrect ? "Correct" : "Incorrect"}
+                                        color={isCorrect ? "green" : "red"}
+                                      />
+                                    </div>
+                                    <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.45 }}>{item.prompt}</div>
+                                    <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                                      <div style={{ fontSize: 13, color: C.muted }}>
+                                        Your answer: <strong style={{ color: C.text }}>{item.userAnswer || "No answer saved"}</strong>
+                                      </div>
+                                      <div style={{ fontSize: 13, color: C.muted }}>
+                                        Correct answer: <strong style={{ color: C.text }}>{item.correctAnswer}</strong>
+                                      </div>
+                                      <div style={{ fontSize: 13, color: C.text, lineHeight: 1.7 }}>
+                                        <strong>Rationale:</strong> {item.rationale}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </>
+                      )}
                     </div>
                   </>
                 )}
