@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { MessageCircleMore, Minus, X } from "lucide-react";
+import { Eye, EyeOff, MessageCircleMore, Minus, X } from "lucide-react";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 
 const STORAGE_KEY = "caredrop-dashboard-v2";
@@ -10,6 +10,8 @@ const AUTH_SESSION_MAX_AGE_MS = 1000 * 60 * 10;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 const FLASHCARD_SET_SIZE = 10;
 const QUIZ_SET_SIZE = 10;
+const SIMULATION_BATCH_SIZE = 20;
+const SIMULATION_SIZE_OPTIONS = [50, 100];
 const RECENT_MEMORY_LIMIT = 12;
 const SUPPORTED_UPLOAD_EXTENSIONS = [".doc", ".docx", ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt"];
 const LOGO_SRC = "/favicon.svg";
@@ -2051,6 +2053,59 @@ function AuthScreen({
 }) {
   const isRegister = authMode === "register";
   const stacked = width < 940;
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  useEffect(() => {
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+  }, [authMode]);
+
+  function renderPasswordInput({ value, onChange, placeholder, visible, setVisible }) {
+    return (
+      <div style={{ position: "relative" }}>
+        <input
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          type={visible ? "text" : "password"}
+          style={{
+            width: "100%",
+            padding: "12px 46px 12px 14px",
+            borderRadius: 14,
+            border: `1px solid ${C.border}`,
+            background: "#FBFAF7",
+            fontSize: 14,
+            outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((current) => !current)}
+          aria-label={visible ? "Hide password" : "Show password"}
+          style={{
+            position: "absolute",
+            top: "50%",
+            right: 10,
+            transform: "translateY(-50%)",
+            width: 28,
+            height: 28,
+            borderRadius: 999,
+            border: "none",
+            background: "transparent",
+            color: C.muted,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+          }}
+        >
+          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -2284,22 +2339,13 @@ function AuthScreen({
                   </button>
                 ) : null}
               </div>
-              <input
-                value={authPassword}
-                onChange={(event) => setAuthPassword(event.target.value)}
-                placeholder="At least 8 characters"
-                type="password"
-                style={{
-                  width: "100%",
-                  padding: "12px 14px",
-                  borderRadius: 14,
-                  border: `1px solid ${C.border}`,
-                  background: "#FBFAF7",
-                  fontSize: 14,
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
-              />
+              {renderPasswordInput({
+                value: authPassword,
+                onChange: (event) => setAuthPassword(event.target.value),
+                placeholder: "At least 8 characters",
+                visible: showPassword,
+                setVisible: setShowPassword,
+              })}
             </div>
 
             {isRegister ? (
@@ -2307,22 +2353,13 @@ function AuthScreen({
                 <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
                   Confirm Password
                 </label>
-                <input
-                  value={authConfirmPassword}
-                  onChange={(event) => setAuthConfirmPassword(event.target.value)}
-                  placeholder="Repeat password"
-                  type="password"
-                  style={{
-                    width: "100%",
-                    padding: "12px 14px",
-                    borderRadius: 14,
-                    border: `1px solid ${C.border}`,
-                    background: "#FBFAF7",
-                    fontSize: 14,
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
+                {renderPasswordInput({
+                  value: authConfirmPassword,
+                  onChange: (event) => setAuthConfirmPassword(event.target.value),
+                  placeholder: "Repeat password",
+                  visible: showConfirmPassword,
+                  setVisible: setShowConfirmPassword,
+                })}
               </div>
             ) : null}
           </div>
@@ -2551,6 +2588,12 @@ export default function App() {
   const [quizIdx, setQuizIdx] = useState(0);
   const [selectedQuizOption, setSelectedQuizOption] = useState("");
   const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [simulationQuestions, setSimulationQuestions] = useState([]);
+  const [simulationIdx, setSimulationIdx] = useState(0);
+  const [selectedSimulationOption, setSelectedSimulationOption] = useState("");
+  const [simulationSubmitted, setSimulationSubmitted] = useState(false);
+  const [simulationSize, setSimulationSize] = useState(50);
+  const [simulationUsedAi, setSimulationUsedAi] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [ratings, setRatings] = useState(persisted?.ratings || {});
   const [sessions, setSessions] = useState(persisted?.sessions || 0);
@@ -2633,6 +2676,11 @@ export default function App() {
     setQuizIdx(clamp(Number(snapshot.quizIdx || 0), 0, Math.max((snapshot.quiz || []).length - 1, 0)));
     setQuizSubmitted(Boolean(snapshot.quizSubmitted));
     setShowFeedback(Boolean(snapshot.showFeedback));
+    setSimulationQuestions(snapshot.simulationQuestions || []);
+    setSimulationIdx(clamp(Number(snapshot.simulationIdx || 0), 0, Math.max((snapshot.simulationQuestions || []).length - 1, 0)));
+    setSimulationSubmitted(Boolean(snapshot.simulationSubmitted));
+    setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(snapshot.simulationSize)) ? Number(snapshot.simulationSize) : 50);
+    setSimulationUsedAi(Boolean(snapshot.simulationUsedAi));
   }
 
   useEffect(() => {
@@ -2711,6 +2759,11 @@ export default function App() {
         quizIdx,
         quizSubmitted,
         showFeedback,
+        simulationQuestions,
+        simulationIdx,
+        simulationSubmitted,
+        simulationSize,
+        simulationUsedAi,
         usedFlashcardIds,
         usedFlashcardQuestions,
         usedQuizPrompts,
@@ -2741,6 +2794,11 @@ export default function App() {
     quizIdx,
     quizSubmitted,
     showFeedback,
+    simulationQuestions,
+    simulationIdx,
+    simulationSubmitted,
+    simulationSize,
+    simulationUsedAi,
     usedFlashcardIds,
     usedFlashcardQuestions,
     usedQuizPrompts,
@@ -2775,6 +2833,11 @@ export default function App() {
       quizIdx,
       quizSubmitted,
       showFeedback,
+      simulationQuestions,
+      simulationIdx,
+      simulationSubmitted,
+      simulationSize,
+      simulationUsedAi,
       usedFlashcardIds,
       usedFlashcardQuestions,
       usedQuizPrompts,
@@ -2827,6 +2890,11 @@ export default function App() {
     quizIdx,
     quizSubmitted,
     showFeedback,
+    simulationQuestions,
+    simulationIdx,
+    simulationSubmitted,
+    simulationSize,
+    simulationUsedAi,
     usedFlashcardIds,
     usedFlashcardQuestions,
     usedQuizPrompts,
@@ -2990,6 +3058,18 @@ export default function App() {
   const correctCount = quiz.filter(
     (item) => item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer)
   ).length;
+  const simulationItem = simulationQuestions[simulationIdx];
+  const simulationAnsweredCount = simulationQuestions.filter((item) => item.userAnswer !== null).length;
+  const simulationCorrectCount = simulationQuestions.filter(
+    (item) => item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer)
+  ).length;
+  const simulationCurrentCorrect =
+    !!simulationItem &&
+    simulationItem.userAnswer !== null &&
+    normalize(simulationItem.userAnswer) === normalize(simulationItem.correctAnswer);
+  const simulationProgressPercent = simulationQuestions.length
+    ? Math.round((simulationAnsweredCount / simulationQuestions.length) * 100)
+    : 0;
   const currentCorrect =
     !!quizItem &&
     quizItem.userAnswer !== null &&
@@ -3074,13 +3154,20 @@ export default function App() {
       return {
         title: `Continue ${mostRecentSession.subject}`,
         body: `Your latest session was ${buildSessionLabel(mostRecentSession)}. Keep the thread going while the topic is still fresh.`,
-        cta: mostRecentSession.mode === "quiz" ? "Start another quiz" : "Open flashcards",
+        cta:
+          mostRecentSession.mode === "simulation"
+            ? "Resume simulation"
+            : mostRecentSession.mode === "quiz"
+              ? "Start another quiz"
+              : "Open flashcards",
         onClick: () => {
           setSubject(mostRecentSession.subject || subject);
           setDifficulty(mostRecentSession.difficulty || difficulty);
           setTopicFilter(mostRecentSession.topic || "");
           setTopicInput(mostRecentSession.topic || "");
-          if (mostRecentSession.mode === "quiz") {
+          if (mostRecentSession.mode === "simulation") {
+            openSavedQuiz(mostRecentSession);
+          } else if (mostRecentSession.mode === "quiz") {
             setMode("quiz");
             if (!quiz.length) {
               generateQuiz();
@@ -3120,6 +3207,10 @@ export default function App() {
     setQuestion("");
     setSelectedQuizOption("");
   }, [quizIdx, quiz.length]);
+
+  useEffect(() => {
+    setSelectedSimulationOption("");
+  }, [simulationIdx, simulationQuestions.length]);
 
   function clearMessages() {
     setApiError("");
@@ -3552,6 +3643,19 @@ export default function App() {
     return aiCards.length < FLASHCARD_SET_SIZE || needed > 0;
   }
 
+  async function requestQuizBatch(activeTopic, count, excludePrompts = []) {
+    const data = await postJson("/api/claude/quiz", {
+      notes: studyText,
+      subject,
+      topic: activeTopic,
+      difficulty: difficulty === "All" ? "mixed" : difficulty,
+      count,
+      excludeQuestions: excludePrompts,
+    });
+
+    return sanitizeQuizQuestions(data.questions, subject, difficulty, activeTopic, [], true);
+  }
+
   async function generateQuiz(activeTopic = topicFilter) {
     if (!ensureReviewTargetSelected("generate a quiz", activeTopic)) {
       return;
@@ -3563,16 +3667,11 @@ export default function App() {
     setQuizSubmitted(false);
 
     try {
-      const data = await postJson("/api/claude/quiz", {
-        notes: studyText,
-        subject,
-        topic: activeTopic,
-        difficulty: difficulty === "All" ? "mixed" : difficulty,
-        count: QUIZ_SET_SIZE,
-        excludeQuestions: hasCustomSource ? [] : usedQuizPromptsRef.current,
-      });
-
-      const aiQuestions = sanitizeQuizQuestions(data.questions, subject, difficulty, activeTopic, [], true);
+      const aiQuestions = await requestQuizBatch(
+        activeTopic,
+        QUIZ_SET_SIZE,
+        hasCustomSource ? [] : usedQuizPromptsRef.current
+      );
       const fallback = buildLocalQuizFallback(
         activeEntries,
         subject,
@@ -3646,6 +3745,119 @@ export default function App() {
           [...prev, ...fallback.map((item) => normalize(item.prompt))].slice(-RECENT_MEMORY_LIMIT)
         );
       }
+    } finally {
+      setApiLoading(false);
+    }
+  }
+
+  async function generateSimulationExam(targetSize = simulationSize, activeTopic = topicFilter) {
+    if (!ensureReviewTargetSelected("start a simulation exam", activeTopic)) {
+      return;
+    }
+
+    const finalTarget = SIMULATION_SIZE_OPTIONS.includes(Number(targetSize)) ? Number(targetSize) : 50;
+    clearMessages();
+    setApiLoading(true);
+    setSimulationSubmitted(false);
+    setSimulationUsedAi(false);
+
+    try {
+      const localPool = selectSessionItems(
+        buildLocalQuizFallback(
+          activeEntries,
+          subject,
+          difficulty,
+          activeTopic,
+          Math.max(finalTarget, 60),
+          []
+        ),
+        finalTarget,
+        hasCustomSource ? [] : usedQuizPromptsRef.current,
+        recentQuizPromptsRef.current,
+        (item) => normalize(item.prompt)
+      );
+
+      let combined = [...localPool];
+      const shouldAskAi = Boolean(activeTopic || hasCustomSource || combined.length < finalTarget);
+
+      if (shouldAskAi) {
+        const maxBatches = Math.ceil(finalTarget / SIMULATION_BATCH_SIZE);
+
+        for (let batchIndex = 0; batchIndex < maxBatches && combined.length < finalTarget; batchIndex += 1) {
+          const requestedCount = Math.min(SIMULATION_BATCH_SIZE, finalTarget - combined.length);
+          const aiBatch = await requestQuizBatch(
+            activeTopic,
+            requestedCount,
+            uniqueBy(
+              [...combined.map((item) => item.prompt), ...(hasCustomSource ? [] : usedQuizPromptsRef.current)],
+              (value) => normalize(value)
+            )
+          );
+
+          if (!aiBatch.length) {
+            break;
+          }
+
+          combined = uniqueBy([...combined, ...aiBatch], (item) => normalize(item.prompt));
+        }
+      }
+
+      const questions = selectSessionItems(
+        combined,
+        finalTarget,
+        hasCustomSource ? [] : usedQuizPromptsRef.current,
+        recentQuizPromptsRef.current,
+        (item) => normalize(item.prompt)
+      );
+
+      setSimulationQuestions(questions);
+      setSimulationIdx(0);
+      setSimulationSize(finalTarget);
+      setSimulationSubmitted(false);
+      setMode("simulation");
+      setSimulationUsedAi(combined.length > localPool.length);
+      setStatusMessage(
+        combined.length > localPool.length
+          ? `Simulation exam ready. Gemini helped expand this ${finalTarget}-question set.`
+          : `Simulation exam ready. Your ${finalTarget}-question set is prepared.`
+      );
+
+      if (!hasCustomSource) {
+        setUsedQuizPrompts((prev) =>
+          uniqueBy(
+            [...prev, ...questions.map((item) => normalize(item.prompt))],
+            (value) => value
+          )
+        );
+        setRecentQuizPrompts((prev) =>
+          [...prev, ...questions.map((item) => normalize(item.prompt))].slice(-RECENT_MEMORY_LIMIT)
+        );
+      }
+    } catch (error) {
+      const fallback = selectSessionItems(
+        buildLocalQuizFallback(
+          activeEntries,
+          subject,
+          difficulty,
+          activeTopic,
+          Math.max(finalTarget, 60),
+          []
+        ),
+        finalTarget,
+        hasCustomSource ? [] : usedQuizPromptsRef.current,
+        recentQuizPromptsRef.current,
+        (item) => normalize(item.prompt)
+      );
+
+      setSimulationQuestions(fallback);
+      setSimulationIdx(0);
+      setSimulationSize(finalTarget);
+      setSimulationSubmitted(false);
+      setMode("simulation");
+      setSimulationUsedAi(false);
+      setApiError(
+        error.message || `Gemini simulation generation failed. A local ${finalTarget}-question simulation was loaded instead.`
+      );
     } finally {
       setApiLoading(false);
     }
@@ -3800,6 +4012,14 @@ export default function App() {
     setSelectedQuizOption(option);
   }
 
+  function handleSimulationAnswer(option) {
+    if (!simulationItem || simulationSubmitted || simulationItem.userAnswer !== null) {
+      return;
+    }
+
+    setSelectedSimulationOption(option);
+  }
+
   function submitQuizAnswer() {
     if (!quizItem || quizItem.userAnswer !== null || !selectedQuizOption) {
       return;
@@ -3816,6 +4036,23 @@ export default function App() {
       )
     );
     setShowFeedback(true);
+  }
+
+  function submitSimulationAnswer() {
+    if (!simulationItem || simulationSubmitted || simulationItem.userAnswer !== null || !selectedSimulationOption) {
+      return;
+    }
+
+    setSimulationQuestions((prev) =>
+      prev.map((item, index) =>
+        index === simulationIdx
+          ? {
+              ...item,
+              userAnswer: selectedSimulationOption,
+            }
+          : item
+      )
+    );
   }
 
   function saveCurrentQuiz() {
@@ -3857,12 +4094,52 @@ export default function App() {
       return;
     }
 
+    if (session.mode === "simulation") {
+      setSimulationQuestions(session.questions || []);
+      setSimulationIdx(clamp(session.currentIndex || 0, 0, Math.max((session.questions || []).length - 1, 0)));
+      setSimulationSubmitted(true);
+      setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(session.simulationSize)) ? Number(session.simulationSize) : 50);
+      setSimulationUsedAi(Boolean(session.usedAi));
+      setMode("simulation");
+      setStatusMessage(`Loaded saved session: ${buildSessionLabel(session)}.`);
+      return;
+    }
+
     setQuiz(session.questions || []);
     setQuizIdx(clamp(session.currentIndex || 0, 0, Math.max((session.questions || []).length - 1, 0)));
     setShowFeedback(false);
     setQuizSubmitted(true);
     setMode("quiz");
     setStatusMessage(`Loaded saved session: ${buildSessionLabel(session)}.`);
+  }
+
+  function submitSimulationExam() {
+    if (!simulationQuestions.length || simulationAnsweredCount < simulationQuestions.length || simulationSubmitted) {
+      return;
+    }
+
+    const session = {
+      id: uid(),
+      createdAt: new Date().toISOString(),
+      mode: "simulation",
+      subject: subject || "Mixed Review",
+      difficulty,
+      topic: topicFilter,
+      sourceLabel: simulationUsedAi
+        ? "Simulation built from the CareDrop bank with Gemini support"
+        : "Simulation built from the CareDrop review bank",
+      questions: simulationQuestions,
+      currentIndex: simulationIdx,
+      score: simulationQuestions.length ? Math.round((simulationCorrectCount / simulationQuestions.length) * 100) : 0,
+      answeredCount: simulationAnsweredCount,
+      correctCount: simulationCorrectCount,
+      simulationSize,
+      usedAi: simulationUsedAi,
+    };
+
+    recordReviewSession(session);
+    setSimulationSubmitted(true);
+    setStatusMessage("Simulation submitted. Your full result is now saved in Review History.");
   }
 
   function deleteSavedQuiz(sessionId) {
@@ -4430,6 +4707,7 @@ export default function App() {
                   <SidebarNavButton active={mode === "dashboard"} label="Dashboard" hint="Overview and next steps" onClick={() => setMode("dashboard")} />
                   <SidebarNavButton active={mode === "flashcard"} label="Flashcards" hint="Focused card review" badge={flashcards.length || ""} onClick={() => setMode("flashcard")} />
                   <SidebarNavButton active={mode === "quiz"} label="Quiz" hint="Board-style drills" badge={quiz.length || ""} onClick={() => setMode("quiz")} />
+                  <SidebarNavButton active={mode === "simulation"} label="Simulation Exam" hint="50-100 item exam mode" badge={simulationQuestions.length || ""} onClick={() => setMode("simulation")} />
                   <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => setMode("notes")} />
                   <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions and returns" badge={reviewSessions.length || ""} onClick={() => setMode("history")} />
                 </div>
@@ -5505,6 +5783,305 @@ export default function App() {
                         </div>
                       </div>
                     ) : null}
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            {mode === "simulation" ? (
+              <div style={panelStyle}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 16,
+                    alignItems: "flex-start",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Simulation Exam</div>
+                    <div style={{ fontSize: 12, color: C.muted, maxWidth: 720 }}>
+                      Build a longer board-style exam from the review bank. Topic focus can trigger Gemini to expand the set when the local pool starts repeating too quickly.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {SIMULATION_SIZE_OPTIONS.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => generateSimulationExam(value)}
+                        disabled={apiLoading}
+                        style={{
+                          padding: "10px 16px",
+                          borderRadius: 10,
+                          border: simulationSize === value ? "none" : `1px solid ${C.border}`,
+                          background: simulationSize === value ? C.accent : C.surface,
+                          color: simulationSize === value ? "#fff" : C.text,
+                          fontWeight: 700,
+                          cursor: apiLoading ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {apiLoading && simulationSize === value ? "Preparing..." : `Generate ${value}`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {!simulationItem ? (
+                  <div
+                    style={{
+                      marginTop: 18,
+                      border: `1px dashed ${C.border}`,
+                      borderRadius: 18,
+                      padding: 24,
+                      background: "#FBFAF7",
+                      color: C.muted,
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    Select a subject or enter a topic focus, then generate a 50- or 100-question simulation exam.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ flex: 1, height: 6, borderRadius: 999, background: "#E8E4DC", overflow: "hidden" }}>
+                        <div
+                          style={{
+                            width: `${simulationProgressPercent}%`,
+                            height: "100%",
+                            background: "linear-gradient(90deg, #2D6A4F 0%, #7BCB9A 100%)",
+                          }}
+                        />
+                      </div>
+                      <div style={{ fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>
+                        {simulationAnsweredCount}/{simulationQuestions.length} answered
+                      </div>
+                    </div>
+
+                    <div
+                      key={simulationItem.id}
+                      style={{
+                        marginTop: 18,
+                        background: C.panelNeutralAlt,
+                        borderRadius: 18,
+                        border: `1px solid ${C.panelNeutralDark}`,
+                        padding: width < 720 ? 18 : 24,
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                        <Badge label={`Q ${simulationIdx + 1} / ${simulationQuestions.length}`} color="blue" />
+                        <Badge label={simulationItem.subject} color="gray" />
+                        <Badge label={simulationItem.topic} color="gray" />
+                        <Badge
+                          label={simulationItem.difficulty}
+                          color={
+                            simulationItem.difficulty === "hard"
+                              ? "red"
+                              : simulationItem.difficulty === "medium"
+                                ? "amber"
+                                : "green"
+                          }
+                        />
+                      </div>
+
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                        Simulation Question
+                      </div>
+                      <div style={{ fontSize: width < 640 ? 21 : 28, fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1.15 }}>
+                        {simulationItem.prompt}
+                      </div>
+
+                      <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
+                        {simulationItem.options.map((option) => {
+                          const selected =
+                            simulationItem.userAnswer !== null
+                              ? simulationItem.userAnswer === option
+                              : selectedSimulationOption === option;
+                          const correct = normalize(option) === normalize(simulationItem.correctAnswer);
+                          const background = simulationSubmitted && correct
+                            ? "#ECFDF5"
+                            : simulationSubmitted && selected && !correct
+                              ? "#FFF1F2"
+                              : C.panelNeutralAlt;
+                          const borderColor = simulationSubmitted && correct
+                            ? "#10B981"
+                            : simulationSubmitted && selected && !correct
+                              ? "#F43F5E"
+                              : C.panelNeutralDark;
+
+                          return (
+                            <label
+                              key={`${simulationItem.id}-${option}`}
+                              style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: 12,
+                                padding: "14px 16px",
+                                borderRadius: 14,
+                                background,
+                                border: `1px solid ${borderColor}`,
+                                cursor: simulationItem.userAnswer !== null ? "default" : "pointer",
+                                fontSize: 14,
+                                lineHeight: 1.6,
+                              }}
+                            >
+                              <input
+                                type="radio"
+                                name={`simulation-${simulationItem.id}`}
+                                checked={selected}
+                                disabled={simulationItem.userAnswer !== null}
+                                onChange={() => handleSimulationAnswer(option)}
+                                style={{ marginTop: 4 }}
+                              />
+                              <span>{option}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {!simulationSubmitted && simulationItem.userAnswer === null ? (
+                        <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            onClick={submitSimulationAnswer}
+                            disabled={!selectedSimulationOption}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: "none",
+                              background: selectedSimulationOption ? C.accent : C.border,
+                              color: selectedSimulationOption ? "#fff" : C.muted,
+                              fontWeight: 700,
+                              cursor: selectedSimulationOption ? "pointer" : "not-allowed",
+                            }}
+                          >
+                            Submit Answer
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {!simulationSubmitted && simulationItem.userAnswer !== null ? (
+                        <div
+                          style={{
+                            marginTop: 14,
+                            padding: 14,
+                            borderRadius: 14,
+                            background: C.panelNeutral,
+                            border: `1px solid ${C.panelNeutralDark}`,
+                            fontSize: 13,
+                            color: C.muted,
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          Answer saved. Continue through the full exam, then submit the simulation to review your score and rationale.
+                        </div>
+                      ) : null}
+
+                      {simulationSubmitted ? (
+                        <div
+                          style={{
+                            marginTop: 16,
+                            borderRadius: 16,
+                            padding: 16,
+                            background: "#FFFFFF",
+                            border: `1px solid ${simulationCurrentCorrect ? "#10B981" : "#F43F5E"}`,
+                          }}
+                        >
+                          <div style={{ display: "grid", gap: 8, fontSize: 14, lineHeight: 1.7 }}>
+                            <div><strong>Your answer:</strong> {simulationItem.userAnswer}</div>
+                            <div><strong>Correct answer:</strong> {simulationItem.correctAnswer}</div>
+                            <div><strong>Rationale:</strong> {simulationItem.rationale}</div>
+                            <div><strong>Memory tip:</strong> {simulationItem.notes}</div>
+                            {!simulationCurrentCorrect ? (
+                              <div><strong>Why your answer was weaker:</strong> It did not match the strongest nursing priority or board clue as closely as the correct answer.</div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => setSimulationIdx((value) => Math.max(0, value - 1))}
+                            disabled={simulationIdx === 0}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: `1px solid ${C.border}`,
+                              background: C.surface,
+                              color: simulationIdx === 0 ? C.faint : C.text,
+                              fontWeight: 700,
+                              cursor: simulationIdx === 0 ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Previous
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSimulationIdx((value) => Math.min(value + 1, simulationQuestions.length - 1))}
+                            disabled={simulationIdx >= simulationQuestions.length - 1}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: "none",
+                              background: simulationIdx >= simulationQuestions.length - 1 ? C.border : C.accent,
+                              color: simulationIdx >= simulationQuestions.length - 1 ? C.muted : "#fff",
+                              fontWeight: 700,
+                              cursor: simulationIdx >= simulationQuestions.length - 1 ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Next Question
+                          </button>
+                        </div>
+                        {!simulationSubmitted ? (
+                          <button
+                            type="button"
+                            onClick={submitSimulationExam}
+                            disabled={simulationAnsweredCount < simulationQuestions.length}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: "none",
+                              background: simulationAnsweredCount < simulationQuestions.length ? C.border : "#1A2740",
+                              color: simulationAnsweredCount < simulationQuestions.length ? C.muted : "#fff",
+                              fontWeight: 700,
+                              cursor: simulationAnsweredCount < simulationQuestions.length ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Submit Simulation
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 16,
+                        borderRadius: 18,
+                        padding: 18,
+                        background: C.panelNeutral,
+                        border: `1px solid ${C.panelNeutralDark}`,
+                      }}
+                    >
+                      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>Simulation Overview</div>
+                      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 14 }}>
+                        <div>Answered: <strong>{simulationAnsweredCount}</strong></div>
+                        <div>Remaining: <strong>{Math.max(simulationQuestions.length - simulationAnsweredCount, 0)}</strong></div>
+                        <div>Current target: <strong>{simulationSize} questions</strong></div>
+                        {simulationSubmitted ? (
+                          <div>Score: <strong>{simulationQuestions.length ? Math.round((simulationCorrectCount / simulationQuestions.length) * 100) : 0}%</strong></div>
+                        ) : null}
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                        {simulationSubmitted
+                          ? simulationUsedAi
+                            ? "This exam mixed the CareDrop bank with Gemini-generated expansion so the set stayed broad and less repetitive."
+                            : "This exam came from the CareDrop bank and was saved to Review History after submission."
+                          : "Answers stay hidden while the simulation is active so the flow feels closer to an actual long-form exam."}
+                      </div>
+                    </div>
                   </>
                 )}
               </div>
