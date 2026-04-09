@@ -32,6 +32,9 @@ export function Badge({ label, color = "gray" }) {
 export function Flashcard({ card, idx, total, onRate }) {
   const [flipped, setFlipped] = useState(false);
   const [flipLocked, setFlipLocked] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? 1024 : window.innerWidth
+  );
   const prevCardId = useRef(card?.id);
   const flipTimeoutRef = useRef(null);
   const cardButtonRef = useRef(null);
@@ -56,10 +59,36 @@ export function Flashcard({ card, idx, total, onRate }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    let frameId = null;
+    function handleResize() {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+      frameId = window.requestAnimationFrame(() => {
+        setViewportWidth(window.innerWidth);
+        frameId = null;
+      });
+    }
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
   if (!card) {
     return null;
   }
 
+  const isMobile = viewportWidth < 640;
   const diffColor =
     card.difficulty === "hard" ? "red" : card.difficulty === "medium" ? "amber" : "green";
 
@@ -147,7 +176,7 @@ export function Flashcard({ card, idx, total, onRate }) {
           }}
           style={{
             cursor: flipLocked ? "default" : "pointer",
-            minHeight: "clamp(240px, 42vw, 280px)",
+            minHeight: isMobile ? "auto" : "clamp(240px, 42vw, 280px)",
             width: "100%",
             background: "transparent",
             border: "none",
@@ -158,10 +187,10 @@ export function Flashcard({ card, idx, total, onRate }) {
           <div
             style={{
               position: "relative",
-              minHeight: "clamp(240px, 42vw, 280px)",
-              transformStyle: "preserve-3d",
-              transition: "transform 0.42s cubic-bezier(0.2, 0.7, 0.2, 1)",
-              transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+              minHeight: isMobile ? "auto" : "clamp(240px, 42vw, 280px)",
+              transformStyle: isMobile ? "flat" : "preserve-3d",
+              transition: isMobile ? "opacity 0.18s ease" : "transform 0.42s cubic-bezier(0.2, 0.7, 0.2, 1)",
+              transform: isMobile ? "none" : flipped ? "rotateY(180deg)" : "rotateY(0deg)",
             }}
           >
             {[
@@ -204,17 +233,22 @@ export function Flashcard({ card, idx, total, onRate }) {
               <div
                 key={face.side}
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  minHeight: "clamp(240px, 42vw, 280px)",
+                  position: isMobile ? "relative" : "absolute",
+                  inset: isMobile ? "auto" : 0,
+                  minHeight: isMobile ? "auto" : "clamp(240px, 42vw, 280px)",
                   background: face.background,
                   border: `1.5px solid ${face.borderColor}`,
                   borderRadius: 22,
-                  padding: "22px 22px 20px",
+                  padding: isMobile ? "18px 18px 16px" : "22px 22px 20px",
                   boxShadow: "0 12px 24px rgba(15, 23, 42, 0.05)",
-                  backfaceVisibility: "hidden",
-                  transform: face.side === "back" ? "rotateY(180deg)" : "rotateY(0deg)",
+                  backfaceVisibility: isMobile ? "visible" : "hidden",
+                  transform: isMobile ? "none" : face.side === "back" ? "rotateY(180deg)" : "rotateY(0deg)",
                   textAlign: "left",
+                  display: isMobile
+                    ? flipped === (face.side === "back")
+                      ? "block"
+                      : "none"
+                    : "block",
                 }}
               >
                 <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
@@ -237,7 +271,7 @@ export function Flashcard({ card, idx, total, onRate }) {
                 </div>
                 <div
                   style={{
-                    fontSize: face.side === "front" ? "clamp(18px, 2.6vw, 21px)" : "clamp(14px, 2.2vw, 15px)",
+                    fontSize: face.side === "front" ? "clamp(17px, 2.6vw, 21px)" : "clamp(14px, 2.2vw, 15px)",
                     fontWeight: face.side === "front" ? 800 : 600,
                     color: C.text,
                     lineHeight: face.side === "front" ? 1.55 : 1.7,
@@ -265,6 +299,7 @@ export function Flashcard({ card, idx, total, onRate }) {
           transition: "opacity 0.2s ease",
           pointerEvents: flipped ? "auto" : "none",
           flexWrap: "wrap",
+          marginTop: 4,
         }}
       >
         {[
@@ -276,9 +311,9 @@ export function Flashcard({ card, idx, total, onRate }) {
             key={button.key}
             onClick={() => onRate(button.key)}
             style={{
-              flex: 1,
-              minWidth: 120,
-              padding: "11px 14px",
+              flex: isMobile ? "1 1 100%" : 1,
+              minWidth: isMobile ? "100%" : 120,
+              padding: isMobile ? "12px 14px" : "11px 14px",
               borderRadius: 12,
               border: `1.5px solid ${button.color}`,
               background: button.bg,
