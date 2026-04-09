@@ -33,14 +33,28 @@ export function Flashcard({ card, idx, total, onRate }) {
   const [flipped, setFlipped] = useState(false);
   const [flipLocked, setFlipLocked] = useState(false);
   const prevCardId = useRef(card?.id);
+  const flipTimeoutRef = useRef(null);
+  const cardButtonRef = useRef(null);
 
   useEffect(() => {
     if (prevCardId.current !== card?.id) {
       setFlipped(false);
       setFlipLocked(false);
+      if (flipTimeoutRef.current) {
+        window.clearTimeout(flipTimeoutRef.current);
+        flipTimeoutRef.current = null;
+      }
       prevCardId.current = card?.id;
     }
   }, [card?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (flipTimeoutRef.current) {
+        window.clearTimeout(flipTimeoutRef.current);
+      }
+    };
+  }, []);
 
   if (!card) {
     return null;
@@ -56,8 +70,42 @@ export function Flashcard({ card, idx, total, onRate }) {
 
     setFlipLocked(true);
     setFlipped((value) => !value);
-    window.setTimeout(() => setFlipLocked(false), 420);
+    if (flipTimeoutRef.current) {
+      window.clearTimeout(flipTimeoutRef.current);
+    }
+    flipTimeoutRef.current = window.setTimeout(() => {
+      setFlipLocked(false);
+      flipTimeoutRef.current = null;
+    }, 420);
   }
+
+  useEffect(() => {
+    function handleSpaceFlip(event) {
+      if (!(event.key === " " || event.code === "Space")) {
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      const activeTag = activeElement?.tagName;
+      const isTypingField =
+        activeElement?.isContentEditable ||
+        activeTag === "INPUT" ||
+        activeTag === "TEXTAREA" ||
+        activeTag === "SELECT";
+      const isAnotherButtonFocused =
+        activeTag === "BUTTON" && activeElement !== cardButtonRef.current;
+
+      if (isTypingField || isAnotherButtonFocused) {
+        return;
+      }
+
+      event.preventDefault();
+      handleFlip();
+    }
+
+    window.addEventListener("keydown", handleSpaceFlip);
+    return () => window.removeEventListener("keydown", handleSpaceFlip);
+  }, [card?.id, flipLocked]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -88,8 +136,15 @@ export function Flashcard({ card, idx, total, onRate }) {
 
       <div style={{ perspective: 1400 }}>
         <button
+          ref={cardButtonRef}
           type="button"
           onClick={handleFlip}
+          onKeyDown={(event) => {
+            if (event.key === " " || event.code === "Space") {
+              event.preventDefault();
+              handleFlip();
+            }
+          }}
           style={{
             cursor: flipLocked ? "default" : "pointer",
             minHeight: 280,
