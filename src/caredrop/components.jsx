@@ -169,7 +169,7 @@ export function Flashcard({ card, idx, total, onRate }) {
                 side: "front",
                 heading: "Question",
                 body: card.question,
-                footer: "Tap to reveal answer",
+                footer: "Tap or press Space to reveal answer",
                 background: C.panelNeutralAlt,
                 borderColor: C.panelNeutralDark,
                 accentColor: "#85796A",

@@ -1900,8 +1900,8 @@ export default function App() {
   const [flashcardSessionSubmitted, setFlashcardSessionSubmitted] = useState(false);
   const [quiz, setQuiz] = useState([]);
   const [quizIdx, setQuizIdx] = useState(0);
-  const [selectedQuizOption, setSelectedQuizOption] = useState("");
   const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [quizAnswerSheetOpen, setQuizAnswerSheetOpen] = useState(false);
   const [simulationQuestions, setSimulationQuestions] = useState([]);
   const [simulationIdx, setSimulationIdx] = useState(0);
   const [simulationSubmitted, setSimulationSubmitted] = useState(false);
@@ -1914,7 +1914,6 @@ export default function App() {
   const [remediationContext, setRemediationContext] = useState(
     persisted?.remediationContext && typeof persisted.remediationContext === "object" ? persisted.remediationContext : null
   );
-  const [showFeedback, setShowFeedback] = useState(false);
   const [ratings, setRatings] = useState(safeObject(persisted?.ratings));
   const [sessions, setSessions] = useState(Number(persisted?.sessions || 0));
   const [reviewSessions, setReviewSessions] = useState(safeArray(persisted?.reviewSessions).length ? safeArray(persisted?.reviewSessions) : legacySavedSessions);
@@ -2018,7 +2017,7 @@ export default function App() {
     setQuiz(safeArray(snapshot.quiz));
     setQuizIdx(clamp(Number(snapshot.quizIdx || 0), 0, Math.max(safeArray(snapshot.quiz).length - 1, 0)));
     setQuizSubmitted(Boolean(snapshot.quizSubmitted));
-    setShowFeedback(Boolean(snapshot.showFeedback));
+    setQuizAnswerSheetOpen(false);
     setSimulationQuestions(safeArray(snapshot.simulationQuestions));
     setSimulationIdx(clamp(Number(snapshot.simulationIdx || 0), 0, Math.max(safeArray(snapshot.simulationQuestions).length - 1, 0)));
     setSimulationSubmitted(Boolean(snapshot.simulationSubmitted));
@@ -2138,7 +2137,6 @@ export default function App() {
         quiz,
         quizIdx,
         quizSubmitted,
-        showFeedback,
         simulationQuestions,
         simulationIdx,
         simulationSubmitted,
@@ -2179,7 +2177,6 @@ export default function App() {
     quiz,
     quizIdx,
     quizSubmitted,
-    showFeedback,
     simulationQuestions,
     simulationIdx,
     simulationSubmitted,
@@ -2224,7 +2221,6 @@ export default function App() {
       quiz,
       quizIdx,
       quizSubmitted,
-      showFeedback,
       simulationQuestions,
       simulationIdx,
       simulationSubmitted,
@@ -2287,7 +2283,6 @@ export default function App() {
     quiz,
     quizIdx,
     quizSubmitted,
-    showFeedback,
     simulationQuestions,
     simulationIdx,
     simulationSubmitted,
@@ -2794,7 +2789,6 @@ export default function App() {
   useEffect(() => {
     setAiResponse("");
     setQuestion("");
-    setSelectedQuizOption("");
   }, [quizIdx, quiz.length]);
 
   function clearMessages() {
@@ -3448,15 +3442,15 @@ export default function App() {
       setQuiz(fallback);
       setQuizIdx(0);
       setMode("quiz");
-      setShowFeedback(false);
       setQuizSubmitted(false);
+      setQuizAnswerSheetOpen(false);
       setStatusMessage("Offline mode: CareDrop prepared a local 10-question quiz from the stored review bank.");
       return;
     }
 
     setApiLoading(true);
-    setShowFeedback(false);
     setQuizSubmitted(false);
+    setQuizAnswerSheetOpen(false);
 
     try {
       const aiQuestions = await requestQuizBatch(
@@ -3816,6 +3810,7 @@ export default function App() {
       score: quiz.length ? Math.round((correctCount / quiz.length) * 100) : 0,
       answeredCount,
       correctCount,
+      submitted: true,
     };
 
     recordReviewSession(session);
@@ -3845,11 +3840,20 @@ export default function App() {
   }
 
   function handleQuizAnswer(option) {
-    if (!quizItem || quizItem.userAnswer !== null) {
+    if (!quizItem || quizSubmitted) {
       return;
     }
 
-    setSelectedQuizOption(option);
+    setQuiz((prev) =>
+      prev.map((item, index) =>
+        index === quizIdx
+          ? {
+              ...item,
+              userAnswer: option,
+            }
+          : item
+      )
+    );
   }
 
   function handleSimulationAnswer(option) {
@@ -3886,24 +3890,6 @@ export default function App() {
     );
   }
 
-  function submitQuizAnswer() {
-    if (!quizItem || quizItem.userAnswer !== null || !selectedQuizOption) {
-      return;
-    }
-
-    setQuiz((prev) =>
-      prev.map((item, index) =>
-        index === quizIdx
-          ? {
-              ...item,
-              userAnswer: selectedQuizOption,
-            }
-          : item
-      )
-    );
-    setShowFeedback(true);
-  }
-
   function saveCurrentQuiz() {
     if (!quiz.length) {
       return;
@@ -3925,6 +3911,7 @@ export default function App() {
       currentIndex: quizIdx,
       score,
       answeredCount,
+      submitted: quizSubmitted,
       saved: true,
     };
 
@@ -3960,8 +3947,8 @@ export default function App() {
 
     setQuiz(session.questions || []);
     setQuizIdx(clamp(session.currentIndex || 0, 0, Math.max((session.questions || []).length - 1, 0)));
-    setShowFeedback(false);
-    setQuizSubmitted(true);
+    setQuizSubmitted(Boolean(session.submitted));
+    setQuizAnswerSheetOpen(false);
     setMode("quiz");
     setStatusMessage(`Loaded saved session: ${buildSessionLabel(session)}.`);
   }
@@ -4058,9 +4045,8 @@ export default function App() {
       }))
     );
     setQuizIdx(0);
-    setSelectedQuizOption("");
-    setShowFeedback(false);
     setQuizSubmitted(false);
+    setQuizAnswerSheetOpen(false);
     setMode("quiz");
     setRemediationContext({
       sourceSessionId: baseSession?.id || "",
@@ -6432,16 +6418,16 @@ export default function App() {
 
                     <div key={`${quizItem.id || "quiz"}-${quizIdx}-options`} style={{ marginTop: 16, display: "grid", gap: 10, animation: "caredropFadeSlide 0.24s ease" }}>
                       {quizItem.options.map((option, optionIndex) => {
-                        const selected = quizItem.userAnswer !== null ? quizItem.userAnswer === option : selectedQuizOption === option;
+                        const selected = quizItem.userAnswer === option;
                         const correct = normalize(option) === normalize(quizItem.correctAnswer);
-                        const background = showFeedback && correct
+                        const background = quizSubmitted && correct
                           ? "#ECFDF5"
-                          : showFeedback && selected && !correct
+                          : quizSubmitted && selected && !correct
                             ? "#FFF1F2"
                             : C.panelNeutralAlt;
-                        const borderColor = showFeedback && correct
+                        const borderColor = quizSubmitted && correct
                           ? "#10B981"
-                          : showFeedback && selected && !correct
+                          : quizSubmitted && selected && !correct
                             ? "#F43F5E"
                             : C.panelNeutralDark;
 
@@ -6454,7 +6440,7 @@ export default function App() {
                               borderRadius: 14,
                               border: `1px solid ${borderColor}`,
                               background,
-                              cursor: quizItem.userAnswer !== null ? "default" : "pointer",
+                              cursor: quizSubmitted ? "default" : "pointer",
                               fontSize: 14,
                               lineHeight: 1.6,
                               transition: "transform 0.18s ease, border-color 0.18s ease, background 0.18s ease",
@@ -6467,7 +6453,7 @@ export default function App() {
                               type="radio"
                               name={`quiz-${quizItem.id}`}
                               checked={selected}
-                              disabled={quizItem.userAnswer !== null}
+                              disabled={quizSubmitted}
                               onChange={() => handleQuizAnswer(option)}
                               style={{ marginTop: 4 }}
                             />
@@ -6477,134 +6463,40 @@ export default function App() {
                       })}
                     </div>
 
-                    {!showFeedback && quizItem.userAnswer === null ? (
-                      <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-                        <button
-                          type="button"
-                          onClick={submitQuizAnswer}
-                          disabled={!selectedQuizOption}
-                          style={{
-                            padding: "10px 16px",
-                            borderRadius: 10,
-                            border: "none",
-                            background: selectedQuizOption ? C.accent : C.border,
-                            color: selectedQuizOption ? "#fff" : C.muted,
-                            fontWeight: 700,
-                            cursor: selectedQuizOption ? "pointer" : "not-allowed",
-                          }}
-                        >
-                          Submit Answer
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {showFeedback && quizItem.userAnswer !== null ? (
+                    {!quizSubmitted ? (
                       <div
                         style={{
                           marginTop: 16,
                           borderRadius: 18,
                           padding: 18,
-                          background: currentCorrect ? "#F3FBF6" : "#FFF6F6",
-                          border: `1px solid ${currentCorrect ? "#10B981" : "#F43F5E"}`,
+                          background: C.panelNeutral,
+                          border: `1px solid ${C.panelNeutralDark}`,
                         }}
                       >
-                        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>
-                          {currentCorrect ? "Correct" : "Incorrect"}
-                        </div>
                         <div style={{ fontSize: 14, lineHeight: 1.75 }}>
-                          <div>
-                            <strong>Your answer:</strong> {quizItem.userAnswer}
-                          </div>
-                          <div>
-                            <strong>Correct answer:</strong> {quizItem.correctAnswer}
-                          </div>
-                          <div>
-                            <strong>Rationale:</strong> {quizItem.rationale}
-                          </div>
-                          <div>
-                            <strong>Memory tip:</strong> {quizItem.notes}
-                          </div>
-                          {!currentCorrect ? (
-                            <div>
-                              <strong>Why your answer is weaker:</strong> It does not match the best nursing priority or review principle as closely as the correct answer.
-                            </div>
-                          ) : null}
+                          {quizItem.userAnswer
+                            ? "Answer saved. You can still move back and change it before final submission."
+                            : "Choose an answer, use Previous or Next to move around the set, and submit only when you are ready."}
                         </div>
-                        {!currentCorrect ? (
-                          <div
-                            style={{
-                              marginTop: 14,
-                              padding: 14,
-                              borderRadius: 14,
-                              background: "#FFFFFF",
-                              border: `1px solid ${C.panelNeutralDark}`,
-                            }}
-                          >
-                            <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 8 }}>
-                              AI Review Help
-                            </div>
-                            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginBottom: 10 }}>
-                              Ask anything about this missed item. You can ask for a mnemonic, a simpler explanation, or another example.
-                            </div>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              <input
-                                value={question}
-                                onChange={(event) => setQuestion(event.target.value)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") {
-                                    askClaude();
-                                  }
-                                }}
-                                placeholder="Why is this correct? Explain it simply. Give me a mnemonic..."
-                                style={{
-                                  flex: 1,
-                                  minWidth: 220,
-                                  padding: "10px 12px",
-                                  borderRadius: 10,
-                                  border: `1px solid ${C.border}`,
-                                  background: "#FBFAF7",
-                                  fontSize: 13,
-                                  outline: "none",
-                                }}
-                              />
-                              <button
-                                onClick={askClaude}
-                                disabled={apiLoading || !question.trim()}
-                                style={{
-                                  padding: "10px 14px",
-                                  borderRadius: 10,
-                                  border: "none",
-                                  background: apiLoading || !question.trim() ? C.border : C.accent,
-                                  color: apiLoading || !question.trim() ? C.muted : "#fff",
-                                  fontWeight: 700,
-                                  cursor: apiLoading || !question.trim() ? "not-allowed" : "pointer",
-                                }}
-                              >
-                                {apiLoading ? "Thinking..." : "Ask AI"}
-                              </button>
-                            </div>
-                            {aiResponse ? (
-                              <div
-                                style={{
-                                  marginTop: 10,
-                                  padding: 12,
-                                  borderRadius: 12,
-                                  background: C.accentLight,
-                                  border: `1px solid ${C.accentMid}`,
-                                  fontSize: 13,
-                                  lineHeight: 1.7,
-                                  whiteSpace: "pre-wrap",
-                                }}
-                              >
-                                {aiResponse}
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
                         <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button
+                            type="button"
+                            onClick={() => setQuizIdx((value) => Math.max(value - 1, 0))}
+                            disabled={quizIdx === 0}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: `1px solid ${C.border}`,
+                              background: quizIdx === 0 ? C.border : C.surface,
+                              color: quizIdx === 0 ? C.muted : C.text,
+                              fontWeight: 700,
+                              cursor: quizIdx === 0 ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Previous
+                          </button>
+                          <button
                             onClick={() => {
-                              setShowFeedback(false);
                               setAiResponse("");
                               setQuestion("");
                               setQuizIdx((value) => Math.min(value + 1, quiz.length - 1));
@@ -6622,11 +6514,28 @@ export default function App() {
                           >
                             Next Question
                           </button>
+                          {quizIdx === quiz.length - 1 ? (
+                            <button
+                              onClick={submitQuizSession}
+                              disabled={answeredCount < quiz.length || quizSubmitted}
+                              style={{
+                                padding: "10px 16px",
+                                borderRadius: 10,
+                                border: "none",
+                                background: answeredCount < quiz.length || quizSubmitted ? C.border : C.accent,
+                                color: answeredCount < quiz.length || quizSubmitted ? C.muted : "#fff",
+                                fontWeight: 700,
+                                cursor: answeredCount < quiz.length || quizSubmitted ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              Submit Quiz
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
 
-                    {quizIdx === quiz.length - 1 && quizItem.userAnswer !== null ? (
+                    {quizSubmitted ? (
                       <div
                         style={{
                           marginTop: 16,
@@ -6637,7 +6546,7 @@ export default function App() {
                         }}
                       >
                         <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>
-                          Quiz Summary
+                          Quiz Results
                         </div>
                         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 14 }}>
                           <div>Answered: <strong>{answeredCount}</strong></div>
@@ -6648,19 +6557,51 @@ export default function App() {
                         </div>
                         <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
                           <button
-                            onClick={submitQuizSession}
-                            disabled={answeredCount < quiz.length || quizSubmitted}
+                            type="button"
+                            onClick={() => setQuizIdx((value) => Math.max(value - 1, 0))}
+                            disabled={quizIdx === 0}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: `1px solid ${C.border}`,
+                              background: quizIdx === 0 ? C.border : C.surface,
+                              color: quizIdx === 0 ? C.muted : C.text,
+                              fontWeight: 700,
+                              cursor: quizIdx === 0 ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Previous
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setQuizIdx((value) => Math.min(value + 1, quiz.length - 1))}
+                            disabled={quizIdx >= quiz.length - 1}
                             style={{
                               padding: "10px 16px",
                               borderRadius: 10,
                               border: "none",
-                              background: answeredCount < quiz.length || quizSubmitted ? C.border : C.accent,
-                              color: answeredCount < quiz.length || quizSubmitted ? C.muted : "#fff",
+                              background: quizIdx >= quiz.length - 1 ? C.border : C.accent,
+                              color: quizIdx >= quiz.length - 1 ? C.muted : "#fff",
                               fontWeight: 700,
-                              cursor: answeredCount < quiz.length || quizSubmitted ? "not-allowed" : "pointer",
+                              cursor: quizIdx >= quiz.length - 1 ? "not-allowed" : "pointer",
                             }}
                           >
-                            {quizSubmitted ? "Quiz Session Submitted" : "Submit Quiz Session"}
+                            Next Question
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setQuizAnswerSheetOpen((value) => !value)}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: `1px solid ${C.border}`,
+                              background: C.surface,
+                              color: C.text,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {quizAnswerSheetOpen ? "Hide Answer Sheet" : "Review Answer Sheet"}
                           </button>
                           <button
                             type="button"
@@ -6688,24 +6629,66 @@ export default function App() {
                           >
                             Build Remediation Set
                           </button>
-                          {quizSubmitted ? (
-                            <button
-                              onClick={generateQuiz}
-                              disabled={apiLoading}
-                              style={{
-                                padding: "10px 16px",
-                                borderRadius: 10,
-                                border: `1px solid ${C.border}`,
-                                background: C.surface,
-                                color: C.text,
-                                fontWeight: 700,
-                                cursor: apiLoading ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              Generate Another Set
-                            </button>
-                          ) : null}
+                          <button
+                            onClick={() => {
+                              void requestNextQuizSet(topicFilter);
+                            }}
+                            disabled={apiLoading}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: `1px solid ${C.border}`,
+                              background: C.surface,
+                              color: C.text,
+                              fontWeight: 700,
+                              cursor: apiLoading ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Generate Another Set
+                          </button>
                         </div>
+                        <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.75 }}>
+                          <div><strong>Your answer:</strong> {quizItem.userAnswer || "No answer saved"}</div>
+                          <div><strong>Correct answer:</strong> {quizItem.correctAnswer}</div>
+                          <div><strong>Rationale:</strong> {quizItem.rationale}</div>
+                          <div><strong>Memory tip:</strong> {quizItem.notes}</div>
+                        </div>
+                        {quizAnswerSheetOpen ? (
+                          <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+                            {quiz.map((item, index) => {
+                              const isCorrect = !!item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer);
+                              return (
+                                <div
+                                  key={`${item.id || "quiz-sheet"}-${index}`}
+                                  style={{
+                                    padding: "16px 18px",
+                                    borderRadius: 16,
+                                    background: C.surface,
+                                    border: `1px solid ${isCorrect ? "#10B981" : "#F43F5E"}`,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                                    <Badge label={`Q ${index + 1}`} color="blue" />
+                                    <Badge label={item.subject} color="gray" />
+                                    <Badge label={isCorrect ? "Correct" : "Review"} color={isCorrect ? "green" : "red"} />
+                                  </div>
+                                  <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.45 }}>{item.prompt}</div>
+                                  <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                                    <div style={{ fontSize: 13, color: C.muted }}>
+                                      Your answer: <strong style={{ color: C.text }}>{item.userAnswer || "No answer saved"}</strong>
+                                    </div>
+                                    <div style={{ fontSize: 13, color: C.muted }}>
+                                      Correct answer: <strong style={{ color: C.text }}>{item.correctAnswer}</strong>
+                                    </div>
+                                    <div style={{ fontSize: 13, color: C.text, lineHeight: 1.7 }}>
+                                      <strong>Rationale:</strong> {item.rationale}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </>
