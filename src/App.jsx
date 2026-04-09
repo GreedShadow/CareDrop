@@ -1809,6 +1809,9 @@ export default function App() {
   const [simulationSize, setSimulationSize] = useState(50);
   const [simulationUsedAi, setSimulationUsedAi] = useState(false);
   const [simulationAnswerSheetOpen, setSimulationAnswerSheetOpen] = useState(false);
+  const [simulationLaunchOpen, setSimulationLaunchOpen] = useState(
+    !(safeMode(persisted?.mode) === "simulation" && safeArray(persisted?.simulationQuestions).length)
+  );
   const [remediationContext, setRemediationContext] = useState(
     persisted?.remediationContext && typeof persisted.remediationContext === "object" ? persisted.remediationContext : null
   );
@@ -1923,6 +1926,7 @@ export default function App() {
     setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(snapshot.simulationSize)) ? Number(snapshot.simulationSize) : 50);
     setSimulationUsedAi(Boolean(snapshot.simulationUsedAi));
     setSimulationAnswerSheetOpen(false);
+    setSimulationLaunchOpen(!(safeMode(snapshot.mode) === "simulation" && safeArray(snapshot.simulationQuestions).length));
     setRemediationContext(snapshot.remediationContext && typeof snapshot.remediationContext === "object" ? snapshot.remediationContext : null);
   }
 
@@ -1936,6 +1940,11 @@ export default function App() {
     window.requestAnimationFrame(() => {
       setAdminView(nextView);
     });
+  }
+
+  function openSimulationLauncher() {
+    setSimulationLaunchOpen(true);
+    queueModeChange("simulation");
   }
 
   useEffect(() => {
@@ -3438,6 +3447,7 @@ export default function App() {
       setSimulationIdx(0);
       setSimulationSize(finalTarget);
       setSimulationSubmitted(false);
+      setSimulationLaunchOpen(false);
       setMode("simulation");
       setSimulationUsedAi(combined.length > localPool.length);
       setSimulationAnswerSheetOpen(false);
@@ -3479,6 +3489,7 @@ export default function App() {
       setSimulationIdx(0);
       setSimulationSize(finalTarget);
       setSimulationSubmitted(false);
+      setSimulationLaunchOpen(false);
       setMode("simulation");
       setSimulationUsedAi(false);
       setSimulationAnswerSheetOpen(false);
@@ -3755,6 +3766,7 @@ export default function App() {
       setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(session.simulationSize)) ? Number(session.simulationSize) : 50);
       setSimulationUsedAi(Boolean(session.usedAi));
       setSimulationAnswerSheetOpen(false);
+      setSimulationLaunchOpen(false);
       setMode("simulation");
       setStatusMessage(`Loaded saved session: ${buildSessionLabel(session)}.`);
       return;
@@ -4460,7 +4472,7 @@ export default function App() {
                   <SidebarNavButton active={mode === "dashboard"} label="Dashboard" hint="Overview and next steps" onClick={() => queueModeChange("dashboard")} />
                   <SidebarNavButton active={mode === "flashcard"} label="Flashcards" hint="Focused card review" badge={flashcards.length || ""} onClick={() => queueModeChange("flashcard")} />
                   <SidebarNavButton active={mode === "quiz"} label="Quiz" hint="Board-style drills" badge={quiz.length || ""} onClick={() => queueModeChange("quiz")} />
-                  <SidebarNavButton active={mode === "simulation"} label="Simulation Exam" hint="Mixed 50-500 item exam mode" badge={simulationQuestions.length || ""} onClick={() => queueModeChange("simulation")} />
+                  <SidebarNavButton active={mode === "simulation"} label="Simulation Exam" hint="Mixed 50-500 item exam mode" badge={simulationQuestions.length || ""} onClick={openSimulationLauncher} />
                   <SidebarNavButton active={mode === "planner"} label="Planner" hint="Goals, due dates, and next study targets" badge={plannerOpenItems.length || ""} onClick={() => queueModeChange("planner")} />
                   <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => queueModeChange("notes")} />
                   <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions and returns" badge={reviewSessions.length || ""} onClick={() => queueModeChange("history")} />
@@ -6565,7 +6577,84 @@ export default function App() {
                   </div>
                 </div>
 
-                {!simulationItem ? (
+                {simulationLaunchOpen ? (
+                  <div
+                    style={{
+                      marginTop: 18,
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 20,
+                      padding: width < 720 ? 20 : 24,
+                      background: "#FBFAF7",
+                    }}
+                  >
+                    <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.04em", color: C.text }}>
+                      Choose your simulation length first
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 14, color: C.muted, lineHeight: 1.8, maxWidth: 760 }}>
+                      The exam stays hidden until you choose a format. Pick a mixed 50-, 100-, or 500-question simulation to launch a broader board-style exam experience across the full review bank.
+                    </div>
+                    <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      {SIMULATION_SIZE_OPTIONS.map((value) => (
+                        <button
+                          key={`launch-${value}`}
+                          type="button"
+                          onClick={() => generateSimulationExam(value)}
+                          disabled={apiLoading}
+                          style={{
+                            minWidth: 130,
+                            padding: "12px 16px",
+                            borderRadius: 12,
+                            border: simulationSize === value ? "none" : `1px solid ${C.border}`,
+                            background: simulationSize === value ? C.accent : C.surface,
+                            color: simulationSize === value ? "#fff" : C.text,
+                            fontWeight: 800,
+                            cursor: apiLoading ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {apiLoading && simulationSize === value ? "Preparing..." : `Start ${value}`}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 16, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                      Once the exam is generated, your answers will be saved as you move between questions. Results and explanations will only appear after the final submission.
+                    </div>
+                    {simulationQuestions.length ? (
+                      <div
+                        style={{
+                          marginTop: 16,
+                          padding: "14px 16px",
+                          borderRadius: 14,
+                          background: "#FFFFFF",
+                          border: `1px solid ${C.border}`,
+                        }}
+                      >
+                        <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
+                          A simulation is already loaded
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+                          You currently have a {simulationSize}-question simulation in memory. You can resume it or replace it with a new one.
+                        </div>
+                        <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => setSimulationLaunchOpen(false)}
+                            style={{
+                              padding: "10px 14px",
+                              borderRadius: 10,
+                              border: `1px solid ${C.border}`,
+                              background: C.surface,
+                              color: C.text,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Resume Current Simulation
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : !simulationItem ? (
                   <div
                     style={{
                       marginTop: 18,
@@ -6577,7 +6666,7 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    Generate a mixed 50-, 100-, or 500-question simulation exam. This mode ignores the current subject filter so the learner gets a broader board-style exam experience.
+                    Choose one of the simulation options above to start the exam.
                   </div>
                 ) : (
                   <>
@@ -7017,7 +7106,10 @@ export default function App() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => generateSimulationExam(simulationSize)}
+                              onClick={() => {
+                                setSimulationLaunchOpen(true);
+                                setStatusMessage("Choose a new simulation length to start another exam.");
+                              }}
                               style={{
                                 padding: "10px 14px",
                                 borderRadius: 12,
@@ -7028,7 +7120,7 @@ export default function App() {
                                 cursor: "pointer",
                               }}
                             >
-                              Start Another Simulation
+                              New Simulation Setup
                             </button>
                           </div>
 
