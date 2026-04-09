@@ -15,6 +15,7 @@ import {
   LOGO_SRC,
   QUIZ_SET_SIZE,
   RECENT_MEMORY_LIMIT,
+  REQUEST_STORAGE_KEY,
   SIMULATION_BATCH_SIZE,
   SIMULATION_SIZE_OPTIONS,
   SUPPORTED_UPLOAD_EXTENSIONS,
@@ -1757,7 +1758,15 @@ export default function App() {
   const width = useWindowWidth();
   const initialUser = loadAuthSession();
   const persisted = initialUser ? loadPersisted(initialUser.id) : null;
-  const legacySavedSessions = persisted?.savedQuizSessions || [];
+  const safeArray = (value) => (Array.isArray(value) ? value : []);
+  const safeObject = (value) =>
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const safeString = (value, fallback = "") => (typeof value === "string" ? value : fallback);
+  const safeMode = (value, fallback = "flashcard") =>
+    ["dashboard", "flashcard", "quiz", "simulation", "calendar", "planner", "notes", "history", "admin"].includes(value)
+      ? value
+      : fallback;
+  const legacySavedSessions = safeArray(persisted?.savedQuizSessions);
   const persistedRequests = loadRequestPersisted();
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [currentUser, setCurrentUser] = useState(initialUser);
@@ -1776,11 +1785,11 @@ export default function App() {
   const [cloudSyncReady, setCloudSyncReady] = useState(supabaseConfigured);
   const [cloudSyncStatus, setCloudSyncStatus] = useState("");
   const [subject, setSubject] = useState("");
-  const [difficulty, setDifficulty] = useState(persisted?.difficulty || "All");
-  const [topicFilter, setTopicFilter] = useState(persisted?.topicFilter || "");
-  const [topicInput, setTopicInput] = useState(persisted?.topicFilter || "");
+  const [difficulty, setDifficulty] = useState(safeString(persisted?.difficulty, "All"));
+  const [topicFilter, setTopicFilter] = useState(safeString(persisted?.topicFilter));
+  const [topicInput, setTopicInput] = useState(safeString(persisted?.topicFilter));
   const [focusAction, setFocusAction] = useState("flashcard");
-  const [mode, setMode] = useState(persisted?.mode || "flashcard");
+  const [mode, setMode] = useState(safeMode(persisted?.mode));
   const [flashcards, setFlashcards] = useState([]);
   const [cardIdx, setCardIdx] = useState(0);
   const [flashcardSessionRatings, setFlashcardSessionRatings] = useState({});
@@ -1795,16 +1804,18 @@ export default function App() {
   const [simulationSize, setSimulationSize] = useState(50);
   const [simulationUsedAi, setSimulationUsedAi] = useState(false);
   const [simulationAnswerSheetOpen, setSimulationAnswerSheetOpen] = useState(false);
-  const [remediationContext, setRemediationContext] = useState(persisted?.remediationContext || null);
+  const [remediationContext, setRemediationContext] = useState(
+    persisted?.remediationContext && typeof persisted.remediationContext === "object" ? persisted.remediationContext : null
+  );
   const [showFeedback, setShowFeedback] = useState(false);
-  const [ratings, setRatings] = useState(persisted?.ratings || {});
-  const [sessions, setSessions] = useState(persisted?.sessions || 0);
-  const [reviewSessions, setReviewSessions] = useState(persisted?.reviewSessions || legacySavedSessions);
-  const [usedFlashcardIds, setUsedFlashcardIds] = useState(persisted?.usedFlashcardIds || []);
-  const [usedFlashcardQuestions, setUsedFlashcardQuestions] = useState(persisted?.usedFlashcardQuestions || []);
-  const [usedQuizPrompts, setUsedQuizPrompts] = useState(persisted?.usedQuizPrompts || []);
-  const [recentFlashcardIds, setRecentFlashcardIds] = useState(persisted?.recentFlashcardIds || []);
-  const [recentQuizPrompts, setRecentQuizPrompts] = useState(persisted?.recentQuizPrompts || []);
+  const [ratings, setRatings] = useState(safeObject(persisted?.ratings));
+  const [sessions, setSessions] = useState(Number(persisted?.sessions || 0));
+  const [reviewSessions, setReviewSessions] = useState(safeArray(persisted?.reviewSessions).length ? safeArray(persisted?.reviewSessions) : legacySavedSessions);
+  const [usedFlashcardIds, setUsedFlashcardIds] = useState(safeArray(persisted?.usedFlashcardIds));
+  const [usedFlashcardQuestions, setUsedFlashcardQuestions] = useState(safeArray(persisted?.usedFlashcardQuestions));
+  const [usedQuizPrompts, setUsedQuizPrompts] = useState(safeArray(persisted?.usedQuizPrompts));
+  const [recentFlashcardIds, setRecentFlashcardIds] = useState(safeArray(persisted?.recentFlashcardIds));
+  const [recentQuizPrompts, setRecentQuizPrompts] = useState(safeArray(persisted?.recentQuizPrompts));
   const [apiLoading, setApiLoading] = useState(false);
   const [aiResponse, setAiResponse] = useState("");
   const [apiError, setApiError] = useState("");
@@ -1812,14 +1823,14 @@ export default function App() {
   const [statusFading, setStatusFading] = useState(false);
   const [question, setQuestion] = useState("");
   const [gentlePush, setGentlePush] = useState(ENCOURAGEMENTS[0]);
-  const [noteText, setNoteText] = useState(persisted?.noteText || "");
-  const [uploadedText, setUploadedText] = useState(persisted?.uploadedText || "");
-  const [uploadedFileName, setUploadedFileName] = useState(persisted?.uploadedFileName || "");
+  const [noteText, setNoteText] = useState(safeString(persisted?.noteText));
+  const [uploadedText, setUploadedText] = useState(safeString(persisted?.uploadedText));
+  const [uploadedFileName, setUploadedFileName] = useState(safeString(persisted?.uploadedFileName));
   const [uploadState, setUploadState] = useState("idle");
   const [uploadError, setUploadError] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [summaryText, setSummaryText] = useState(
-    persisted?.summaryText || "Paste notes or upload a document to generate a reviewer summary."
+    safeString(persisted?.summaryText, "Paste notes or upload a document to generate a reviewer summary.")
   );
   const [filterWeakOnly, setFilterWeakOnly] = useState(persisted?.filterWeakOnly || false);
   const [metricHover, setMetricHover] = useState("");
@@ -1840,18 +1851,18 @@ export default function App() {
   const [calendarSelectedDate, setCalendarSelectedDate] = useState(
     persisted?.calendarSelectedDate || getDateInputValue()
   );
-  const [calendarEvents, setCalendarEvents] = useState(Array.isArray(persisted?.calendarEvents) ? persisted.calendarEvents : []);
+  const [calendarEvents, setCalendarEvents] = useState(safeArray(persisted?.calendarEvents));
   const [calendarDraftTitle, setCalendarDraftTitle] = useState("");
   const [calendarDraftType, setCalendarDraftType] = useState("Study");
   const [calendarDraftSubject, setCalendarDraftSubject] = useState("");
   const [calendarDraftNote, setCalendarDraftNote] = useState("");
-  const [plannerItems, setPlannerItems] = useState(Array.isArray(persisted?.plannerItems) ? persisted.plannerItems : []);
+  const [plannerItems, setPlannerItems] = useState(safeArray(persisted?.plannerItems));
   const [plannerTitle, setPlannerTitle] = useState("");
   const [plannerSubject, setPlannerSubject] = useState("");
   const [plannerMode, setPlannerMode] = useState("mixed");
   const [plannerDueDate, setPlannerDueDate] = useState(getDateInputValue());
   const [plannerNotes, setPlannerNotes] = useState("");
-  const [adminView, setAdminView] = useState(persisted?.adminView || "overview");
+  const [adminView, setAdminView] = useState(["overview", "feedback", "planning", "activity"].includes(persisted?.adminView) ? persisted.adminView : "overview");
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
   const usedFlashcardQuestionsRef = useRef(usedFlashcardQuestions);
@@ -1869,45 +1880,45 @@ export default function App() {
       return;
     }
 
-    setSubject(restoreSubject ? snapshot.subject || "" : "");
-    setDifficulty(snapshot.difficulty || "All");
-    setTopicFilter(snapshot.topicFilter || "");
-    setTopicInput(snapshot.topicFilter || "");
-    setMode(snapshot.mode || "flashcard");
-    setRatings(snapshot.ratings || {});
+    setSubject(restoreSubject ? safeString(snapshot.subject) : "");
+    setDifficulty(safeString(snapshot.difficulty, "All"));
+    setTopicFilter(safeString(snapshot.topicFilter));
+    setTopicInput(safeString(snapshot.topicFilter));
+    setMode(safeMode(snapshot.mode));
+    setRatings(safeObject(snapshot.ratings));
     setSessions(Number(snapshot.sessions || 0));
-    setReviewSessions(snapshot.reviewSessions || snapshot.savedQuizSessions || []);
-    setUsedFlashcardIds(snapshot.usedFlashcardIds || []);
-    setUsedFlashcardQuestions(snapshot.usedFlashcardQuestions || []);
-    setUsedQuizPrompts(snapshot.usedQuizPrompts || []);
-    setRecentFlashcardIds(snapshot.recentFlashcardIds || []);
-    setRecentQuizPrompts(snapshot.recentQuizPrompts || []);
-    setNoteText(snapshot.noteText || "");
-    setUploadedText(snapshot.uploadedText || "");
-    setUploadedFileName(snapshot.uploadedFileName || "");
-    setSummaryText(snapshot.summaryText || "Paste notes or upload a document to generate a reviewer summary.");
+    setReviewSessions(safeArray(snapshot.reviewSessions).length ? safeArray(snapshot.reviewSessions) : safeArray(snapshot.savedQuizSessions));
+    setUsedFlashcardIds(safeArray(snapshot.usedFlashcardIds));
+    setUsedFlashcardQuestions(safeArray(snapshot.usedFlashcardQuestions));
+    setUsedQuizPrompts(safeArray(snapshot.usedQuizPrompts));
+    setRecentFlashcardIds(safeArray(snapshot.recentFlashcardIds));
+    setRecentQuizPrompts(safeArray(snapshot.recentQuizPrompts));
+    setNoteText(safeString(snapshot.noteText));
+    setUploadedText(safeString(snapshot.uploadedText));
+    setUploadedFileName(safeString(snapshot.uploadedFileName));
+    setSummaryText(safeString(snapshot.summaryText, "Paste notes or upload a document to generate a reviewer summary."));
     setFilterWeakOnly(Boolean(snapshot.filterWeakOnly));
     setSubjectShortcutsOpen(snapshot.subjectShortcutsOpen !== false);
     setCalendarMonth(coerceDate(snapshot.calendarMonth));
     setCalendarSelectedDate(snapshot.calendarSelectedDate || getDateInputValue());
     setCalendarEvents(Array.isArray(snapshot.calendarEvents) ? snapshot.calendarEvents : []);
     setPlannerItems(Array.isArray(snapshot.plannerItems) ? snapshot.plannerItems : []);
-    setAdminView(snapshot.adminView || "overview");
-    setFlashcards(snapshot.flashcards || []);
-    setCardIdx(clamp(Number(snapshot.cardIdx || 0), 0, Math.max((snapshot.flashcards || []).length - 1, 0)));
-    setFlashcardSessionRatings(snapshot.flashcardSessionRatings || {});
+    setAdminView(["overview", "feedback", "planning", "activity"].includes(snapshot.adminView) ? snapshot.adminView : "overview");
+    setFlashcards(safeArray(snapshot.flashcards));
+    setCardIdx(clamp(Number(snapshot.cardIdx || 0), 0, Math.max(safeArray(snapshot.flashcards).length - 1, 0)));
+    setFlashcardSessionRatings(safeObject(snapshot.flashcardSessionRatings));
     setFlashcardSessionSubmitted(Boolean(snapshot.flashcardSessionSubmitted));
-    setQuiz(snapshot.quiz || []);
-    setQuizIdx(clamp(Number(snapshot.quizIdx || 0), 0, Math.max((snapshot.quiz || []).length - 1, 0)));
+    setQuiz(safeArray(snapshot.quiz));
+    setQuizIdx(clamp(Number(snapshot.quizIdx || 0), 0, Math.max(safeArray(snapshot.quiz).length - 1, 0)));
     setQuizSubmitted(Boolean(snapshot.quizSubmitted));
     setShowFeedback(Boolean(snapshot.showFeedback));
-    setSimulationQuestions(snapshot.simulationQuestions || []);
-    setSimulationIdx(clamp(Number(snapshot.simulationIdx || 0), 0, Math.max((snapshot.simulationQuestions || []).length - 1, 0)));
+    setSimulationQuestions(safeArray(snapshot.simulationQuestions));
+    setSimulationIdx(clamp(Number(snapshot.simulationIdx || 0), 0, Math.max(safeArray(snapshot.simulationQuestions).length - 1, 0)));
     setSimulationSubmitted(Boolean(snapshot.simulationSubmitted));
     setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(snapshot.simulationSize)) ? Number(snapshot.simulationSize) : 50);
     setSimulationUsedAi(Boolean(snapshot.simulationUsedAi));
     setSimulationAnswerSheetOpen(false);
-    setRemediationContext(snapshot.remediationContext || null);
+    setRemediationContext(snapshot.remediationContext && typeof snapshot.remediationContext === "object" ? snapshot.remediationContext : null);
   }
 
   useEffect(() => {
