@@ -251,12 +251,14 @@ export function Flashcard({ card, idx, total, onRate }) {
                     : "block",
                 }}
               >
-                <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-                  <Badge label={card.subject} color="blue" />
-                  <Badge label={card.topic} color="gray" />
-                  <Badge label={card.difficulty} color={diffColor} />
-                  {face.side === "back" ? <Badge label="Answer" color="green" /> : null}
-                </div>
+                {face.side === "back" ? (
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+                    <Badge label={card.subject} color="blue" />
+                    <Badge label={card.topic} color="gray" />
+                    <Badge label={card.difficulty} color={diffColor} />
+                    <Badge label="Answer" color="green" />
+                  </div>
+                ) : null}
                 <div
                   style={{
                     fontSize: 11,

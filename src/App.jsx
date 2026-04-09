@@ -2162,6 +2162,7 @@ export default function App() {
   const [plannerDueDate, setPlannerDueDate] = useState(getDateInputValue());
   const [plannerNotes, setPlannerNotes] = useState("");
   const [adminView, setAdminView] = useState(["overview", "feedback", "planning", "activity"].includes(persisted?.adminView) ? persisted.adminView : "overview");
+  const [headerVisible, setHeaderVisible] = useState(true);
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
   const usedFlashcardQuestionsRef = useRef(usedFlashcardQuestions);
@@ -2169,6 +2170,7 @@ export default function App() {
   const recentFlashcardIdsRef = useRef(recentFlashcardIds);
   const recentQuizPromptsRef = useRef(recentQuizPrompts);
   const remoteProgressLoadedRef = useRef(false);
+  const lastScrollYRef = useRef(0);
   const lastActivityAtRef = useRef(Date.now());
   const lastActivityPersistedAtRef = useRef(0);
 
@@ -4505,11 +4507,46 @@ export default function App() {
   });
   const isMobile = width < 640;
   const isNarrowTablet = width < 820;
+  const isStudyMode = mode === "flashcard" || mode === "quiz" || mode === "simulation";
   const studySectionPadding = isMobile ? 16 : 22;
   const studyMetaSize = 12;
   const studyQuestionSize = isMobile ? 18 : 20;
   const studyBodySize = isMobile ? 14 : 15;
   const studyActionPadding = isMobile ? "10px 14px" : "10px 16px";
+  const headerHeight = isMobile ? 88 : 68;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    let ticking = false;
+    const threshold = 18;
+
+    function onScroll() {
+      if (ticking) {
+        return;
+      }
+
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        const currentY = window.scrollY || 0;
+        const delta = currentY - lastScrollYRef.current;
+
+        if (currentY <= 32) {
+          setHeaderVisible(true);
+        } else if (Math.abs(delta) >= threshold) {
+          setHeaderVisible(delta < 0);
+        }
+
+        lastScrollYRef.current = currentY;
+        ticking = false;
+      });
+    }
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   if (!authReady) {
     return (
@@ -4581,9 +4618,14 @@ export default function App() {
           justifyContent: "space-between",
           flexDirection: isMobile ? "column" : "row",
           gap: isMobile ? 10 : 0,
-          position: "sticky",
+          position: "fixed",
           top: 0,
+          left: 0,
+          right: 0,
           zIndex: 20,
+          transform: headerVisible ? "translateY(0)" : "translateY(-100%)",
+          transition: "transform 0.28s ease",
+          boxShadow: headerVisible ? "0 12px 26px rgba(8, 59, 40, 0.18)" : "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -4682,7 +4724,7 @@ export default function App() {
         style={{
           maxWidth: 1400,
           margin: "0 auto",
-          padding: isMobile ? "16px 12px 28px" : "24px 20px 36px",
+          padding: isMobile ? `${headerHeight + 12}px 12px 28px` : `${headerHeight + 16}px 20px 36px`,
           display: "flex",
           flexDirection: "column",
           gap: 20,
@@ -4748,128 +4790,176 @@ export default function App() {
           `}
         </style>
 
-        <div
-          style={{
-            ...panelStyle,
-            padding: width < 900 ? 20 : 24,
-            background: "linear-gradient(180deg, #FDFEFD 0%, #F6FBF8 100%)",
-            color: C.text,
-            overflow: "hidden",
-            position: "relative",
-            border: "1px solid #DCE8E1",
-            boxShadow: "0 16px 32px rgba(11, 42, 27, 0.06)",
-          }}
-        >
+        {mode === "dashboard" ? (
           <div
             style={{
-              position: "absolute",
-              inset: "-80px -40px auto auto",
-              width: 260,
-              height: 260,
-              borderRadius: "50%",
-              background: "radial-gradient(circle, rgba(30,169,104,0.12) 0%, rgba(30,169,104,0) 70%)",
-            }}
-          />
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.2fr) minmax(280px, 360px)",
-              gap: 20,
-              marginBottom: 20,
+              ...panelStyle,
+              padding: width < 900 ? 20 : 24,
+              background: "linear-gradient(180deg, #FDFEFD 0%, #F6FBF8 100%)",
+              color: C.text,
+              overflow: "hidden",
               position: "relative",
-              zIndex: 1,
-            }}
-          >
-            <div style={{ maxWidth: 560 }}>
-              <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "#6B8F7E", fontWeight: 800 }}>
-                {dashboardGreeting}
-              </div>
-              <div style={{ marginTop: 10, fontSize: width < 880 ? 34 : 42, lineHeight: 1.08, fontWeight: 900, letterSpacing: "-0.06em", color: "#14231B" }}>
-                Dashboard Overview
-              </div>
-              <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, color: "#61736B" }}>
-                Keep your review flow organized across flashcards, quizzes, simulations, uploads, planning, and saved sessions without losing your place.
-              </div>
-              <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ padding: "10px 14px", borderRadius: 999, background: "#F0F8F3", border: "1px solid #D7EBDD", fontSize: 12, color: "#235B42", fontWeight: 700 }}>
-                  {studyStreak ? `${studyStreak}-day study streak` : "Start a streak with one session today"}
-                </div>
-                <div style={{ padding: "10px 14px", borderRadius: 999, background: "#F7FAFD", border: "1px solid #DCE8F1", fontSize: 12, color: "#355E8A", fontWeight: 700 }}>
-                  {mostRecentSession ? `Last studied ${mostRecentSession.subject}` : "Your first session will start the tracker"}
-                </div>
-              </div>
-            </div>
-            <div
-              style={{
-                borderRadius: 24,
-                padding: "18px 18px 16px",
-                background: "linear-gradient(180deg, #0D5A3B 0%, #0E6B47 100%)",
-                border: "1px solid rgba(14, 107, 71, 0.12)",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                minHeight: 170,
-                boxShadow: "0 16px 30px rgba(14, 107, 71, 0.18)",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(227,244,236,0.68)", fontWeight: 800 }}>
-                  Encouragement
-                </div>
-                <div style={{ marginTop: 14, fontSize: 22, lineHeight: 1.45, fontWeight: 700, color: "#FFFFFF" }}>
-                  {gentlePush}
-                </div>
-              </div>
-              <div style={{ marginTop: 18, fontSize: 13, lineHeight: 1.7, color: "rgba(236,248,241,0.82)" }}>
-                {isFirstVisit
-                  ? "Start one short set today and CareDrop will begin building your study trail."
-                  : recommendedAction.body}
-              </div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: width < 1180 ? "1fr" : "220px minmax(0, 1fr)",
-              gap: 18,
-              alignItems: "stretch",
-              position: "relative",
-              zIndex: 1,
+              border: "1px solid #DCE8E1",
+              boxShadow: "0 16px 32px rgba(11, 42, 27, 0.06)",
             }}
           >
             <div
               style={{
-                borderRadius: 22,
-                border: "1px solid #DCE8E1",
-                background: "#FFFFFF",
-                padding: 18,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                position: "absolute",
+                inset: "-80px -40px auto auto",
+                width: 260,
+                height: 260,
+                borderRadius: "50%",
+                background: "radial-gradient(circle, rgba(30,169,104,0.12) 0%, rgba(30,169,104,0) 70%)",
               }}
-            >
-              <ProgressRing
-                value={clamp(Math.round(((Object.keys(ratings).length + reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0)) / Math.max(totalCards * 0.55, 1)) * 100), 0, 100)}
-                label="overall completion"
-                caption={isFirstVisit ? "Ready when you are." : "Your next set is prepared."}
-                size={isMobile ? 156 : 190}
-              />
-            </div>
+            />
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : width < 780 ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
-                gap: 12,
+                gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.2fr) minmax(280px, 360px)",
+                gap: 20,
+                marginBottom: 20,
+                position: "relative",
+                zIndex: 1,
               }}
             >
-              <HeroMetric label="Readiness Score" value={`${readinessScore}%`} helper={weakCardIds.length ? `${weakCardIds.length} weak cards worth revisiting` : isFirstVisit ? "Complete one short session to begin scoring" : "Building confidence steadily"} accent="#F8D56C" />
-              <HeroMetric label="Study Streak" value={studyStreak || 0} helper={studyStreak ? "Keep the rhythm going today" : "One session starts the streak"} accent="#8BE5AF" />
-              <HeroMetric label="Average Quiz Score" value={`${quizAverage}%`} helper={quizSessionCount ? `${quizSessionCount} quiz sessions tracked` : "Your quiz trend will appear here"} accent="#6BC0FF" />
-              <HeroMetric label="Answered Overall" value={overallAnsweredCount} helper={mostRecentSession ? `Last reviewed ${mostRecentSession.subject}` : "Answer one set to start tracking"} accent="#D8B4FE" />
+              <div style={{ maxWidth: 560 }}>
+                <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "#6B8F7E", fontWeight: 800 }}>
+                  {dashboardGreeting}
+                </div>
+                <div style={{ marginTop: 10, fontSize: width < 880 ? 34 : 42, lineHeight: 1.08, fontWeight: 900, letterSpacing: "-0.06em", color: "#14231B" }}>
+                  Dashboard Overview
+                </div>
+                <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, color: "#61736B" }}>
+                  Keep your review flow organized across flashcards, quizzes, simulations, uploads, planning, and saved sessions without losing your place.
+                </div>
+                <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ padding: "10px 14px", borderRadius: 999, background: "#F0F8F3", border: "1px solid #D7EBDD", fontSize: 12, color: "#235B42", fontWeight: 700 }}>
+                    {studyStreak ? `${studyStreak}-day study streak` : "Start a streak with one session today"}
+                  </div>
+                  <div style={{ padding: "10px 14px", borderRadius: 999, background: "#F7FAFD", border: "1px solid #DCE8F1", fontSize: 12, color: "#355E8A", fontWeight: 700 }}>
+                    {mostRecentSession ? `Last studied ${mostRecentSession.subject}` : "Your first session will start the tracker"}
+                  </div>
+                </div>
+              </div>
+              <div
+                style={{
+                  borderRadius: 24,
+                  padding: "18px 18px 16px",
+                  background: "linear-gradient(180deg, #0D5A3B 0%, #0E6B47 100%)",
+                  border: "1px solid rgba(14, 107, 71, 0.12)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  minHeight: 170,
+                  boxShadow: "0 16px 30px rgba(14, 107, 71, 0.18)",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(227,244,236,0.68)", fontWeight: 800 }}>
+                    Encouragement
+                  </div>
+                  <div style={{ marginTop: 14, fontSize: 22, lineHeight: 1.45, fontWeight: 700, color: "#FFFFFF" }}>
+                    {gentlePush}
+                  </div>
+                </div>
+                <div style={{ marginTop: 18, fontSize: 13, lineHeight: 1.7, color: "rgba(236,248,241,0.82)" }}>
+                  {isFirstVisit
+                    ? "Start one short set today and CareDrop will begin building your study trail."
+                    : recommendedAction.body}
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: width < 1180 ? "1fr" : "220px minmax(0, 1fr)",
+                gap: 18,
+                alignItems: "stretch",
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              <div
+                style={{
+                  borderRadius: 22,
+                  border: "1px solid #DCE8E1",
+                  background: "#FFFFFF",
+                  padding: 18,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <ProgressRing
+                  value={clamp(Math.round(((Object.keys(ratings).length + reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0)) / Math.max(totalCards * 0.55, 1)) * 100), 0, 100)}
+                  label="overall completion"
+                  caption={isFirstVisit ? "Ready when you are." : "Your next set is prepared."}
+                  size={isMobile ? 156 : 190}
+                />
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : width < 780 ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
+                  gap: 12,
+                }}
+              >
+                <HeroMetric label="Readiness Score" value={`${readinessScore}%`} helper={weakCardIds.length ? `${weakCardIds.length} weak cards worth revisiting` : isFirstVisit ? "Complete one short session to begin scoring" : "Building confidence steadily"} accent="#F8D56C" />
+                <HeroMetric label="Study Streak" value={studyStreak || 0} helper={studyStreak ? "Keep the rhythm going today" : "One session starts the streak"} accent="#8BE5AF" />
+                <HeroMetric label="Average Quiz Score" value={`${quizAverage}%`} helper={quizSessionCount ? `${quizSessionCount} quiz sessions tracked` : "Your quiz trend will appear here"} accent="#6BC0FF" />
+                <HeroMetric label="Answered Overall" value={overallAnsweredCount} helper={mostRecentSession ? `Last reviewed ${mostRecentSession.subject}` : "Answer one set to start tracking"} accent="#D8B4FE" />
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
+
+        {isStudyMode ? (
+          <div
+            style={{
+              ...panelStyle,
+              padding: isMobile ? 14 : 16,
+              background: "#FBFDFB",
+              borderColor: "#DDE9E1",
+              boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: isMobile ? "flex-start" : "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexDirection: isMobile ? "column" : "row",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: C.faint }}>
+                  Study Mode
+                </div>
+                <div style={{ marginTop: 6, fontSize: 14, lineHeight: 1.6, color: C.text }}>
+                  Focus on the current set first. Progress stats stay on the dashboard so the study flow feels calmer and less crowded.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => queueModeChange("dashboard")}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: `1px solid ${C.border}`,
+                  background: C.surface,
+                  color: C.text,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div
           style={{
@@ -4879,12 +4969,14 @@ export default function App() {
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ ...panelStyle, padding: 18, background: "linear-gradient(180deg, #083B28 0%, #0A5135 100%)", border: "1px solid rgba(8,59,40,0.5)", boxShadow: "0 18px 30px rgba(7, 38, 24, 0.18)", position: "sticky", top: isMobile ? 100 : 92 }}>
+            <div style={{ ...panelStyle, padding: 18, background: "linear-gradient(180deg, #083B28 0%, #0A5135 100%)", border: "1px solid rgba(8,59,40,0.5)", boxShadow: "0 18px 30px rgba(7, 38, 24, 0.18)", position: "sticky", top: headerVisible ? (isMobile ? headerHeight + 12 : headerHeight + 18) : 18, transition: "top 0.28s ease" }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                Study Command Center
+                {isStudyMode ? "Study Controls" : "Study Command Center"}
               </div>
               <div style={{ marginTop: 6, fontSize: 13, color: "rgba(231,244,237,0.78)", lineHeight: 1.65 }}>
-                Choose your workspace, set your filters, and jump straight into the right review block without hunting around the page.
+                {isStudyMode
+                  ? "Keep the current session simple: adjust filters only when you need a new set, then let the question stay front and center."
+                  : "Choose your workspace, set your filters, and jump straight into the right review block without hunting around the page."}
               </div>
 
               <div style={{ marginTop: 18 }}>
@@ -5114,7 +5206,7 @@ export default function App() {
               </div>
             </div>
 
-            {weakCardIds.length ? (
+            {weakCardIds.length && !isStudyMode ? (
               <div
                 style={{
                   ...panelStyle,
