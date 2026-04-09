@@ -730,35 +730,48 @@ function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count
   const prioritized = shuffle(getExactEntries(sourceEntries, subject, difficulty, topic));
   const distractorPool = prioritized.length ? prioritized : getExactEntries(sourceEntries, subject, difficulty, topic);
 
-  const questions = [];
+  function collectQuestions(ignoreUsedPrompts) {
+    const questions = [];
 
-  for (const entry of prioritized) {
-    for (const variant of shuffle(buildQuizVariants(entry))) {
-      const normalizedPrompt = normalize(variant.prompt);
-      if (!normalizedPrompt || usedPrompts.includes(normalizedPrompt)) {
-        continue;
-      }
+    for (const entry of prioritized) {
+      for (const variant of shuffle(buildQuizVariants(entry))) {
+        const normalizedPrompt = normalize(variant.prompt);
+        if (!normalizedPrompt || (!ignoreUsedPrompts && usedPrompts.includes(normalizedPrompt))) {
+          continue;
+        }
 
-      questions.push({
-        id: `${entry.subject}-${uid()}`,
-        subject: entry.subject,
-        difficulty: entry.difficulty,
-        topic: entry.topic,
-        prompt: variant.prompt,
-        correctAnswer: entry.a,
-        options: buildDistractors(entry.a, distractorPool),
-        rationale: variant.rationale,
-        notes: `Topic focus: ${entry.topic}.`,
-        userAnswer: null,
-      });
+        questions.push({
+          id: `${entry.subject}-${uid()}`,
+          subject: entry.subject,
+          difficulty: entry.difficulty,
+          topic: entry.topic,
+          prompt: variant.prompt,
+          correctAnswer: entry.a,
+          options: buildDistractors(entry.a, distractorPool),
+          rationale: variant.rationale,
+          notes: `Topic focus: ${entry.topic}.`,
+          userAnswer: null,
+        });
 
-      if (questions.length >= count) {
-        return questions;
+        if (questions.length >= count) {
+          return questions;
+        }
       }
     }
+
+    return questions;
   }
 
-  return questions;
+  const freshQuestions = collectQuestions(false);
+  if (freshQuestions.length >= count) {
+    return freshQuestions;
+  }
+
+  const recycledQuestions = collectQuestions(true).filter(
+    (item) => !freshQuestions.some((existing) => normalize(existing.prompt) === normalize(item.prompt))
+  );
+
+  return [...freshQuestions, ...recycledQuestions].slice(0, count);
 }
 
 function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRepeat) {
@@ -2392,8 +2405,9 @@ export default function App() {
 
   const studyText = buildStudyText(noteText, uploadedText);
   const hasCustomSource = Boolean(studyText);
+  const activeTopicFocus = String(topicInput || "").trim() || String(topicFilter || "").trim();
   const subjectDisplay =
-    topicFilter && !hasCustomSource ? "Topic Focus" : subject || (topicFilter ? "Topic Focus" : "Select a subject");
+    activeTopicFocus && !hasCustomSource ? "Topic Focus" : subject || (activeTopicFocus ? "Topic Focus" : "Select a subject");
   const customEntries = useMemo(
     () => (hasCustomSource ? buildCustomEntries(studyText, subject) : []),
     [hasCustomSource, studyText, subject]
@@ -3158,10 +3172,24 @@ export default function App() {
     return String(activeTopic || "").trim() && !hasCustomSource ? "" : subject;
   }
 
+  function getActiveTopicFocus(nextTopic = "") {
+    const explicitTopic = String(nextTopic || "").trim();
+    if (explicitTopic) {
+      return explicitTopic;
+    }
+
+    if (String(topicInput || "").trim()) {
+      return String(topicInput || "").trim();
+    }
+
+    return String(topicFilter || "").trim();
+  }
+
   function buildLocalFlashcardSet(activeTopic = topicFilter) {
-    const reviewSubject = resolveReviewSubject(activeTopic);
+    const resolvedTopic = getActiveTopicFocus(activeTopic);
+    const reviewSubject = resolveReviewSubject(resolvedTopic);
     let candidates = uniqueBy(
-      getExactEntries(activeEntries, reviewSubject, difficulty, activeTopic).flatMap((entry) => buildFlashcardVariants(entry)),
+      getExactEntries(activeEntries, reviewSubject, difficulty, resolvedTopic).flatMap((entry) => buildFlashcardVariants(entry)),
       (card) => card.id
     );
 
@@ -3179,7 +3207,9 @@ export default function App() {
   }
 
   function loadLocalFlashcardSet(message, activeTopic = topicFilter) {
-    if (!subject && !String(activeTopic || "").trim()) {
+    const resolvedTopic = getActiveTopicFocus(activeTopic);
+
+    if (!subject && !resolvedTopic) {
       setFlashcards([]);
       setCardIdx(0);
       setFlashcardSessionRatings({});
@@ -3192,7 +3222,7 @@ export default function App() {
       return;
     }
 
-    const deck = buildLocalFlashcardSet(activeTopic);
+    const deck = buildLocalFlashcardSet(resolvedTopic);
     setFlashcards(deck);
     setRemediationContext(null);
     setCardIdx(0);
@@ -3204,29 +3234,30 @@ export default function App() {
       if (deck.length) {
         setStatusMessage(message);
       } else {
-        setApiError("No card data exists for this exact filter yet. Try another focus or upload a document to build more cards.");
+        setApiError("No flashcards are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
       }
     }
   }
 
   useEffect(() => {
     loadLocalFlashcardSet("");
-  }, [subject, difficulty, filterWeakOnly]);
+  }, [subject, difficulty, filterWeakOnly, topicFilter]);
 
   async function generateClaudeFlashcards(activeTopic = topicFilter) {
-    if (!ensureReviewTargetSelected("generate flashcards", activeTopic)) {
+    const resolvedTopic = getActiveTopicFocus(activeTopic);
+    if (!ensureReviewTargetSelected("generate flashcards", resolvedTopic)) {
       return;
     }
 
     clearMessages();
-    const reviewSubject = resolveReviewSubject(activeTopic);
+    const reviewSubject = resolveReviewSubject(resolvedTopic);
     const topicSeedNotes =
-      activeTopic && !hasCustomSource
-        ? buildTopicFocusContext(activeEntries, activeTopic, difficulty)
+      resolvedTopic && !hasCustomSource
+        ? buildTopicFocusContext(activeEntries, resolvedTopic, difficulty)
         : studyText;
 
     if (!isOnline) {
-      loadLocalFlashcardSet("Offline mode: CareDrop loaded a local flashcard set so you can keep studying.", activeTopic);
+      loadLocalFlashcardSet("Offline mode: CareDrop loaded a local flashcard set so you can keep studying.", resolvedTopic);
       return;
     }
 
@@ -3236,7 +3267,7 @@ export default function App() {
       const data = await postJson("/api/claude/cards", {
         notes: topicSeedNotes,
         subject: reviewSubject,
-        topic: activeTopic,
+        topic: resolvedTopic,
         difficulty: difficulty === "All" ? "mixed" : difficulty,
         count: FLASHCARD_SET_SIZE,
         excludeQuestions: hasCustomSource
@@ -3248,17 +3279,17 @@ export default function App() {
         data.cards,
         reviewSubject,
         difficulty,
-        activeTopic,
+        resolvedTopic,
         usedFlashcardIdsRef.current,
         hasCustomSource
       );
       const needed = Math.max(0, FLASHCARD_SET_SIZE - aiCards.length);
       const fallback = needed
-        ? buildLocalFlashcardSet(activeTopic)
+        ? buildLocalFlashcardSet(resolvedTopic)
             .filter((card) => !aiCards.some((item) => item.id === card.id))
             .slice(0, needed)
         : [];
-      const aiNeeded = activeTopic && deckLowOnTopicFocus(aiCards, needed);
+      const aiNeeded = resolvedTopic && deckLowOnTopicFocus(aiCards, needed);
       const deck = [...aiCards, ...fallback].slice(0, FLASHCARD_SET_SIZE);
 
       setFlashcards(deck);
@@ -3270,16 +3301,16 @@ export default function App() {
       markFlashcardsAsUsed(deck);
       setStatusMessage(
         deck.length >= FLASHCARD_SET_SIZE
-          ? activeTopic
+          ? resolvedTopic
             ? aiNeeded
-              ? `Gemini expanded a fresh ${FLASHCARD_SET_SIZE}-card focus set for ${activeTopic}.`
-              : `Gemini generated another ${FLASHCARD_SET_SIZE}-card focus set for ${activeTopic}.`
+              ? `Gemini expanded a fresh ${FLASHCARD_SET_SIZE}-card focus set for ${resolvedTopic}.`
+              : `Gemini generated another ${FLASHCARD_SET_SIZE}-card focus set for ${resolvedTopic}.`
             : "Gemini generated a fresh 10-card flashcard set."
           : `Gemini returned ${deck.length} cards for this focus.`
       );
     } catch (error) {
       setApiError(error.message || "Gemini flashcards failed. Using local cards instead.");
-      loadLocalFlashcardSet("Gemini flashcards were unavailable, so the local deck was loaded.", activeTopic);
+      loadLocalFlashcardSet("Gemini flashcards were unavailable, so the local deck was loaded.", resolvedTopic);
     } finally {
       setApiLoading(false);
     }
@@ -3287,6 +3318,20 @@ export default function App() {
 
   function deckLowOnTopicFocus(aiCards, needed) {
     return aiCards.length < FLASHCARD_SET_SIZE || needed > 0;
+  }
+
+  async function requestNextFlashcardSet(activeTopic = topicFilter) {
+    const resolvedTopic = getActiveTopicFocus(activeTopic);
+    if (resolvedTopic || hasCustomSource) {
+      await generateClaudeFlashcards(resolvedTopic);
+      return;
+    }
+
+    loadLocalFlashcardSet("A new 10-card flashcard set is ready.", resolvedTopic);
+  }
+
+  async function requestNextQuizSet(activeTopic = topicFilter) {
+    await generateQuiz(getActiveTopicFocus(activeTopic));
   }
 
   async function requestQuizBatch(activeTopic, count, excludePrompts = [], options = {}) {
@@ -3321,22 +3366,23 @@ export default function App() {
   }
 
   async function generateQuiz(activeTopic = topicFilter) {
-    if (!ensureReviewTargetSelected("generate a quiz", activeTopic)) {
+    const resolvedTopic = getActiveTopicFocus(activeTopic);
+    if (!ensureReviewTargetSelected("generate a quiz", resolvedTopic)) {
       return;
     }
 
     clearMessages();
-    const reviewSubject = resolveReviewSubject(activeTopic);
+    const reviewSubject = resolveReviewSubject(resolvedTopic);
     const topicSeedNotes =
-      activeTopic && !hasCustomSource
-        ? buildTopicFocusContext(activeEntries, activeTopic, difficulty)
+      resolvedTopic && !hasCustomSource
+        ? buildTopicFocusContext(activeEntries, resolvedTopic, difficulty)
         : studyText;
     if (!isOnline) {
       const fallbackPool = buildLocalQuizFallback(
         activeEntries,
         reviewSubject,
         difficulty,
-        activeTopic,
+        resolvedTopic,
         QUIZ_SET_SIZE,
         []
       );
@@ -3350,7 +3396,7 @@ export default function App() {
       if (!fallback.length) {
         setQuiz([]);
         setQuizIdx(0);
-        setApiError("No quiz data exists for this exact filter yet. Try another focus or upload a document to build more questions.");
+        setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
         return;
       }
       setQuiz(fallback);
@@ -3368,7 +3414,7 @@ export default function App() {
 
     try {
       const aiQuestions = await requestQuizBatch(
-        activeTopic,
+        resolvedTopic,
         QUIZ_SET_SIZE,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
         {
@@ -3380,7 +3426,7 @@ export default function App() {
         activeEntries,
         reviewSubject,
         difficulty,
-        activeTopic,
+        resolvedTopic,
         QUIZ_SET_SIZE - aiQuestions.length,
         []
       );
@@ -3394,7 +3440,7 @@ export default function App() {
       if (!questions.length) {
         setQuiz([]);
         setQuizIdx(0);
-        setApiError("No quiz data exists for this exact filter yet. Try another focus or upload a document to build more questions.");
+        setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
         return;
       }
 
@@ -3404,10 +3450,10 @@ export default function App() {
       setMode("quiz");
       setStatusMessage(
         questions.length >= QUIZ_SET_SIZE
-          ? activeTopic
+          ? resolvedTopic
             ? aiQuestions.length < QUIZ_SET_SIZE
-              ? `Gemini expanded a fresh ${QUIZ_SET_SIZE}-question focus quiz for ${activeTopic}.`
-              : `Gemini generated another ${QUIZ_SET_SIZE}-question focus quiz for ${activeTopic}.`
+              ? `Gemini expanded a fresh ${QUIZ_SET_SIZE}-question focus quiz for ${resolvedTopic}.`
+              : `Gemini generated another ${QUIZ_SET_SIZE}-question focus quiz for ${resolvedTopic}.`
             : "A fresh 10-question quiz is ready for review."
           : `Loaded ${questions.length} questions for this focus.`
       );
@@ -3428,7 +3474,7 @@ export default function App() {
         activeEntries,
         reviewSubject,
         difficulty,
-        activeTopic,
+        resolvedTopic,
         QUIZ_SET_SIZE,
         []
       );
@@ -3442,7 +3488,7 @@ export default function App() {
       if (!fallback.length) {
         setQuiz([]);
         setQuizIdx(0);
-        setApiError("No quiz data exists for this exact filter yet. Try another focus or upload a document to build more questions.");
+        setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
         return;
       }
       setQuiz(fallback);
@@ -4124,7 +4170,7 @@ export default function App() {
   async function submitReviewFocus() {
     clearMessages();
 
-    const nextTopic = topicInput.trim();
+    const nextTopic = getActiveTopicFocus(topicInput);
     if (!ensureReviewTargetSelected(`open ${focusAction === "quiz" ? "a quiz" : "flashcards"}`, nextTopic)) {
       return;
     }
@@ -6043,7 +6089,7 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 17 }}>Flashcards</div>
                     <div style={{ fontSize: 12, color: C.muted }}>
-                      {subjectDisplay} | {difficulty === "All" ? "all difficulties" : difficulty} | {topicFilter || "all topics"} | target {FLASHCARD_SET_SIZE} cards per set
+                      {subjectDisplay} | {difficulty === "All" ? "all difficulties" : difficulty} | {activeTopicFocus || "all topics"} | target {FLASHCARD_SET_SIZE} cards per set
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -6077,7 +6123,9 @@ export default function App() {
                       Next
                     </button>
                     <button
-                      onClick={() => loadLocalFlashcardSet("A fresh local flashcard set was loaded.")}
+                      onClick={() => {
+                        void requestNextFlashcardSet(topicFilter);
+                      }}
                       style={{
                         padding: "9px 14px",
                         borderRadius: 10,
@@ -6091,7 +6139,9 @@ export default function App() {
                       New 10-Card Set
                     </button>
                     <button
-                      onClick={generateClaudeFlashcards}
+                      onClick={() => {
+                        void generateClaudeFlashcards(topicFilter);
+                      }}
                       disabled={apiLoading}
                       style={{
                         padding: "9px 14px",
@@ -6162,7 +6212,9 @@ export default function App() {
                         </button>
                         {flashcardSessionSubmitted ? (
                           <button
-                            onClick={() => loadLocalFlashcardSet("A new 10-card flashcard set is ready.")}
+                            onClick={() => {
+                              void requestNextFlashcardSet(topicFilter);
+                            }}
                             style={{
                               padding: "10px 16px",
                               borderRadius: 10,
@@ -6190,9 +6242,9 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    {subject || topicFilter
-                      ? "No card data exists for this exact filter yet. Try another focus or upload a document to build more cards."
-                      : "Select a subject in Review Filters, then generate a flashcard set for that focus."}
+                    {subject || activeTopicFocus
+                      ? "No flashcards are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set."
+                      : "Select a subject or enter a topic focus, then generate a flashcard set for that review target."}
                   </div>
                 )}
               </div>
@@ -6220,7 +6272,9 @@ export default function App() {
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
-                      onClick={generateQuiz}
+                      onClick={() => {
+                        void requestNextQuizSet(topicFilter);
+                      }}
                       disabled={apiLoading}
                       style={{
                         padding: "10px 16px",
@@ -6263,9 +6317,9 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    {subject || topicFilter
-                      ? "Generate a quiz to load a 10-question session for this subject and topic focus."
-                      : "Select a subject in Review Filters, then generate a focused quiz session."}
+                    {subject || activeTopicFocus
+                      ? "Generate a quiz to load a 10-question session for this focus. CareDrop will use the bank first, then Gemini if it needs to extend the set."
+                      : "Select a subject or enter a topic focus, then generate a focused quiz session."}
                   </div>
                 ) : (
                   <>
