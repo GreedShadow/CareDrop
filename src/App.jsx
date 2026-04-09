@@ -537,13 +537,53 @@ function buildRemediationEntries(sourceEntries, incorrectItems, weakSubject) {
 function matchesStudyFilter(entry, subject, difficulty, topic) {
   const matchesSubject = !subject || subject === "Mixed Review" ? true : entry.subject === subject;
   const matchesDifficulty = difficulty === "All" ? true : entry.difficulty === difficulty;
-  const matchesTopic = topic
-    ? `${entry.topic || ""} ${entry.q || entry.prompt || ""} ${entry.a || entry.answer || ""} ${entry.rationale || ""}`
-        .toLowerCase()
-        .includes(topic.toLowerCase())
-    : true;
+  const matchesTopic = topic ? matchesTopicFocus(entry, topic) : true;
 
   return matchesSubject && matchesDifficulty && matchesTopic;
+}
+
+function getTopicSearchTerms(topic) {
+  const base = normalize(topic);
+  if (!base) {
+    return [];
+  }
+
+  const aliases = [];
+  const aliasMap = {
+    cardio: ["cardio", "cardiac", "cardiovascular", "heart", "coronary", "myocardial", "angina", "arrhythmia"],
+    cardiac: ["cardio", "cardiac", "cardiovascular", "heart", "coronary", "myocardial", "angina", "arrhythmia"],
+    cardiovascular: ["cardio", "cardiac", "cardiovascular", "heart", "coronary", "myocardial", "angina", "arrhythmia"],
+    heart: ["cardio", "cardiac", "cardiovascular", "heart", "coronary", "myocardial", "angina", "arrhythmia", "heart failure"],
+    pulm: ["pulmonary", "respiratory", "airway", "asthma", "copd", "oxygenation"],
+    resp: ["pulmonary", "respiratory", "airway", "asthma", "copd", "oxygenation"],
+    renal: ["renal", "kidney", "aki", "urine", "oliguria", "anuria"],
+    neuro: ["neuro", "neurologic", "neurological", "stroke", "seizure", "icp", "brain"],
+    gi: ["gi", "gastro", "gastrointestinal", "bowel", "appendicitis", "pancreatitis", "cirrhosis"],
+    endo: ["endo", "endocrine", "diabetes", "thyroid", "dka", "glucose"],
+    ob: ["maternal", "newborn", "ob", "postpartum", "labor", "fetal", "pregnancy"],
+    pedia: ["pediatric", "pediatrics", "child", "infant", "newborn"],
+    psych: ["psych", "psychiatric", "mental health", "hallucination", "suicidal", "bipolar"],
+    chn: ["community health", "community", "barangay", "dengue", "tb", "dots", "public health"],
+    pharma: ["pharma", "pharmacology", "drug", "medication", "anticoagulant", "insulin"],
+  };
+
+  Object.entries(aliasMap).forEach(([key, values]) => {
+    if (base.includes(key) || values.some((value) => base.includes(normalize(value)))) {
+      aliases.push(...values);
+    }
+  });
+
+  return uniqueBy(
+    [base, ...base.split(" "), ...aliases.map((value) => normalize(value))].filter(Boolean),
+    (value) => value
+  );
+}
+
+function matchesTopicFocus(entry, topic) {
+  const haystack = normalize(
+    `${entry.topic || ""} ${entry.q || entry.prompt || ""} ${entry.a || entry.answer || ""} ${entry.rationale || ""} ${entry.subject || ""}`
+  );
+  return getTopicSearchTerms(topic).some((term) => haystack.includes(term));
 }
 
 function cleanQuizPrompt(prompt) {
@@ -598,6 +638,24 @@ function getAllEntries() {
 
 function getExactEntries(sourceEntries, subject, difficulty, topic) {
   return sourceEntries.filter((entry) => matchesStudyFilter(entry, subject, difficulty, topic));
+}
+
+function buildTopicFocusContext(sourceEntries, topic, difficulty = "All", limit = 18) {
+  const exactMatches = getExactEntries(sourceEntries, "", difficulty, topic);
+  const selected = exactMatches.slice(0, limit);
+
+  if (!selected.length) {
+    return "";
+  }
+
+  return [
+    `CareDrop topic focus: ${topic}`,
+    "Use these bank-supported reviewer points as seed material. Keep the topic central, preserve nursing accuracy, and generate a fresh set without copying the wording too closely.",
+    ...selected.map(
+      (entry, index) =>
+        `${index + 1}. [${entry.subject} | ${entry.difficulty} | ${entry.topic}] Q: ${entry.q} A: ${entry.a}`
+    ),
+  ].join("\n");
 }
 
 function buildFlashcardVariants(entry) {
@@ -2334,7 +2392,8 @@ export default function App() {
 
   const studyText = buildStudyText(noteText, uploadedText);
   const hasCustomSource = Boolean(studyText);
-  const subjectDisplay = subject || (topicFilter ? "Topic Focus" : "Select a subject");
+  const subjectDisplay =
+    topicFilter && !hasCustomSource ? "Topic Focus" : subject || (topicFilter ? "Topic Focus" : "Select a subject");
   const customEntries = useMemo(
     () => (hasCustomSource ? buildCustomEntries(studyText, subject) : []),
     [hasCustomSource, studyText, subject]
@@ -3095,9 +3154,14 @@ export default function App() {
     setRecentFlashcardIds((prev) => [...prev, ...deck.map((card) => card.id)].slice(-RECENT_MEMORY_LIMIT));
   }
 
+  function resolveReviewSubject(activeTopic = topicFilter) {
+    return String(activeTopic || "").trim() && !hasCustomSource ? "" : subject;
+  }
+
   function buildLocalFlashcardSet(activeTopic = topicFilter) {
+    const reviewSubject = resolveReviewSubject(activeTopic);
     let candidates = uniqueBy(
-      getExactEntries(activeEntries, subject, difficulty, activeTopic).flatMap((entry) => buildFlashcardVariants(entry)),
+      getExactEntries(activeEntries, reviewSubject, difficulty, activeTopic).flatMap((entry) => buildFlashcardVariants(entry)),
       (card) => card.id
     );
 
@@ -3155,6 +3219,11 @@ export default function App() {
     }
 
     clearMessages();
+    const reviewSubject = resolveReviewSubject(activeTopic);
+    const topicSeedNotes =
+      activeTopic && !hasCustomSource
+        ? buildTopicFocusContext(activeEntries, activeTopic, difficulty)
+        : studyText;
 
     if (!isOnline) {
       loadLocalFlashcardSet("Offline mode: CareDrop loaded a local flashcard set so you can keep studying.", activeTopic);
@@ -3165,8 +3234,8 @@ export default function App() {
 
     try {
       const data = await postJson("/api/claude/cards", {
-        notes: studyText,
-        subject,
+        notes: topicSeedNotes,
+        subject: reviewSubject,
         topic: activeTopic,
         difficulty: difficulty === "All" ? "mixed" : difficulty,
         count: FLASHCARD_SET_SIZE,
@@ -3177,7 +3246,7 @@ export default function App() {
 
       const aiCards = sanitizeFlashcards(
         data.cards,
-        subject,
+        reviewSubject,
         difficulty,
         activeTopic,
         usedFlashcardIdsRef.current,
@@ -3227,10 +3296,11 @@ export default function App() {
       examMode = false,
       examLength = count,
       topicOverride = activeTopic,
+      notesOverride = studyText,
     } = options;
 
     const data = await postJson("/api/claude/quiz", {
-      notes: studyText,
+      notes: notesOverride,
       subject: subjectOverride,
       topic: topicOverride,
       difficulty: difficultyOverride,
@@ -3256,10 +3326,15 @@ export default function App() {
     }
 
     clearMessages();
+    const reviewSubject = resolveReviewSubject(activeTopic);
+    const topicSeedNotes =
+      activeTopic && !hasCustomSource
+        ? buildTopicFocusContext(activeEntries, activeTopic, difficulty)
+        : studyText;
     if (!isOnline) {
       const fallbackPool = buildLocalQuizFallback(
         activeEntries,
-        subject,
+        reviewSubject,
         difficulty,
         activeTopic,
         QUIZ_SET_SIZE,
@@ -3295,11 +3370,15 @@ export default function App() {
       const aiQuestions = await requestQuizBatch(
         activeTopic,
         QUIZ_SET_SIZE,
-        hasCustomSource ? [] : usedQuizPromptsRef.current
+        hasCustomSource ? [] : usedQuizPromptsRef.current,
+        {
+          subjectOverride: reviewSubject,
+          notesOverride: topicSeedNotes,
+        }
       );
       const fallback = buildLocalQuizFallback(
         activeEntries,
-        subject,
+        reviewSubject,
         difficulty,
         activeTopic,
         QUIZ_SET_SIZE - aiQuestions.length,
@@ -3347,7 +3426,7 @@ export default function App() {
     } catch (error) {
       const fallbackPool = buildLocalQuizFallback(
         activeEntries,
-        subject,
+        reviewSubject,
         difficulty,
         activeTopic,
         QUIZ_SET_SIZE,
