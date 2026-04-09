@@ -4147,6 +4147,12 @@ export default function App() {
   };
 
   const dashboardGreeting = getGreeting(currentUser?.name);
+  const dashboardDateLabel = new Date().toLocaleDateString([], {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
   const isMobile = width < 640;
   const isNarrowTablet = width < 820;
 
@@ -4204,17 +4210,17 @@ export default function App() {
     <div
       style={{
         minHeight: "100vh",
-        background: C.bg,
+        background: "linear-gradient(180deg, #EDF4EF 0%, #F8FBF9 100%)",
         fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
         color: C.text,
       }}
     >
       <nav
         style={{
-          background: C.surface,
-          borderBottom: `1px solid ${C.border}`,
-          padding: isMobile ? "10px 14px" : "0 24px",
-          minHeight: isMobile ? 72 : 62,
+          background: "linear-gradient(90deg, #0A5A39 0%, #0E6B47 52%, #127A52 100%)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          padding: isMobile ? "12px 14px" : "12px 24px",
+          minHeight: isMobile ? 88 : 68,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -4228,15 +4234,16 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div
             style={{
-              width: 34,
-              height: 34,
-              borderRadius: 10,
-              background: C.accent,
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              background: "rgba(255,255,255,0.12)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               color: "#fff",
               overflow: "hidden",
+              border: "1px solid rgba(255,255,255,0.1)",
             }}
           >
             <img
@@ -4249,20 +4256,51 @@ export default function App() {
               }}
             />
           </div>
-          <span style={{ fontWeight: 800, fontSize: 18 }}>
-            Care<span style={{ color: C.accent }}>Drop</span>
-          </span>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: "#FFFFFF" }}>
+              Care<span style={{ color: "#8FF2B6" }}>Drop</span>
+            </div>
+            <div style={{ fontSize: 11, color: "rgba(230,243,236,0.72)" }}>
+              Review command center
+            </div>
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end", width: isMobile ? "100%" : "auto" }}>
           <div
             style={{
-              padding: "8px 12px",
+              padding: "8px 14px",
               borderRadius: 999,
-              background: "#F6F3ED",
-              border: `1px solid ${C.border}`,
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.12)",
               fontSize: 12,
               fontWeight: 700,
-              color: C.text,
+              color: "#EAF6EF",
+            }}
+          >
+            {isOnline ? "Connected" : "Offline review"}
+          </div>
+          <div
+            style={{
+              padding: "8px 14px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#EAF6EF",
+            }}
+          >
+            {dashboardDateLabel}
+          </div>
+          <div
+            style={{
+              padding: "8px 14px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.12)",
+              border: "1px solid rgba(255,255,255,0.14)",
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#FFFFFF",
             }}
           >
             {currentUser.name}
@@ -4271,11 +4309,11 @@ export default function App() {
             type="button"
             onClick={handleSignOut}
             style={{
-              padding: "8px 12px",
+              padding: "8px 14px",
               borderRadius: 999,
-              border: `1px solid ${C.border}`,
-              background: C.surface,
-              color: C.muted,
+              border: "1px solid rgba(255,255,255,0.18)",
+              background: "rgba(255,255,255,0.04)",
+              color: "#F0F8F3",
               fontWeight: 700,
               cursor: "pointer",
             }}
@@ -4287,9 +4325,9 @@ export default function App() {
 
       <div
         style={{
-          maxWidth: 1220,
+          maxWidth: 1400,
           margin: "0 auto",
-          padding: isMobile ? "16px 12px 28px" : "28px 20px 36px",
+          padding: isMobile ? "16px 12px 28px" : "24px 20px 36px",
           display: "flex",
           flexDirection: "column",
           gap: 20,
@@ -4359,50 +4397,49 @@ export default function App() {
           style={{
             ...panelStyle,
             padding: width < 900 ? 20 : 24,
-            background: "linear-gradient(135deg, #152645 0%, #0E1C36 62%, #13294A 100%)",
-            color: "#FFFFFF",
+            background: "linear-gradient(180deg, #FDFEFD 0%, #F6FBF8 100%)",
+            color: C.text,
             overflow: "hidden",
             position: "relative",
+            border: "1px solid #DCE8E1",
+            boxShadow: "0 16px 32px rgba(11, 42, 27, 0.06)",
           }}
         >
           <div
             style={{
               position: "absolute",
-              inset: "auto -120px -110px auto",
-              width: 280,
-              height: 280,
+              inset: "-80px -40px auto auto",
+              width: 260,
+              height: 260,
               borderRadius: "50%",
-              background: "radial-gradient(circle, rgba(90,214,125,0.24) 0%, rgba(90,214,125,0) 68%)",
+              background: "radial-gradient(circle, rgba(30,169,104,0.12) 0%, rgba(30,169,104,0) 70%)",
             }}
           />
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.4fr) minmax(280px, 360px)",
+              gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.2fr) minmax(280px, 360px)",
               gap: 20,
-              marginBottom: 18,
+              marginBottom: 20,
               position: "relative",
               zIndex: 1,
             }}
           >
             <div style={{ maxWidth: 560 }}>
-              <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(225,233,247,0.64)", fontWeight: 800 }}>
-                CareDrop Command Center
-              </div>
-              <div style={{ marginTop: 10, fontSize: 16, color: "#BFE4FF", fontWeight: 700 }}>
+              <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "#6B8F7E", fontWeight: 800 }}>
                 {dashboardGreeting}
               </div>
-              <div style={{ marginTop: 10, fontSize: width < 880 ? 30 : 38, lineHeight: 1.08, fontWeight: 900, letterSpacing: "-0.06em" }}>
-                Review workspace built to guide your next move.
+              <div style={{ marginTop: 10, fontSize: width < 880 ? 34 : 42, lineHeight: 1.08, fontWeight: 900, letterSpacing: "-0.06em", color: "#14231B" }}>
+                Dashboard Overview
               </div>
-              <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, color: "rgba(228,235,246,0.84)" }}>
-                Keep your flashcards, quizzes, uploads, saved sessions, and weak-area review in one calm place that helps you decide what to do next.
+              <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, color: "#61736B" }}>
+                Keep your review flow organized across flashcards, quizzes, simulations, uploads, planning, and saved sessions without losing your place.
               </div>
               <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ padding: "10px 14px", borderRadius: 999, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 12, color: "rgba(234,241,249,0.88)" }}>
+                <div style={{ padding: "10px 14px", borderRadius: 999, background: "#F0F8F3", border: "1px solid #D7EBDD", fontSize: 12, color: "#235B42", fontWeight: 700 }}>
                   {studyStreak ? `${studyStreak}-day study streak` : "Start a streak with one session today"}
                 </div>
-                <div style={{ padding: "10px 14px", borderRadius: 999, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 12, color: "rgba(234,241,249,0.88)" }}>
+                <div style={{ padding: "10px 14px", borderRadius: 999, background: "#F7FAFD", border: "1px solid #DCE8F1", fontSize: 12, color: "#355E8A", fontWeight: 700 }}>
                   {mostRecentSession ? `Last studied ${mostRecentSession.subject}` : "Your first session will start the tracker"}
                 </div>
               </div>
@@ -4411,23 +4448,24 @@ export default function App() {
               style={{
                 borderRadius: 24,
                 padding: "18px 18px 16px",
-                background: "linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 100%)",
-                border: "1px solid rgba(255,255,255,0.09)",
+                background: "linear-gradient(180deg, #0D5A3B 0%, #0E6B47 100%)",
+                border: "1px solid rgba(14, 107, 71, 0.12)",
                 display: "flex",
                 flexDirection: "column",
                 justifyContent: "space-between",
                 minHeight: 170,
+                boxShadow: "0 16px 30px rgba(14, 107, 71, 0.18)",
               }}
             >
               <div>
-                <div style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(228,235,246,0.62)", fontWeight: 800 }}>
+                <div style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(227,244,236,0.68)", fontWeight: 800 }}>
                   Encouragement
                 </div>
                 <div style={{ marginTop: 14, fontSize: 22, lineHeight: 1.45, fontWeight: 700, color: "#FFFFFF" }}>
                   {gentlePush}
                 </div>
               </div>
-              <div style={{ marginTop: 18, fontSize: 13, lineHeight: 1.7, color: "rgba(225,233,247,0.78)" }}>
+              <div style={{ marginTop: 18, fontSize: 13, lineHeight: 1.7, color: "rgba(236,248,241,0.82)" }}>
                 {isFirstVisit
                   ? "Start one short set today and CareDrop will begin building your study trail."
                   : recommendedAction.body}
@@ -4438,24 +4476,36 @@ export default function App() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: width < 1180 ? "1fr" : "240px minmax(0, 1fr)",
-              gap: 20,
-              alignItems: "center",
+              gridTemplateColumns: width < 1180 ? "1fr" : "220px minmax(0, 1fr)",
+              gap: 18,
+              alignItems: "stretch",
               position: "relative",
               zIndex: 1,
             }}
           >
-            <ProgressRing
-              value={clamp(Math.round(((Object.keys(ratings).length + reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0)) / Math.max(totalCards * 0.55, 1)) * 100), 0, 100)}
-              label="overall completion"
-              caption={isFirstVisit ? "Ready when you are." : "Your next set is prepared."}
-              size={isMobile ? 156 : 190}
-            />
+            <div
+              style={{
+                borderRadius: 22,
+                border: "1px solid #DCE8E1",
+                background: "#FFFFFF",
+                padding: 18,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <ProgressRing
+                value={clamp(Math.round(((Object.keys(ratings).length + reviewSessions.reduce((total, session) => total + Number(session.answeredCount || 0), 0)) / Math.max(totalCards * 0.55, 1)) * 100), 0, 100)}
+                label="overall completion"
+                caption={isFirstVisit ? "Ready when you are." : "Your next set is prepared."}
+                size={isMobile ? 156 : 190}
+              />
+            </div>
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: isMobile ? "1fr" : width < 780 ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
-                gap: 10,
+                gap: 12,
               }}
             >
               <HeroMetric label="Readiness Score" value={`${readinessScore}%`} helper={weakCardIds.length ? `${weakCardIds.length} weak cards worth revisiting` : isFirstVisit ? "Complete one short session to begin scoring" : "Building confidence steadily"} accent="#F8D56C" />
@@ -4474,16 +4524,16 @@ export default function App() {
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ ...panelStyle, padding: 18, background: "#FCFBF8" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            <div style={{ ...panelStyle, padding: 18, background: "linear-gradient(180deg, #083B28 0%, #0A5135 100%)", border: "1px solid rgba(8,59,40,0.5)", boxShadow: "0 18px 30px rgba(7, 38, 24, 0.18)", position: "sticky", top: isMobile ? 100 : 92 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
                 Study Command Center
               </div>
-              <div style={{ marginTop: 6, fontSize: 13, color: C.muted, lineHeight: 1.65 }}>
+              <div style={{ marginTop: 6, fontSize: 13, color: "rgba(231,244,237,0.78)", lineHeight: 1.65 }}>
                 Choose your workspace, set your filters, and jump straight into the right review block without hunting around the page.
               </div>
 
               <div style={{ marginTop: 18 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
                   Workspace
                 </div>
                 <div style={{ display: "grid", gap: 8 }}>
@@ -4507,11 +4557,11 @@ export default function App() {
               </div>
 
               <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
                   Review Filters
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Difficulty</label>
+                  <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Difficulty</label>
                   <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} style={selectStyle}>
                     {DIFFICULTIES.map((value) => (
                       <option key={value} value={value}>
@@ -4520,7 +4570,7 @@ export default function App() {
                     ))}
                   </select>
 
-                  <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Subject</label>
+                  <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Subject</label>
                   <select value={subject} onChange={(event) => setSubject(event.target.value)} style={selectStyle}>
                     <option value="">Select a subject</option>
                     {SUBJECT_OPTIONS.map((value) => (
@@ -4530,7 +4580,7 @@ export default function App() {
                     ))}
                   </select>
 
-                  <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Topic Focus</label>
+                  <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Topic Focus</label>
                   <input
                     value={topicInput}
                     onChange={(event) => setTopicInput(event.target.value)}
@@ -4546,7 +4596,7 @@ export default function App() {
                     }}
                   />
 
-                  <label style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Preferred Action</label>
+                  <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Preferred Action</label>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                     {[
                       ["flashcard", "Flashcards"],
@@ -4610,14 +4660,14 @@ export default function App() {
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
                       Subject Shortcuts
                     </div>
-                    <div style={{ marginTop: 6, fontSize: 12, color: C.faint }}>
+                    <div style={{ marginTop: 6, fontSize: 12, color: "rgba(231,244,237,0.6)" }}>
                       Quick jump between major review areas
                     </div>
                   </div>
-                  <div style={{ fontSize: 18, color: C.muted, fontWeight: 700 }}>
+                  <div style={{ fontSize: 18, color: "#D7ECE0", fontWeight: 700 }}>
                     {subjectShortcutsOpen ? "▾" : "▸"}
                   </div>
                 </button>
@@ -4647,9 +4697,9 @@ export default function App() {
                           gap: 10,
                           padding: "10px 12px",
                           borderRadius: 14,
-                          border: `1px solid ${subject === value ? "#C4D6EA" : C.border}`,
-                          background: subject === value ? "#EEF4FB" : "#FBFAF7",
-                          color: subject === value ? "#17355E" : C.text,
+                          border: `1px solid ${subject === value ? "#8FD7B1" : "rgba(255,255,255,0.08)"}`,
+                          background: subject === value ? "rgba(143,215,177,0.16)" : "rgba(255,255,255,0.04)",
+                          color: subject === value ? "#F5FFF8" : "#EAF4EE",
                           fontSize: 13,
                           fontWeight: subject === value ? 800 : 700,
                           cursor: "pointer",
@@ -4661,7 +4711,7 @@ export default function App() {
                             width: 10,
                             height: 10,
                             borderRadius: 999,
-                            background: subject === value ? C.accent : "#CDD5DF",
+                            background: subject === value ? "#8AF0B2" : "rgba(255,255,255,0.28)",
                             flexShrink: 0,
                           }}
                         />
@@ -4673,7 +4723,7 @@ export default function App() {
               </div>
 
               <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}`, display: "grid", gap: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
                   System Status
                 </div>
                 <div

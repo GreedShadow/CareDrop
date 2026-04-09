@@ -404,21 +404,34 @@ export function SidebarNavButton({ active, label, hint, onClick, badge }) {
         gap: 12,
         padding: "12px 14px",
         borderRadius: 14,
-        border: active ? "1px solid rgba(88, 130, 193, 0.32)" : "1px solid transparent",
-        background: active ? "linear-gradient(135deg, #1F3D73 0%, #122B55 100%)" : "transparent",
-        color: active ? "#F8FBFF" : "#465468",
+        border: active ? "1px solid rgba(133, 244, 187, 0.22)" : "1px solid rgba(255,255,255,0.06)",
+        background: active ? "linear-gradient(135deg, rgba(19,122,78,0.95) 0%, rgba(10,89,56,0.95) 100%)" : "rgba(255,255,255,0.03)",
+        color: active ? "#F8FFF9" : "rgba(232, 244, 238, 0.88)",
         cursor: "pointer",
         textAlign: "left",
         transition: "background 0.2s ease, color 0.2s ease, border-color 0.2s ease",
       }}
     >
-      <div>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <span
+          style={{
+            width: 10,
+            height: 10,
+            marginTop: 5,
+            borderRadius: 999,
+            flexShrink: 0,
+            background: active ? "#8AF0B2" : "rgba(255,255,255,0.3)",
+            boxShadow: active ? "0 0 0 4px rgba(138,240,178,0.12)" : "none",
+          }}
+        />
+        <div>
         <div style={{ fontSize: 14, fontWeight: 800 }}>{label}</div>
         {hint ? (
-          <div style={{ fontSize: 11, color: active ? "rgba(248, 251, 255, 0.72)" : "#95A1B2", marginTop: 3 }}>
+          <div style={{ fontSize: 11, color: active ? "rgba(248, 255, 249, 0.72)" : "rgba(219, 234, 226, 0.58)", marginTop: 3 }}>
             {hint}
           </div>
         ) : null}
+        </div>
       </div>
       {badge ? (
         <span
@@ -430,8 +443,8 @@ export function SidebarNavButton({ active, label, hint, onClick, badge }) {
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            background: active ? "rgba(255,255,255,0.16)" : "#EEF3FA",
-            color: active ? "#FFFFFF" : "#355E8A",
+            background: active ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)",
+            color: active ? "#FFFFFF" : "#DDF5E5",
             fontSize: 11,
             fontWeight: 800,
           }}
@@ -449,9 +462,9 @@ export function SubjectTab({ active, label, onClick }) {
       type="button"
       onClick={onClick}
       style={{
-        border: active ? "1px solid rgba(23, 43, 77, 0.12)" : "1px solid transparent",
-        background: active ? "linear-gradient(135deg, #1A2740 0%, #24385E 100%)" : "transparent",
-        color: active ? "#FFFFFF" : "#4C5C73",
+        border: active ? "1px solid rgba(14, 107, 71, 0.18)" : "1px solid #DCE8E1",
+        background: active ? "linear-gradient(135deg, #0E6B47 0%, #145F46 100%)" : "#FFFFFF",
+        color: active ? "#FFFFFF" : "#3F514A",
         borderRadius: 16,
         padding: "12px 16px",
         minWidth: 136,
@@ -469,13 +482,17 @@ export function HeroMetric({ label, value, helper, accent = "#9AD75B" }) {
   return (
     <div
       style={{
-        padding: "0 18px",
-        borderLeft: "1px solid rgba(255,255,255,0.08)",
+        padding: "18px 18px 16px",
+        borderRadius: 20,
+        borderTop: `3px solid ${accent}`,
+        background: "#FFFFFF",
+        border: "1px solid #DCE8E1",
+        boxShadow: "0 10px 24px rgba(8, 35, 23, 0.05)",
       }}
     >
-      <div style={{ fontSize: 12, color: "rgba(228, 235, 246, 0.62)", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 34, fontWeight: 800, color: "#FFFFFF", letterSpacing: "-0.04em" }}>{value}</div>
-      <div style={{ marginTop: 4, fontSize: 12, color: accent }}>{helper}</div>
+      <div style={{ fontSize: 12, color: "#8A9A92", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 800 }}>{label}</div>
+      <div style={{ fontSize: 36, fontWeight: 900, color: "#13221A", letterSpacing: "-0.05em" }}>{value}</div>
+      <div style={{ marginTop: 6, fontSize: 12, color: accent, fontWeight: 700 }}>{helper}</div>
     </div>
   );
 }
@@ -492,11 +509,11 @@ export function ProgressRing({ value, label, caption, size = 190 }) {
         width: outerSize,
         height: outerSize,
         borderRadius: "50%",
-        background: `conic-gradient(#5AD67D 0deg ${angle}deg, rgba(255,255,255,0.08) ${angle}deg 360deg)`,
+        background: `conic-gradient(#29B06E 0deg ${angle}deg, #D8E7DF ${angle}deg 360deg)`,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03)",
+        boxShadow: "inset 0 0 0 1px rgba(19, 34, 26, 0.04)",
       }}
     >
       <div
@@ -504,22 +521,22 @@ export function ProgressRing({ value, label, caption, size = 190 }) {
           width: innerSize,
           height: innerSize,
           borderRadius: "50%",
-          background: "linear-gradient(180deg, #172544 0%, #10203C 100%)",
+          background: "linear-gradient(180deg, #FDFEFD 0%, #F2F8F5 100%)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          color: "#FFFFFF",
+          color: "#15251C",
           textAlign: "center",
           padding: 16,
           boxSizing: "border-box",
         }}
       >
         <div style={{ fontSize: size < 170 ? 28 : 34, fontWeight: 800 }}>{normalized}%</div>
-        <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(223,232,246,0.72)" }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "#86968E" }}>
           {label}
         </div>
-        <div style={{ marginTop: 8, fontSize: size < 170 ? 10 : 11, color: "rgba(154, 215, 91, 0.9)" }}>{caption}</div>
+        <div style={{ marginTop: 8, fontSize: size < 170 ? 10 : 11, color: "#148354", fontWeight: 700 }}>{caption}</div>
       </div>
     </div>
   );
