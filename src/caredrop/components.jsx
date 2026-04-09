@@ -147,7 +147,7 @@ export function Flashcard({ card, idx, total, onRate }) {
           }}
           style={{
             cursor: flipLocked ? "default" : "pointer",
-            minHeight: 280,
+            minHeight: "clamp(240px, 42vw, 280px)",
             width: "100%",
             background: "transparent",
             border: "none",
@@ -158,7 +158,7 @@ export function Flashcard({ card, idx, total, onRate }) {
           <div
             style={{
               position: "relative",
-              minHeight: 280,
+              minHeight: "clamp(240px, 42vw, 280px)",
               transformStyle: "preserve-3d",
               transition: "transform 0.42s cubic-bezier(0.2, 0.7, 0.2, 1)",
               transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
@@ -169,7 +169,7 @@ export function Flashcard({ card, idx, total, onRate }) {
                 side: "front",
                 heading: "Question",
                 body: card.question,
-                footer: "Tap or press Space to reveal answer",
+                footer: "Tap or press Space to flip the card",
                 background: C.panelNeutralAlt,
                 borderColor: C.panelNeutralDark,
                 accentColor: "#85796A",
@@ -206,11 +206,11 @@ export function Flashcard({ card, idx, total, onRate }) {
                 style={{
                   position: "absolute",
                   inset: 0,
-                  minHeight: 280,
+                  minHeight: "clamp(240px, 42vw, 280px)",
                   background: face.background,
                   border: `1.5px solid ${face.borderColor}`,
                   borderRadius: 22,
-                  padding: "28px 28px 24px",
+                  padding: "22px 22px 20px",
                   boxShadow: "0 12px 24px rgba(15, 23, 42, 0.05)",
                   backfaceVisibility: "hidden",
                   transform: face.side === "back" ? "rotateY(180deg)" : "rotateY(0deg)",
@@ -235,11 +235,18 @@ export function Flashcard({ card, idx, total, onRate }) {
                 >
                   {face.heading}
                 </div>
-                <div style={{ fontSize: face.side === "front" ? 19 : 15, fontWeight: 700, color: C.text, lineHeight: 1.65 }}>
+                <div
+                  style={{
+                    fontSize: face.side === "front" ? "clamp(18px, 2.6vw, 21px)" : "clamp(14px, 2.2vw, 15px)",
+                    fontWeight: face.side === "front" ? 800 : 600,
+                    color: C.text,
+                    lineHeight: face.side === "front" ? 1.55 : 1.7,
+                  }}
+                >
                   {face.body}
                 </div>
                 {face.footer ? (
-                  <div style={{ marginTop: 20, fontSize: 12, color: C.faint, textAlign: "center" }}>
+                  <div style={{ marginTop: 18, fontSize: 12, color: C.faint, textAlign: "center" }}>
                     {face.footer}
                   </div>
                 ) : null}

@@ -306,6 +306,9 @@ function buildExpandedBank(seedBank, targetPerBucket = BANK_ITEMS_PER_BUCKET) {
 }
 
 const QUESTION_BANK = buildExpandedBank(SEED_QUESTION_BANK);
+const ALL_BANK_ENTRIES = Object.entries(QUESTION_BANK).flatMap(([subject, entries]) =>
+  entries.map((entry) => ({ ...entry, subject }))
+);
 const SUBJECT_OPTIONS = [...Object.keys(QUESTION_BANK), "Mixed Review"];
 const DIFFICULTIES = ["All", "easy", "medium", "hard"];
 const ENCOURAGEMENTS = [
@@ -603,6 +606,130 @@ function cleanQuizOption(option) {
     .trim();
 }
 
+const CATEGORY_CLUE_PATTERN =
+  /\b(fundamentals?|pharmacology|medical[\s-]*surgical(?: nursing)?|med[\s-]*surg|maternal(?:\s*&\s*newborn)?|newborn|pediatrics?|psychiatric nursing|community health|leadership(?:\s*&\s*management)?|nursing board|prc nle)\b/i;
+
+function stripCategoryLeakage(text) {
+  return String(text || "")
+    .replace(/^\s*(topic|category|subject)\s*:\s*/i, "")
+    .replace(/^\s*(fundamentals?|pharmacology|medical[\s-]*surgical(?: nursing)?|med[\s-]*surg|maternal(?:\s*&\s*newborn)?|pediatrics?|psychiatric nursing|community health|leadership(?:\s*&\s*management)?)\s*[:\-]\s*/i, "")
+    .replace(/\((fundamentals?|pharmacology|medical[\s-]*surgical(?: nursing)?|med[\s-]*surg|maternal(?:\s*&\s*newborn)?|pediatrics?|psychiatric nursing|community health|leadership(?:\s*&\s*management)?)\)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasCategoryLeakage(text) {
+  return CATEGORY_CLUE_PATTERN.test(String(text || ""));
+}
+
+function getSentenceChunks(text) {
+  const cleaned = String(text || "").trim();
+  return cleaned.match(/[^.!?]+[.!?]?/g)?.map((part) => part.trim()).filter(Boolean) || [];
+}
+
+function limitWords(text, maxWords) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) {
+    return words.join(" ");
+  }
+  return `${words.slice(0, maxWords).join(" ").replace(/[,:;]+$/, "")}...`;
+}
+
+function inferQuestionScope(prompt) {
+  const value = normalize(prompt);
+  if (!value) {
+    return "general";
+  }
+
+  if (
+    /\b(antidote|dose|stands for|level of prevention|which isolation|what does|which electrolyte|which finding|which lab value|which site|apgar|fundal|4 ts|therapeutic range|priority assessment before)\b/.test(
+      value
+    )
+  ) {
+    return "specific";
+  }
+
+  if (
+    /\b(most accurate|safest nursing takeaway|what should .* remember|what key principle|board recall|clinical decision point|which clue|general response|priority response|best response)\b/.test(
+      value
+    )
+  ) {
+    return "broad";
+  }
+
+  return value.split(" ").length > 18 ? "broad" : "specific";
+}
+
+function alignTextToPrompt(prompt, text, maxSpecificWords = 18, maxBroadWords = 28) {
+  const cleaned = stripCategoryLeakage(cleanQuizOption(text)).replace(/\s+/g, " ").trim();
+  if (!cleaned) {
+    return "";
+  }
+
+  const scope = inferQuestionScope(prompt);
+  const chunks = getSentenceChunks(cleaned);
+  let selected = chunks[0] || cleaned;
+
+  if (scope === "broad" && chunks.length > 1 && selected.split(/\s+/).length < 12) {
+    selected = `${selected} ${chunks[1]}`.trim();
+  }
+
+  return limitWords(selected, scope === "broad" ? maxBroadWords : maxSpecificWords);
+}
+
+function hasScopeMismatch(prompt, answer) {
+  const scope = inferQuestionScope(prompt);
+  const wordCount = String(answer || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+
+  if (!wordCount) {
+    return true;
+  }
+
+  if (scope === "specific") {
+    return wordCount > 24;
+  }
+
+  if (scope === "broad") {
+    return wordCount < 6;
+  }
+
+  return false;
+}
+
+function isWeakDistractor(option, correctAnswer) {
+  const normalizedOption = normalize(option);
+  return (
+    !normalizedOption ||
+    normalizedOption === normalize(correctAnswer) ||
+    isInstructionLikeOption(option) ||
+    hasCategoryLeakage(option) ||
+    normalizedOption.includes("correct answer") ||
+    normalizedOption.includes("because it is correct")
+  );
+}
+
+function buildFallbackDistractors(prompt, correctAnswer) {
+  const scope = inferQuestionScope(prompt);
+  const trimmedCorrect = alignTextToPrompt(prompt, correctAnswer);
+
+  if (scope === "specific") {
+    return [
+      "Delay the intervention and reassess later.",
+      "Document the finding before taking action.",
+      "Delegate the decision to unlicensed staff.",
+    ].filter((option) => normalize(option) !== normalize(trimmedCorrect));
+  }
+
+  return [
+    "Choose the response that is convenient rather than the safest.",
+    "Wait for the condition to worsen before acting.",
+    "Focus on routine tasks instead of the main priority.",
+  ].filter((option) => normalize(option) !== normalize(trimmedCorrect));
+}
+
 function isInstructionLikeOption(option) {
   const value = normalize(option);
   return (
@@ -618,22 +745,21 @@ function isInstructionLikeOption(option) {
 }
 
 function toFlashcard(entry, subject) {
+  const alignedAnswer = alignTextToPrompt(entry.q, entry.a, 20, 30) || entry.a;
   return {
     id: `${subject}-${normalize(entry.q)}`,
     subject,
     difficulty: entry.difficulty || "medium",
     topic: entry.topic || "general",
     question: entry.q,
-    answer: entry.a,
-    rationale: entry.a,
+    answer: alignedAnswer,
+    rationale: alignedAnswer,
     notes: `Focus area: ${entry.topic || "general review"}.`,
   };
 }
 
 function getAllEntries() {
-  return Object.entries(QUESTION_BANK).flatMap(([subject, entries]) =>
-    entries.map((entry) => ({ ...entry, subject }))
-  );
+  return ALL_BANK_ENTRIES;
 }
 
 function getExactEntries(sourceEntries, subject, difficulty, topic) {
@@ -690,8 +816,8 @@ function buildFlashcardVariants(entry) {
   const subject = entry.subject;
   const baseId = `${subject}-${normalize(entry.q)}`;
   const topic = entry.topic || "general review";
-  const answer = entry.a;
-  const rationale = entry.a;
+  const answer = alignTextToPrompt(entry.q, entry.a, 20, 30) || entry.a;
+  const rationale = answer;
   const notes = `Focus area: ${topic}.`;
   const prompts = [
     entry.q,
@@ -716,42 +842,91 @@ function buildFlashcardVariants(entry) {
 }
 
 function buildQuizVariants(entry) {
+  const alignedAnswer = alignTextToPrompt(entry.q, entry.a, 18, 26) || entry.a;
   return [
-    { prompt: entry.q, rationale: entry.a },
+    { prompt: entry.q, rationale: alignedAnswer },
     {
       prompt: `Which statement is most accurate about ${entry.topic} in ${entry.subject}?`,
-      rationale: entry.a,
+      rationale: alignedAnswer,
     },
     {
       prompt: `A nursing student is reviewing ${entry.topic}. Which response is correct?`,
-      rationale: entry.a,
+      rationale: alignedAnswer,
     },
     {
       prompt: `Which clue best supports the correct nursing action for ${entry.topic} in ${entry.subject}?`,
-      rationale: entry.a,
+      rationale: alignedAnswer,
     },
   ];
 }
 
-function buildDistractors(correctAnswer, pool) {
+function finalizeQuizOptions(prompt, correctAnswer, options, subject, difficulty, topic) {
+  const alignedCorrect = alignTextToPrompt(prompt, correctAnswer, 18, 26);
+  const pool = getExactEntries(
+    getAllEntries(),
+    subject === "Mixed Review" ? "" : subject,
+    difficulty === "All" ? "All" : difficulty,
+    topic
+  );
+  const alignedPool = uniqueBy(
+    shuffle(pool)
+      .map((entry) => alignTextToPrompt(prompt, entry.a, 18, 24))
+      .filter((option) => option && !isWeakDistractor(option, alignedCorrect)),
+    (option) => normalize(option)
+  );
+
   const distractors = uniqueBy(
-    shuffle(pool.filter((item) => normalize(item.a) !== normalize(correctAnswer))),
-    (item) => normalize(item.a)
-  )
-    .slice(0, 3)
-    .map((item) => item.a);
+    (Array.isArray(options) ? options : [])
+      .map((option) => alignTextToPrompt(prompt, option, 18, 24))
+      .filter((option) => option && !isWeakDistractor(option, alignedCorrect)),
+    (option) => normalize(option)
+  ).filter((option) => normalize(option) !== normalize(alignedCorrect));
 
-  const fallback = [
-    "Document the finding and continue routine monitoring.",
-    "Delay action until more data becomes available.",
-    "Delegate the task before completing the assessment.",
-  ];
+  const mergedDistractors = [...distractors];
 
-  while (distractors.length < 3) {
-    distractors.push(fallback[distractors.length]);
+  for (const option of alignedPool) {
+    if (mergedDistractors.length >= 3) {
+      break;
+    }
+    if (!mergedDistractors.some((item) => normalize(item) === normalize(option)) && normalize(option) !== normalize(alignedCorrect)) {
+      mergedDistractors.push(option);
+    }
   }
 
-  return shuffle([correctAnswer, ...distractors]).slice(0, 4);
+  for (const option of buildFallbackDistractors(prompt, alignedCorrect)) {
+    if (mergedDistractors.length >= 3) {
+      break;
+    }
+    if (!mergedDistractors.some((item) => normalize(item) === normalize(option)) && normalize(option) !== normalize(alignedCorrect)) {
+      mergedDistractors.push(option);
+    }
+  }
+
+  return shuffle([alignedCorrect, ...mergedDistractors.slice(0, 3)]).slice(0, 4);
+}
+
+function buildDistractors(entry, pool) {
+  const prioritizedPool = uniqueBy(
+    shuffle(
+      pool.filter((item) => {
+        if (normalize(item.a) === normalize(entry.a)) {
+          return false;
+        }
+        if (entry.topic && item.topic && normalize(item.topic) === normalize(entry.topic)) {
+          return true;
+        }
+        if (entry.subject && item.subject && normalize(item.subject) === normalize(entry.subject)) {
+          return true;
+        }
+        return false;
+      })
+    ),
+    (item) => normalize(item.a)
+  );
+
+  const fallbackPool = prioritizedPool.length ? prioritizedPool : uniqueBy(shuffle(pool), (item) => normalize(item.a));
+  const options = fallbackPool.slice(0, 8).map((item) => item.a);
+  return finalizeQuizOptions(entry.q, entry.a, options, entry.subject, entry.difficulty, entry.topic);
 }
 
 function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count, usedPrompts = []) {
@@ -774,8 +949,8 @@ function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count
           difficulty: entry.difficulty,
           topic: entry.topic,
           prompt: variant.prompt,
-          correctAnswer: entry.a,
-          options: buildDistractors(entry.a, distractorPool),
+          correctAnswer: alignTextToPrompt(variant.prompt, entry.a, 18, 26),
+          options: buildDistractors({ ...entry, q: variant.prompt }, distractorPool),
           rationale: variant.rationale,
           notes: `Topic focus: ${entry.topic}.`,
           userAnswer: null,
@@ -806,8 +981,8 @@ function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRep
   return uniqueBy(
     (Array.isArray(cards) ? cards : []).map((card) => {
       const nextSubject = card.subject || subject || "Mixed Review";
-      const question = String(card.question || card.prompt || "").trim();
-      const answer = String(card.answer || "").trim();
+      const question = cleanQuizPrompt(card.question || card.prompt || "");
+      const answer = alignTextToPrompt(question, card.answer || "", 20, 30);
       return {
         id: `${nextSubject}-${normalize(question)}`,
         subject: nextSubject,
@@ -815,7 +990,7 @@ function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRep
         topic: topic || card.topic || "ai review",
         question,
         answer,
-        rationale: String(card.rationale || answer || "Generated by Gemini."),
+        rationale: alignTextToPrompt(question, card.rationale || answer || "Generated by Gemini.", 20, 30),
         notes: String(card.notes || `Topic focus: ${topic || card.topic || "general review"}.`),
       };
     }),
@@ -824,6 +999,7 @@ function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRep
     (card) =>
       card.question &&
       card.answer &&
+      !hasScopeMismatch(card.question, card.answer) &&
       matchesStudyFilter(
         {
           subject: card.subject,
@@ -845,13 +1021,25 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
   return uniqueBy(
     (Array.isArray(questions) ? questions : []).map((item) => {
       const prompt = cleanQuizPrompt(item.prompt || item.question || "");
-      const options = uniqueBy(
+      const rawOptions = uniqueBy(
         (Array.isArray(item.options) ? item.options : [])
           .map((option) => cleanQuizOption(option))
           .filter((option) => option && !isInstructionLikeOption(option)),
         (option) => normalize(option)
       );
-      const correctAnswer = cleanQuizOption(item.correctAnswer || "");
+      const correctAnswer = alignTextToPrompt(prompt, item.correctAnswer || "", 18, 26);
+      const options = finalizeQuizOptions(
+        prompt,
+        correctAnswer,
+        rawOptions,
+        item.subject || subject || "Mixed Review",
+        ["easy", "medium", "hard"].includes(item.difficulty)
+          ? item.difficulty
+          : ["easy", "medium", "hard"].includes(difficulty)
+            ? difficulty
+            : "All",
+        topic || item.topic || "ai review"
+      );
 
       return {
         id: item.id || uid(),
@@ -861,14 +1049,19 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
         prompt,
         correctAnswer,
         options,
-        rationale: String(item.rationale || correctAnswer || "").trim(),
+        rationale: alignTextToPrompt(prompt, item.rationale || correctAnswer || "", 20, 30),
         notes: String(item.notes || `Topic focus: ${topic || "general review"}.`),
         userAnswer: item.userAnswer ?? null,
       };
     }),
     (item) => normalize(item.prompt)
   ).filter((item) => {
-    const valid = item.prompt && item.prompt.length > 18 && item.correctAnswer && item.options.length >= 4;
+    const valid =
+      item.prompt &&
+      item.prompt.length > 18 &&
+      item.correctAnswer &&
+      item.options.length >= 4 &&
+      !hasScopeMismatch(item.prompt, item.correctAnswer);
     const notUsed = allowRepeat ? true : !usedPrompts.includes(normalize(item.prompt));
     const includesCorrect = item.options.some((option) => normalize(option) === normalize(item.correctAnswer));
     return (
@@ -4312,6 +4505,11 @@ export default function App() {
   });
   const isMobile = width < 640;
   const isNarrowTablet = width < 820;
+  const studySectionPadding = isMobile ? 16 : 22;
+  const studyMetaSize = 12;
+  const studyQuestionSize = isMobile ? 18 : 20;
+  const studyBodySize = isMobile ? 14 : 15;
+  const studyActionPadding = isMobile ? "10px 14px" : "10px 16px";
 
   if (!authReady) {
     return (
@@ -5604,7 +5802,7 @@ export default function App() {
                             style={{
                               width: "100%",
                               borderRadius: 16,
-                              padding: "14px 16px",
+                              padding: isMobile ? "12px 14px" : "13px 15px",
                               border: `1px solid ${C.border}`,
                               background: "#FFFFFF",
                               display: "flex",
@@ -5698,7 +5896,7 @@ export default function App() {
                         key={item.label}
                         style={{
                           borderRadius: 18,
-                          padding: 18,
+                          padding: studySectionPadding,
                           border: `1px solid ${C.border}`,
                           background: "#FCFBF8",
                         }}
@@ -6119,8 +6317,8 @@ export default function App() {
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 800, fontSize: 17 }}>Flashcards</div>
-                    <div style={{ fontSize: 12, color: C.muted }}>
+                    <div style={{ fontWeight: 800, fontSize: 18 }}>Flashcards</div>
+                    <div style={{ fontSize: studyMetaSize, color: C.muted, lineHeight: 1.55 }}>
                       {subjectDisplay} | {difficulty === "All" ? "all difficulties" : difficulty} | {activeTopicFocus || "all topics"} | target {FLASHCARD_SET_SIZE} cards per set
                     </div>
                   </div>
@@ -6129,7 +6327,7 @@ export default function App() {
                       onClick={() => setCardIdx((value) => Math.max(0, value - 1))}
                       disabled={!flashcards.length || cardIdx === 0}
                       style={{
-                        padding: "9px 14px",
+                        padding: studyActionPadding,
                         borderRadius: 10,
                         border: `1px solid ${C.border}`,
                         background: C.surface,
@@ -6142,7 +6340,7 @@ export default function App() {
                       onClick={() => setCardIdx((value) => Math.min(flashcards.length - 1, value + 1))}
                       disabled={!flashcards.length || cardIdx >= flashcards.length - 1}
                       style={{
-                        padding: "9px 14px",
+                        padding: studyActionPadding,
                         borderRadius: 10,
                         border: `1px solid ${C.border}`,
                         background: C.surface,
@@ -6159,7 +6357,7 @@ export default function App() {
                         void requestNextFlashcardSet(topicFilter);
                       }}
                       style={{
-                        padding: "9px 14px",
+                        padding: studyActionPadding,
                         borderRadius: 10,
                         border: `1px solid ${C.accentMid}`,
                         background: C.accentLight,
@@ -6176,7 +6374,7 @@ export default function App() {
                       }}
                       disabled={apiLoading}
                       style={{
-                        padding: "9px 14px",
+                        padding: studyActionPadding,
                         borderRadius: 10,
                         border: "none",
                         background: apiLoading ? C.border : C.accent,
@@ -6203,15 +6401,15 @@ export default function App() {
                       style={{
                         marginTop: 16,
                         borderRadius: 18,
-                        padding: 18,
+                        padding: studySectionPadding,
                         background: "#FBFAF7",
                         border: `1.5px solid ${C.border}`,
                       }}
                     >
-                      <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, marginBottom: 10 }}>
+                      <div style={{ fontSize: studyMetaSize, fontWeight: 800, color: C.muted, marginBottom: 10 }}>
                         Flashcard Session Progress
                       </div>
-                      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 14, lineHeight: 1.7 }}>
+                      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: studyBodySize, lineHeight: 1.65 }}>
                         <div>Reviewed: <strong>{flashcardCompletedCount} / {flashcards.length}</strong></div>
                         <div>Strong: <strong>{flashcardStrongCount}</strong></div>
                         <div>Needs work: <strong>{flashcardNeedsReviewCount}</strong></div>
@@ -6248,7 +6446,7 @@ export default function App() {
                               void requestNextFlashcardSet(topicFilter);
                             }}
                             style={{
-                              padding: "10px 16px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: `1px solid ${C.border}`,
                               background: C.surface,
@@ -6268,7 +6466,7 @@ export default function App() {
                     style={{
                       border: `1px dashed ${C.border}`,
                       borderRadius: 20,
-                      padding: "44px 24px",
+                      padding: isMobile ? "28px 18px" : "36px 22px",
                       textAlign: "center",
                       color: C.muted,
                       lineHeight: 1.7,
@@ -6295,8 +6493,8 @@ export default function App() {
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 800, fontSize: 17 }}>Quiz</div>
-                    <div style={{ fontSize: 12, color: C.muted }}>
+                    <div style={{ fontWeight: 800, fontSize: 18 }}>Quiz</div>
+                    <div style={{ fontSize: studyMetaSize, color: C.muted, lineHeight: 1.55 }}>
                       {remediationContext
                         ? `Remediation set | ${remediationContext.weakestSubject || remediationContext.topic || "recent weak areas"} | ${QUIZ_SET_SIZE} questions`
                         : `Target ${QUIZ_SET_SIZE} questions | strict difficulty filter | saved sessions supported`}
@@ -6309,7 +6507,7 @@ export default function App() {
                       }}
                       disabled={apiLoading}
                       style={{
-                        padding: "10px 16px",
+                        padding: studyActionPadding,
                         borderRadius: 10,
                         border: "none",
                         background: apiLoading ? C.border : C.accent,
@@ -6324,7 +6522,7 @@ export default function App() {
                       onClick={saveCurrentQuiz}
                       disabled={!quiz.length}
                       style={{
-                        padding: "10px 16px",
+                        padding: studyActionPadding,
                         borderRadius: 10,
                         border: `1px solid ${C.border}`,
                         background: quiz.length ? C.surface : C.border,
@@ -6343,7 +6541,7 @@ export default function App() {
                     style={{
                       border: `1px dashed ${C.border}`,
                       borderRadius: 20,
-                      padding: "44px 24px",
+                      padding: isMobile ? "28px 18px" : "36px 22px",
                       textAlign: "center",
                       color: C.muted,
                       lineHeight: 1.7,
@@ -6394,7 +6592,7 @@ export default function App() {
                       style={{
                         background: C.panelNeutralAlt,
                         borderRadius: 18,
-                        padding: 22,
+                        padding: studySectionPadding,
                         border: `1.5px solid ${C.panelNeutralDark}`,
                         animation: "caredropFadeSlide 0.24s ease",
                       }}
@@ -6411,12 +6609,12 @@ export default function App() {
                       >
                         Question
                       </div>
-                      <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.5 }}>
+                      <div style={{ fontSize: studyQuestionSize, fontWeight: 800, lineHeight: 1.45, letterSpacing: "-0.02em" }}>
                         {quizItem.prompt}
                       </div>
                     </div>
 
-                    <div key={`${quizItem.id || "quiz"}-${quizIdx}-options`} style={{ marginTop: 16, display: "grid", gap: 10, animation: "caredropFadeSlide 0.24s ease" }}>
+                    <div key={`${quizItem.id || "quiz"}-${quizIdx}-options`} style={{ marginTop: 14, display: "grid", gap: 8, animation: "caredropFadeSlide 0.24s ease" }}>
                       {quizItem.options.map((option, optionIndex) => {
                         const selected = quizItem.userAnswer === option;
                         const correct = normalize(option) === normalize(quizItem.correctAnswer);
@@ -6441,8 +6639,8 @@ export default function App() {
                               border: `1px solid ${borderColor}`,
                               background,
                               cursor: quizSubmitted ? "default" : "pointer",
-                              fontSize: 14,
-                              lineHeight: 1.6,
+                              fontSize: studyBodySize,
+                              lineHeight: 1.55,
                               transition: "transform 0.18s ease, border-color 0.18s ease, background 0.18s ease",
                               display: "flex",
                               alignItems: "flex-start",
@@ -6468,12 +6666,12 @@ export default function App() {
                         style={{
                           marginTop: 16,
                           borderRadius: 18,
-                          padding: 18,
+                          padding: studySectionPadding,
                           background: C.panelNeutral,
                           border: `1px solid ${C.panelNeutralDark}`,
                         }}
                       >
-                        <div style={{ fontSize: 14, lineHeight: 1.75 }}>
+                        <div style={{ fontSize: studyBodySize, lineHeight: 1.7 }}>
                           {quizItem.userAnswer
                             ? "Answer saved. You can still move back and change it before final submission."
                             : "Choose an answer, use Previous or Next to move around the set, and submit only when you are ready."}
@@ -6484,7 +6682,7 @@ export default function App() {
                             onClick={() => setQuizIdx((value) => Math.max(value - 1, 0))}
                             disabled={quizIdx === 0}
                             style={{
-                              padding: "10px 16px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: `1px solid ${C.border}`,
                               background: quizIdx === 0 ? C.border : C.surface,
@@ -6519,7 +6717,7 @@ export default function App() {
                               onClick={submitQuizSession}
                               disabled={answeredCount < quiz.length || quizSubmitted}
                               style={{
-                                padding: "10px 16px",
+                                padding: studyActionPadding,
                                 borderRadius: 10,
                                 border: "none",
                                 background: answeredCount < quiz.length || quizSubmitted ? C.border : C.accent,
@@ -6548,7 +6746,7 @@ export default function App() {
                         <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>
                           Quiz Results
                         </div>
-                        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 14 }}>
+                        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: studyBodySize }}>
                           <div>Answered: <strong>{answeredCount}</strong></div>
                           <div>Correct: <strong>{correctCount}</strong></div>
                           <div>
@@ -6561,7 +6759,7 @@ export default function App() {
                             onClick={() => setQuizIdx((value) => Math.max(value - 1, 0))}
                             disabled={quizIdx === 0}
                             style={{
-                              padding: "10px 16px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: `1px solid ${C.border}`,
                               background: quizIdx === 0 ? C.border : C.surface,
@@ -6577,7 +6775,7 @@ export default function App() {
                             onClick={() => setQuizIdx((value) => Math.min(value + 1, quiz.length - 1))}
                             disabled={quizIdx >= quiz.length - 1}
                             style={{
-                              padding: "10px 16px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: "none",
                               background: quizIdx >= quiz.length - 1 ? C.border : C.accent,
@@ -6592,7 +6790,7 @@ export default function App() {
                             type="button"
                             onClick={() => setQuizAnswerSheetOpen((value) => !value)}
                             style={{
-                              padding: "10px 16px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: `1px solid ${C.border}`,
                               background: C.surface,
@@ -6618,7 +6816,7 @@ export default function App() {
                             }
                             disabled={answeredCount < quiz.length}
                             style={{
-                              padding: "10px 16px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: `1px solid ${C.border}`,
                               background: answeredCount < quiz.length ? C.border : C.surface,
@@ -6635,7 +6833,7 @@ export default function App() {
                             }}
                             disabled={apiLoading}
                             style={{
-                              padding: "10px 16px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: `1px solid ${C.border}`,
                               background: C.surface,
@@ -6647,7 +6845,7 @@ export default function App() {
                             Generate Another Set
                           </button>
                         </div>
-                        <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.75 }}>
+                        <div style={{ marginTop: 12, fontSize: studyBodySize, lineHeight: 1.7 }}>
                           <div><strong>Your answer:</strong> {quizItem.userAnswer || "No answer saved"}</div>
                           <div><strong>Correct answer:</strong> {quizItem.correctAnswer}</div>
                           <div><strong>Rationale:</strong> {quizItem.rationale}</div>
@@ -6661,7 +6859,7 @@ export default function App() {
                                 <div
                                   key={`${item.id || "quiz-sheet"}-${index}`}
                                   style={{
-                                    padding: "16px 18px",
+                                    padding: isMobile ? "14px 16px" : "16px 18px",
                                     borderRadius: 16,
                                     background: C.surface,
                                     border: `1px solid ${isCorrect ? "#10B981" : "#F43F5E"}`,
@@ -6672,15 +6870,15 @@ export default function App() {
                                     <Badge label={item.subject} color="gray" />
                                     <Badge label={isCorrect ? "Correct" : "Review"} color={isCorrect ? "green" : "red"} />
                                   </div>
-                                  <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.45 }}>{item.prompt}</div>
+                                  <div style={{ fontSize: studyBodySize, fontWeight: 700, lineHeight: 1.55 }}>{item.prompt}</div>
                                   <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                                    <div style={{ fontSize: 13, color: C.muted }}>
+                                    <div style={{ fontSize: studyMetaSize, color: C.muted }}>
                                       Your answer: <strong style={{ color: C.text }}>{item.userAnswer || "No answer saved"}</strong>
                                     </div>
-                                    <div style={{ fontSize: 13, color: C.muted }}>
+                                    <div style={{ fontSize: studyMetaSize, color: C.muted }}>
                                       Correct answer: <strong style={{ color: C.text }}>{item.correctAnswer}</strong>
                                     </div>
-                                    <div style={{ fontSize: 13, color: C.text, lineHeight: 1.7 }}>
+                                    <div style={{ fontSize: studyBodySize, color: C.text, lineHeight: 1.7 }}>
                                       <strong>Rationale:</strong> {item.rationale}
                                     </div>
                                   </div>
@@ -6892,7 +7090,7 @@ export default function App() {
                         );
                       })}
                     </div>
-                    <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12, color: C.muted }}>
+                    <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", fontSize: studyMetaSize, color: C.muted }}>
                       <div>{simulationFlaggedCount} flagged</div>
                       <div>{simulationQuestions.length - simulationAnsweredCount} unanswered</div>
                       <div>{simulationSize}-item target</div>
@@ -6906,7 +7104,7 @@ export default function App() {
                         background: C.panelNeutralAlt,
                         borderRadius: 18,
                         border: `1px solid ${C.panelNeutralDark}`,
-                        padding: width < 720 ? 18 : 24,
+                        padding: studySectionPadding,
                       }}
                     >
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
@@ -6926,14 +7124,14 @@ export default function App() {
                         {simulationItem.flagged ? <Badge label="flagged" color="amber" /> : null}
                       </div>
 
-                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                      <div style={{ fontSize: studyMetaSize, color: C.faint, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
                         Simulation Question
                       </div>
-                      <div style={{ fontSize: width < 640 ? 21 : 28, fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1.15 }}>
+                      <div style={{ fontSize: studyQuestionSize, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.45 }}>
                         {simulationItem.prompt}
                       </div>
 
-                      <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
+                      <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
                         {simulationItem.options.map((option, optionIndex) => {
                           const selected = simulationItem.userAnswer === option;
                           const correct = normalize(option) === normalize(simulationItem.correctAnswer);
@@ -6955,13 +7153,13 @@ export default function App() {
                                 display: "flex",
                                 alignItems: "flex-start",
                                 gap: 12,
-                                padding: "14px 16px",
+                                padding: isMobile ? "12px 14px" : "13px 15px",
                                 borderRadius: 14,
                                 background,
                                 border: `1px solid ${borderColor}`,
                                 cursor: simulationSubmitted ? "default" : "pointer",
-                                fontSize: 14,
-                                lineHeight: 1.6,
+                                fontSize: studyBodySize,
+                                lineHeight: 1.55,
                               }}
                             >
                               <input
@@ -6982,11 +7180,11 @@ export default function App() {
                         <div
                           style={{
                             marginTop: 14,
-                            padding: 14,
+                            padding: isMobile ? 12 : 14,
                             borderRadius: 14,
                             background: C.panelNeutral,
                             border: `1px solid ${C.panelNeutralDark}`,
-                            fontSize: 13,
+                            fontSize: studyBodySize,
                             color: C.muted,
                             lineHeight: 1.7,
                           }}
@@ -7003,7 +7201,7 @@ export default function App() {
                             type="button"
                             onClick={toggleSimulationFlag}
                             style={{
-                              padding: "9px 14px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: `1px solid ${simulationItem.flagged ? C.amber : C.border}`,
                               background: simulationItem.flagged ? C.amberLight : C.surface,
@@ -7024,7 +7222,7 @@ export default function App() {
                             onClick={() => setSimulationIdx((value) => Math.max(0, value - 1))}
                             disabled={simulationIdx === 0}
                             style={{
-                              padding: "10px 16px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: `1px solid ${C.border}`,
                               background: C.surface,
@@ -7040,7 +7238,7 @@ export default function App() {
                             onClick={() => setSimulationIdx((value) => Math.min(value + 1, simulationQuestions.length - 1))}
                             disabled={simulationIdx >= simulationQuestions.length - 1}
                             style={{
-                              padding: "10px 16px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: "none",
                               background: simulationIdx >= simulationQuestions.length - 1 ? C.border : C.accent,
@@ -7058,7 +7256,7 @@ export default function App() {
                             onClick={submitSimulationExam}
                             disabled={simulationAnsweredCount < simulationQuestions.length}
                             style={{
-                              padding: "10px 16px",
+                              padding: studyActionPadding,
                               borderRadius: 10,
                               border: "none",
                               background: simulationAnsweredCount < simulationQuestions.length ? C.border : "#1A2740",
@@ -7077,7 +7275,7 @@ export default function App() {
                       style={{
                         marginTop: 16,
                         borderRadius: 18,
-                        padding: 18,
+                        padding: studySectionPadding,
                         background: C.panelNeutral,
                         border: `1px solid ${C.panelNeutralDark}`,
                       }}
@@ -7085,12 +7283,12 @@ export default function App() {
                       {!simulationSubmitted ? (
                         <>
                           <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>Simulation Overview</div>
-                          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 14 }}>
+                          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: studyBodySize }}>
                             <div>Answered: <strong>{simulationAnsweredCount}</strong></div>
                             <div>Remaining: <strong>{Math.max(simulationQuestions.length - simulationAnsweredCount, 0)}</strong></div>
                             <div>Current target: <strong>{simulationSize} questions</strong></div>
                           </div>
-                          <div style={{ marginTop: 10, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                          <div style={{ marginTop: 10, fontSize: studyBodySize, color: C.muted, lineHeight: 1.7 }}>
                             Answers stay hidden while the simulation is active so the flow feels closer to an actual long-form exam. Move back through earlier questions anytime if you want to review or change an answer before the final submit on the last item.
                           </div>
                         </>
