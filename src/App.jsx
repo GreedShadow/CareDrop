@@ -3875,19 +3875,25 @@ export default function App() {
     }
   }
 
-  async function generateSummary() {
-    const notes = studyText.trim();
+  async function generateSummaryFromText(notesInput, options = {}) {
+    const {
+      successMessage = "Gemini generated a reviewer summary from your notes.",
+      offlineMessage = "Offline mode: CareDrop built a local reviewer summary from your notes.",
+      fallbackErrorMessage = "Gemini summary failed. A local reviewer summary was generated instead.",
+    } = options;
+    const notes = String(notesInput || "").trim();
+
     if (!notes) {
       setApiError("Add notes or upload a file before asking Gemini for a summary.");
-      return;
+      return false;
     }
 
     clearMessages();
 
     if (!isOnline) {
       setSummaryText(buildLocalSummary(notes));
-      setStatusMessage("Offline mode: CareDrop built a local reviewer summary from your notes.");
-      return;
+      setStatusMessage(offlineMessage);
+      return true;
     }
 
     setApiLoading(true);
@@ -3895,13 +3901,25 @@ export default function App() {
     try {
       const data = await postJson("/api/claude/summary", { notes });
       setSummaryText(data.summary || buildLocalSummary(notes));
-      setStatusMessage("Gemini generated a reviewer summary from your notes.");
+      setStatusMessage(successMessage);
+      return true;
     } catch (error) {
       setSummaryText(buildLocalSummary(notes));
-      setApiError(error.message || "Gemini summary failed. A local reviewer summary was generated instead.");
+      setApiError(error.message || fallbackErrorMessage);
+      return false;
     } finally {
       setApiLoading(false);
     }
+  }
+
+  async function generateSummary() {
+    const notes = studyText.trim();
+    if (!notes) {
+      setApiError("Add notes or upload a file before asking Gemini for a summary.");
+      return;
+    }
+
+    await generateSummaryFromText(notes);
   }
 
   async function askClaude() {
@@ -4299,20 +4317,27 @@ export default function App() {
 
     try {
       const data = await uploadFileForExtraction(file);
+      const extractedText = data.text || "";
       setUploadedFileName(data.fileName || file.name);
-      setUploadedText(data.text || "");
-      setSummaryText(buildLocalSummary(data.text || ""));
+      setUploadedText(extractedText);
       setUploadState("success");
-      setStatusMessage(`${file.name} uploaded and extracted successfully.`);
+      await generateSummaryFromText(extractedText, {
+        successMessage: `${file.name} uploaded, extracted, and summarized successfully.`,
+        offlineMessage: `${file.name} uploaded successfully. CareDrop built a local reviewer summary while offline.`,
+        fallbackErrorMessage: "The file was uploaded and a local reviewer summary was generated because Gemini summary was unavailable.",
+      });
     } catch (error) {
       if (extension === ".txt") {
         try {
           const localText = await readTextFileLocally(file);
           setUploadedFileName(file.name);
           setUploadedText(localText);
-          setSummaryText(buildLocalSummary(localText));
           setUploadState("success");
-          setStatusMessage(`${file.name} loaded locally while the upload service was unavailable.`);
+          await generateSummaryFromText(localText, {
+            successMessage: `${file.name} loaded locally and summarized successfully.`,
+            offlineMessage: `${file.name} loaded locally and CareDrop prepared a reviewer summary.`,
+            fallbackErrorMessage: "The file was loaded locally and a reviewer summary was still prepared.",
+          });
           setUploadError("");
           return;
         } catch (localError) {
