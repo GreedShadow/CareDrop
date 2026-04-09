@@ -18,9 +18,26 @@ export function useWindowWidth() {
   const [width, setWidth] = useState(typeof window === "undefined" ? 1200 : window.innerWidth);
 
   useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth);
+    let frame = 0;
+    const onResize = () => {
+      if (frame) {
+        return;
+      }
+
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        setWidth(window.innerWidth);
+      });
+    };
+
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
   }, []);
 
   return width;

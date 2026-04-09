@@ -354,7 +354,7 @@ export function SidebarNavButton({ active, label, hint, onClick, badge }) {
         color: active ? "#F8FBFF" : "#465468",
         cursor: "pointer",
         textAlign: "left",
-        transition: "all 0.2s ease",
+        transition: "background 0.2s ease, color 0.2s ease, border-color 0.2s ease",
       }}
     >
       <div>
@@ -402,7 +402,7 @@ export function SubjectTab({ active, label, onClick }) {
         minWidth: 136,
         cursor: "pointer",
         textAlign: "left",
-        transition: "all 0.2s ease",
+        transition: "background 0.2s ease, color 0.2s ease, border-color 0.2s ease",
       }}
     >
       <div style={{ fontSize: 14, fontWeight: 800 }}>{label}</div>
@@ -479,6 +479,8 @@ export function AnalyticsCard({ title, children, footer }) {
         borderRadius: 22,
         padding: 22,
         boxShadow: "0 14px 30px rgba(16, 30, 59, 0.05)",
+        contentVisibility: "auto",
+        containIntrinsicSize: "320px",
       }}
     >
       <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{title}</div>

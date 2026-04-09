@@ -1762,10 +1762,15 @@ export default function App() {
   const safeObject = (value) =>
     value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const safeString = (value, fallback = "") => (typeof value === "string" ? value : fallback);
-  const safeMode = (value, fallback = "flashcard") =>
-    ["dashboard", "flashcard", "quiz", "simulation", "calendar", "planner", "notes", "history", "admin"].includes(value)
+  const safeMode = (value, fallback = "flashcard") => {
+    if (value === "calendar") {
+      return "dashboard";
+    }
+
+    return ["dashboard", "flashcard", "quiz", "simulation", "planner", "notes", "history", "admin"].includes(value)
       ? value
       : fallback;
+  };
   const legacySavedSessions = safeArray(persisted?.savedQuizSessions);
   const persistedRequests = loadRequestPersisted();
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
@@ -1919,6 +1924,18 @@ export default function App() {
     setSimulationUsedAi(Boolean(snapshot.simulationUsedAi));
     setSimulationAnswerSheetOpen(false);
     setRemediationContext(snapshot.remediationContext && typeof snapshot.remediationContext === "object" ? snapshot.remediationContext : null);
+  }
+
+  function queueModeChange(nextMode) {
+    window.requestAnimationFrame(() => {
+      setMode(nextMode);
+    });
+  }
+
+  function queueAdminViewChange(nextView) {
+    window.requestAnimationFrame(() => {
+      setAdminView(nextView);
+    });
   }
 
   useEffect(() => {
@@ -2550,7 +2567,7 @@ export default function App() {
         title: "Clear an overdue study target",
         body: `${nextOverdue.title}${nextOverdue.subject ? ` in ${nextOverdue.subject}` : ""} is already past due. Reopen it now so the planner stays useful instead of becoming a guilt list.`,
         cta: "Open planner",
-        onClick: () => setMode("planner"),
+        onClick: () => queueModeChange("planner"),
       };
     }
 
@@ -2559,7 +2576,7 @@ export default function App() {
         title: "Follow your next planned review",
         body: `${plannerRecommendedItem.title}${plannerRecommendedItem.subject ? ` in ${plannerRecommendedItem.subject}` : ""}${plannerRecommendedItem.dueDate ? ` is due on ${plannerRecommendedItem.dueDate}` : " is ready now"}. Keeping one promise to yourself today is enough to keep momentum alive.`,
         cta: "Open planner",
-        onClick: () => setMode("planner"),
+        onClick: () => queueModeChange("planner"),
       };
     }
 
@@ -2592,7 +2609,7 @@ export default function App() {
         cta: "Review weak cards",
         onClick: () => {
           setFilterWeakOnly(true);
-          setMode("flashcard");
+          queueModeChange("flashcard");
         },
       };
     }
@@ -2615,12 +2632,12 @@ export default function App() {
           if (mostRecentSession.mode === "simulation") {
             openSavedQuiz(mostRecentSession);
           } else if (mostRecentSession.mode === "quiz") {
-            setMode("quiz");
+            queueModeChange("quiz");
             if (!quiz.length) {
               generateQuiz();
             }
           } else {
-            setMode("flashcard");
+            queueModeChange("flashcard");
             if (!flashcards.length) {
               loadLocalFlashcardSet();
             }
@@ -2641,7 +2658,7 @@ export default function App() {
           return;
         }
 
-        setMode("flashcard");
+        queueModeChange("flashcard");
         if (!flashcards.length) {
           loadLocalFlashcardSet();
         }
@@ -4009,12 +4026,9 @@ export default function App() {
     setTopicFilter(nextTopic);
 
     if (focusAction === "quiz") {
-      setMode("quiz");
       await generateQuiz(nextTopic);
       return;
     }
-
-    setMode("flashcard");
 
     if (nextTopic || hasCustomSource) {
       await generateClaudeFlashcards(nextTopic);
@@ -4032,7 +4046,7 @@ export default function App() {
       status: "local high-yield bank",
       hoverText: `${flashcards.length} cards currently loaded in this session`,
       actionLabel: "Open flashcards",
-      onClick: () => setMode("flashcard"),
+      onClick: () => queueModeChange("flashcard"),
       tags: ["Study"],
       colSpan: 1,
     },
@@ -4056,7 +4070,7 @@ export default function App() {
       actionLabel: weakCardIds.length ? "Open weak review" : "",
       onClick: () => {
         setFilterWeakOnly(true);
-        setMode("flashcard");
+        queueModeChange("flashcard");
       },
       tags: ["Review"],
       colSpan: 1,
@@ -4443,21 +4457,20 @@ export default function App() {
                   Workspace
                 </div>
                 <div style={{ display: "grid", gap: 8 }}>
-                  <SidebarNavButton active={mode === "dashboard"} label="Dashboard" hint="Overview and next steps" onClick={() => setMode("dashboard")} />
-                  <SidebarNavButton active={mode === "flashcard"} label="Flashcards" hint="Focused card review" badge={flashcards.length || ""} onClick={() => setMode("flashcard")} />
-                  <SidebarNavButton active={mode === "quiz"} label="Quiz" hint="Board-style drills" badge={quiz.length || ""} onClick={() => setMode("quiz")} />
-                  <SidebarNavButton active={mode === "simulation"} label="Simulation Exam" hint="Mixed 50-500 item exam mode" badge={simulationQuestions.length || ""} onClick={() => setMode("simulation")} />
-                  <SidebarNavButton active={mode === "calendar"} label="Calendar" hint="Study schedule and date notes" badge={upcomingEvents.length || ""} onClick={() => setMode("calendar")} />
-                  <SidebarNavButton active={mode === "planner"} label="Planner" hint="Goals, due dates, and next study targets" badge={plannerOpenItems.length || ""} onClick={() => setMode("planner")} />
-                  <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => setMode("notes")} />
-                  <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions and returns" badge={reviewSessions.length || ""} onClick={() => setMode("history")} />
+                  <SidebarNavButton active={mode === "dashboard"} label="Dashboard" hint="Overview and next steps" onClick={() => queueModeChange("dashboard")} />
+                  <SidebarNavButton active={mode === "flashcard"} label="Flashcards" hint="Focused card review" badge={flashcards.length || ""} onClick={() => queueModeChange("flashcard")} />
+                  <SidebarNavButton active={mode === "quiz"} label="Quiz" hint="Board-style drills" badge={quiz.length || ""} onClick={() => queueModeChange("quiz")} />
+                  <SidebarNavButton active={mode === "simulation"} label="Simulation Exam" hint="Mixed 50-500 item exam mode" badge={simulationQuestions.length || ""} onClick={() => queueModeChange("simulation")} />
+                  <SidebarNavButton active={mode === "planner"} label="Planner" hint="Goals, due dates, and next study targets" badge={plannerOpenItems.length || ""} onClick={() => queueModeChange("planner")} />
+                  <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => queueModeChange("notes")} />
+                  <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions and returns" badge={reviewSessions.length || ""} onClick={() => queueModeChange("history")} />
                   {isAdminUser ? (
                     <SidebarNavButton
                       active={mode === "admin"}
                       label="Admin"
                       hint="Feedback, trends, and product signals"
                       badge={requestHistory.length || ""}
-                      onClick={() => setMode("admin")}
+                      onClick={() => queueModeChange("admin")}
                     />
                   ) : null}
                 </div>
@@ -4595,7 +4608,7 @@ export default function App() {
                         key={value}
                         onClick={() => {
                           setSubject(value);
-                          setMode("flashcard");
+                          queueModeChange("flashcard");
                         }}
                         style={{
                           width: "100%",
@@ -4747,7 +4760,7 @@ export default function App() {
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button
                       type="button"
-                      onClick={() => setMode("flashcard")}
+                      onClick={() => queueModeChange("flashcard")}
                       style={{
                         padding: "10px 16px",
                         borderRadius: 12,
@@ -4763,7 +4776,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
-                        setMode("quiz");
+                        queueModeChange("quiz");
                         if (!quiz.length) {
                           generateQuiz();
                         }
@@ -5058,7 +5071,7 @@ export default function App() {
                       <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button
                           type="button"
-                          onClick={() => setMode("planner")}
+                          onClick={() => queueModeChange("planner")}
                           style={{
                             padding: "10px 14px",
                             borderRadius: 12,
@@ -5073,7 +5086,11 @@ export default function App() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setMode("calendar")}
+                          onClick={() => {
+                            setCalendarMonth(new Date());
+                            setCalendarSelectedDate(getDateInputValue());
+                            setStatusMessage("Calendar moved into the dashboard below.");
+                          }}
                           style={{
                             padding: "10px 14px",
                             borderRadius: 12,
@@ -5101,6 +5118,291 @@ export default function App() {
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                       <div>
                         <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          Calendar
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 14, lineHeight: 1.7, color: C.muted }}>
+                          Keep study dates, reminders, and subject notes inside the dashboard so planning stays visible while you review.
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => setCalendarMonth((value) => shiftMonth(value, -1))}
+                          style={{
+                            padding: "9px 12px",
+                            borderRadius: 10,
+                            border: `1px solid ${C.border}`,
+                            background: "#FFFFFF",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Prev
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCalendarMonth(new Date());
+                            setCalendarSelectedDate(getDateInputValue());
+                          }}
+                          style={{
+                            padding: "9px 12px",
+                            borderRadius: 10,
+                            border: `1px solid ${C.border}`,
+                            background: "#FFFFFF",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Today
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalendarMonth((value) => shiftMonth(value, 1))}
+                          style={{
+                            padding: "9px 12px",
+                            borderRadius: 10,
+                            border: `1px solid ${C.border}`,
+                            background: "#FFFFFF",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 16,
+                        display: "grid",
+                        gridTemplateColumns: width < 1100 ? "1fr" : "minmax(0, 1.1fr) minmax(300px, 0.9fr)",
+                        gap: 16,
+                      }}
+                    >
+                      <div
+                        style={{
+                          borderRadius: 18,
+                          border: `1px solid ${C.border}`,
+                          background: "#FFFFFF",
+                          padding: 16,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 14 }}>
+                          <div style={{ fontSize: 18, fontWeight: 800 }}>{getMonthLabel(calendarMonth)}</div>
+                          <div style={{ fontSize: 12, color: C.muted }}>
+                            {calendarEvents.length ? `${calendarEvents.length} saved` : "No entries yet"}
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
+                          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+                            <div
+                              key={label}
+                              style={{
+                                textAlign: "center",
+                                fontSize: 11,
+                                color: C.faint,
+                                fontWeight: 800,
+                                letterSpacing: "0.08em",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              {label}
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 8 }}>
+                          {calendarDays.map((day) => {
+                            const active = day.key === calendarSelectedDate;
+                            const today = day.key === formatDateKey(new Date());
+                            return (
+                              <button
+                                key={day.key}
+                                type="button"
+                                onClick={() => setCalendarSelectedDate(day.key)}
+                                style={{
+                                  minHeight: width < 640 ? 64 : 78,
+                                  borderRadius: 14,
+                                  border: active ? `1px solid ${C.accent}` : today ? `1px solid #BFD1E5` : `1px solid ${C.border}`,
+                                  background: active ? C.accentLight : day.inMonth ? "#FFFFFF" : "#F4F1EB",
+                                  color: day.inMonth ? C.text : C.faint,
+                                  padding: 10,
+                                  textAlign: "left",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  justifyContent: "space-between",
+                                  gap: 6,
+                                }}
+                              >
+                                <div style={{ fontSize: 12, fontWeight: 800 }}>{day.date.getDate()}</div>
+                                <div style={{ fontSize: 10, color: active ? C.accent : "#355E8A", fontWeight: 700 }}>
+                                  {day.events.length ? `${day.events.length} item${day.events.length === 1 ? "" : "s"}` : ""}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gap: 12 }}>
+                        <div
+                          style={{
+                            borderRadius: 18,
+                            border: `1px solid ${C.border}`,
+                            background: "#FFFFFF",
+                            padding: 16,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Selected Date
+                          </div>
+                          <div style={{ marginTop: 8, fontSize: 22, fontWeight: 900 }}>
+                            {new Date(calendarSelectedDate).toLocaleDateString([], {
+                              weekday: "long",
+                              month: "long",
+                              day: "numeric",
+                            })}
+                          </div>
+                          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                            <input
+                              value={calendarDraftTitle}
+                              onChange={(event) => setCalendarDraftTitle(event.target.value)}
+                              placeholder="Title for this date"
+                              style={{ ...selectStyle, cursor: "text" }}
+                            />
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                              <select value={calendarDraftType} onChange={(event) => setCalendarDraftType(event.target.value)} style={selectStyle}>
+                                {PLANNER_EVENT_TYPES.map((type) => (
+                                  <option key={type} value={type}>
+                                    {type}
+                                  </option>
+                                ))}
+                              </select>
+                              <select value={calendarDraftSubject} onChange={(event) => setCalendarDraftSubject(event.target.value)} style={selectStyle}>
+                                <option value="">No subject tag</option>
+                                {SUBJECT_OPTIONS.filter((value) => value !== "Mixed Review").map((value) => (
+                                  <option key={value} value={value}>
+                                    {value}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <textarea
+                              value={calendarDraftNote}
+                              onChange={(event) => setCalendarDraftNote(event.target.value)}
+                              placeholder="Optional note for this date"
+                              style={{ ...selectStyle, minHeight: 82, resize: "vertical", cursor: "text" }}
+                            />
+                            <button
+                              type="button"
+                              onClick={addCalendarEvent}
+                              style={{
+                                padding: "11px 14px",
+                                borderRadius: 12,
+                                border: "none",
+                                background: C.accent,
+                                color: "#fff",
+                                fontWeight: 800,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Save calendar entry
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            borderRadius: 18,
+                            border: `1px solid ${C.border}`,
+                            background: "#FFFFFF",
+                            padding: 16,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Date Entries
+                          </div>
+                          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                            {selectedDateEvents.length ? (
+                              selectedDateEvents.map((event) => (
+                                <div
+                                  key={event.id}
+                                  style={{
+                                    padding: "12px 14px",
+                                    borderRadius: 14,
+                                    background: "#FCFBF8",
+                                    border: `1px solid ${C.border}`,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                      <Badge label={event.type} color="blue" />
+                                      {event.subject ? <Badge label={event.subject} color="gray" /> : null}
+                                      {event.completed ? <Badge label="done" color="green" /> : null}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleCalendarEvent(event.id)}
+                                      style={{
+                                        padding: "7px 10px",
+                                        borderRadius: 10,
+                                        border: `1px solid ${C.border}`,
+                                        background: C.surface,
+                                        fontWeight: 700,
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      {event.completed ? "Reopen" : "Done"}
+                                    </button>
+                                  </div>
+                                  <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800 }}>{event.title}</div>
+                                  {event.note ? (
+                                    <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+                                      {event.note}
+                                    </div>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteCalendarEvent(event.id)}
+                                    style={{
+                                      marginTop: 8,
+                                      padding: 0,
+                                      border: "none",
+                                      background: "transparent",
+                                      color: C.red,
+                                      fontSize: 12,
+                                      fontWeight: 800,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                                Nothing is scheduled for this date yet.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 20,
+                      padding: 18,
+                      border: `1px solid ${C.border}`,
+                      background: "#FCFBF8",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                           Recent Review Trail
                         </div>
                         <div style={{ marginTop: 6, fontSize: 14, lineHeight: 1.7, color: C.muted }}>
@@ -5112,7 +5414,7 @@ export default function App() {
                       {reviewSessions.length ? (
                         <button
                           type="button"
-                          onClick={() => setMode("history")}
+                          onClick={() => queueModeChange("history")}
                           style={{
                             padding: "10px 14px",
                             borderRadius: 12,
@@ -5182,7 +5484,7 @@ export default function App() {
                       <button
                         key={value}
                         type="button"
-                        onClick={() => setAdminView(value)}
+                        onClick={() => queueAdminViewChange(value)}
                         style={{
                           padding: "10px 14px",
                           borderRadius: 12,
@@ -6995,358 +7297,6 @@ export default function App() {
                     </div>
                   </div>
                 ) : null}
-              </div>
-            ) : null}
-
-            {mode === "calendar" ? (
-              <div style={panelStyle}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    alignItems: "flex-start",
-                    flexWrap: "wrap",
-                    marginBottom: 18,
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: 17 }}>Study Calendar</div>
-                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
-                      Schedule review blocks, note important dates, and keep your next study commitments visible.
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      onClick={() => setCalendarMonth((value) => shiftMonth(value, -1))}
-                      style={{
-                        padding: "9px 12px",
-                        borderRadius: 10,
-                        border: `1px solid ${C.border}`,
-                        background: C.surface,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Prev Month
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCalendarMonth(new Date())}
-                      style={{
-                        padding: "9px 12px",
-                        borderRadius: 10,
-                        border: `1px solid ${C.border}`,
-                        background: C.surface,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Today
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCalendarMonth((value) => shiftMonth(value, 1))}
-                      style={{
-                        padding: "9px 12px",
-                        borderRadius: 10,
-                        border: `1px solid ${C.border}`,
-                        background: C.surface,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Next Month
-                    </button>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: width < 1100 ? "1fr" : "minmax(0, 1.1fr) minmax(320px, 0.9fr)",
-                    gap: 18,
-                  }}
-                >
-                  <div
-                    style={{
-                      borderRadius: 18,
-                      border: `1px solid ${C.border}`,
-                      background: "#FCFBF8",
-                      padding: 18,
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 14 }}>
-                      <div style={{ fontSize: 18, fontWeight: 800 }}>{getMonthLabel(calendarMonth)}</div>
-                      <div style={{ fontSize: 12, color: C.muted }}>
-                        {calendarEvents.length ? `${calendarEvents.length} total entries` : "No entries yet"}
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                        gap: 8,
-                        marginBottom: 10,
-                      }}
-                    >
-                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
-                        <div
-                          key={label}
-                          style={{
-                            textAlign: "center",
-                            fontSize: 11,
-                            color: C.faint,
-                            fontWeight: 800,
-                            letterSpacing: "0.08em",
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          {label}
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 8 }}>
-                      {calendarDays.map((day) => {
-                        const active = day.key === calendarSelectedDate;
-                        const today = day.key === formatDateKey(new Date());
-                        const completedCount = day.events.filter((event) => event.completed).length;
-                        return (
-                          <button
-                            key={day.key}
-                            type="button"
-                            onClick={() => setCalendarSelectedDate(day.key)}
-                            style={{
-                              minHeight: width < 640 ? 68 : 86,
-                              borderRadius: 14,
-                              border: active
-                                ? `1px solid ${C.accent}`
-                                : today
-                                  ? `1px solid #BFD1E5`
-                                  : `1px solid ${C.border}`,
-                              background: active ? C.accentLight : day.inMonth ? "#FFFFFF" : "#F4F1EB",
-                              color: day.inMonth ? C.text : C.faint,
-                              padding: 10,
-                              textAlign: "left",
-                              cursor: "pointer",
-                              display: "flex",
-                              flexDirection: "column",
-                              justifyContent: "space-between",
-                              gap: 8,
-                            }}
-                          >
-                            <div style={{ fontSize: 13, fontWeight: 800 }}>{day.date.getDate()}</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                              {day.events.length ? (
-                                <div style={{ fontSize: 10, fontWeight: 800, color: active ? C.accent : "#355E8A" }}>
-                                  {day.events.length} item{day.events.length === 1 ? "" : "s"}
-                                </div>
-                              ) : null}
-                              {completedCount ? (
-                                <div style={{ fontSize: 10, color: C.accent }}>
-                                  {completedCount} done
-                                </div>
-                              ) : null}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div style={{ display: "grid", gap: 14 }}>
-                    <div
-                      style={{
-                        borderRadius: 18,
-                        border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
-                        padding: 18,
-                      }}
-                    >
-                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                        Selected Date
-                      </div>
-                      <div style={{ marginTop: 8, fontSize: 22, fontWeight: 900 }}>
-                        {new Date(calendarSelectedDate).toLocaleDateString([], {
-                          weekday: "long",
-                          month: "long",
-                          day: "numeric",
-                        })}
-                      </div>
-                      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                        <input
-                          value={calendarDraftTitle}
-                          onChange={(event) => setCalendarDraftTitle(event.target.value)}
-                          placeholder="Title for this date"
-                          style={{ ...selectStyle, cursor: "text" }}
-                        />
-                        <select
-                          value={calendarDraftType}
-                          onChange={(event) => setCalendarDraftType(event.target.value)}
-                          style={selectStyle}
-                        >
-                          {PLANNER_EVENT_TYPES.map((type) => (
-                            <option key={type} value={type}>
-                              {type}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={calendarDraftSubject}
-                          onChange={(event) => setCalendarDraftSubject(event.target.value)}
-                          style={selectStyle}
-                        >
-                          <option value="">No subject tag</option>
-                          {SUBJECT_OPTIONS.filter((value) => value !== "Mixed Review").map((value) => (
-                            <option key={value} value={value}>
-                              {value}
-                            </option>
-                          ))}
-                        </select>
-                        <textarea
-                          value={calendarDraftNote}
-                          onChange={(event) => setCalendarDraftNote(event.target.value)}
-                          placeholder="Optional note for this date"
-                          style={{
-                            ...selectStyle,
-                            minHeight: 90,
-                            resize: "vertical",
-                            cursor: "text",
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={addCalendarEvent}
-                          style={{
-                            padding: "11px 14px",
-                            borderRadius: 12,
-                            border: "none",
-                            background: C.accent,
-                            color: "#fff",
-                            fontWeight: 800,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Save calendar entry
-                        </button>
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: 14,
-                          borderTop: `1px solid ${C.border}`,
-                          paddingTop: 14,
-                          display: "grid",
-                          gap: 10,
-                        }}
-                      >
-                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                          Entries On This Date
-                        </div>
-                        {selectedDateEvents.length ? (
-                          selectedDateEvents.map((event) => (
-                            <div
-                              key={event.id}
-                              style={{
-                                padding: "12px 14px",
-                                borderRadius: 14,
-                                background: "#FFFFFF",
-                                border: `1px solid ${C.border}`,
-                              }}
-                            >
-                              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                                  <Badge label={event.type} color="blue" />
-                                  {event.subject ? <Badge label={event.subject} color="gray" /> : null}
-                                  {event.completed ? <Badge label="done" color="green" /> : null}
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleCalendarEvent(event.id)}
-                                  style={{
-                                    padding: "7px 10px",
-                                    borderRadius: 10,
-                                    border: `1px solid ${C.border}`,
-                                    background: C.surface,
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  {event.completed ? "Reopen" : "Done"}
-                                </button>
-                              </div>
-                              <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800 }}>{event.title}</div>
-                              {event.note ? (
-                                <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
-                                  {event.note}
-                                </div>
-                              ) : null}
-                              <button
-                                type="button"
-                                onClick={() => deleteCalendarEvent(event.id)}
-                                style={{
-                                  marginTop: 8,
-                                  padding: 0,
-                                  border: "none",
-                                  background: "transparent",
-                                  color: C.red,
-                                  fontSize: 12,
-                                  fontWeight: 800,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          ))
-                        ) : (
-                          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
-                            Nothing is scheduled for this date yet.
-                          </div>
-                        )}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: 14,
-                          borderTop: `1px solid ${C.border}`,
-                          paddingTop: 14,
-                          display: "grid",
-                          gap: 10,
-                        }}
-                      >
-                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                          Upcoming
-                        </div>
-                        {upcomingEvents.length ? (
-                          upcomingEvents.map((event) => (
-                            <div
-                              key={`${event.id}-upcoming`}
-                              style={{
-                                padding: "10px 12px",
-                                borderRadius: 12,
-                                background: "#FFFFFF",
-                                border: `1px solid ${C.border}`,
-                                fontSize: 12,
-                                lineHeight: 1.7,
-                              }}
-                            >
-                              <strong style={{ color: C.text }}>{event.title}</strong>
-                              <div style={{ color: C.muted }}>
-                                {event.date} | {event.type}{event.subject ? ` | ${event.subject}` : ""}
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
-                            No upcoming calendar entries yet.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
             ) : null}
 
