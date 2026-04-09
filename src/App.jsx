@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, EyeOff, MessageCircleMore, Minus, X } from "lucide-react";
+import { MessageCircleMore } from "lucide-react";
 import {
   AIPanel,
   AnalyticsCard,
@@ -63,503 +63,30 @@ import {
   sortByDateDesc,
 } from "./caredrop/planning";
 import { C } from "./caredrop/theme";
+import { RequestModal } from "./features/admin/RequestModal";
+import { AuthScreen } from "./features/auth/AuthScreen";
+import { TermsModal } from "./features/auth/TermsModal";
+import { SavedSessionCard } from "./features/history/SavedSessionCard";
+import { useAdaptiveInsights } from "./hooks/useAdaptiveInsights";
+import { safeArray, safeMode, safeObject, safeString, useInactivityTimeout } from "./hooks/useProgressPersistence";
+import {
+  buildProgressSnapshot,
+  loadRemoteSnapshot,
+  persistLocalSnapshot,
+  saveRemoteSnapshot,
+} from "./services/progressRepository";
+import { buildRemediationEntries, collectIncorrectQuestions } from "./services/remediation";
+import {
+  ANSWER_REMINDERS,
+  BANK_ITEMS_PER_BUCKET,
+  BUCKET_DIFFICULTIES,
+  FLASHCARD_RATING_POINTS,
+  QUESTION_LEAD_INS,
+  QUESTION_TEMPLATES,
+  SEED_QUESTION_BANK,
+  SLOW_RESPONSE_THRESHOLDS_MS,
+} from "./data/questionBank/index.js";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
-
-const SEED_QUESTION_BANK = {
-  Fundamentals: [
-    { q: "What is the first priority when a patient suddenly becomes unresponsive?", a: "Assess responsiveness, call for help, and check airway, breathing, and circulation. Start CPR if no pulse is present.", difficulty: "easy", topic: "basic life support" },
-    { q: "Why is hand hygiene the single most important nursing intervention?", a: "It breaks the chain of infection and prevents transmission of pathogens between patients, staff, and surfaces.", difficulty: "easy", topic: "infection control" },
-    { q: "Which type of isolation is used for pulmonary tuberculosis?", a: "Airborne isolation in a negative-pressure room with N95 mask use.", difficulty: "medium", topic: "isolation precautions" },
-    { q: "What is the best site to check capillary refill in an adult?", a: "The nail bed of a finger or toe. Normal refill is usually 2 seconds or less.", difficulty: "easy", topic: "assessment" },
-    { q: "What is the safe angle for an intramuscular injection in adults?", a: "Ninety degrees into a large muscle such as the ventrogluteal or vastus lateralis site.", difficulty: "easy", topic: "medication administration" },
-    { q: "Why is patient identification required before every medication pass?", a: "It reduces wrong-patient medication errors and supports safe administration standards.", difficulty: "easy", topic: "patient safety" },
-    { q: "What is the nurse's priority when a patient reports chest pain?", a: "Assess pain, obtain vital signs, support oxygenation as ordered, and rapidly escalate because cardiac ischemia is time-sensitive.", difficulty: "medium", topic: "priority setting" },
-    { q: "Why should side rails not be used as a routine restraint alternative?", a: "Improper use can increase injury risk and does not replace ongoing fall-prevention assessment.", difficulty: "medium", topic: "safety" },
-    { q: "What is the purpose of the nursing process?", a: "It provides a systematic method for assessment, diagnosis, planning, implementation, and evaluation of care.", difficulty: "easy", topic: "nursing process" },
-    { q: "What is the best first action when a sterile field becomes contaminated?", a: "Recognize the break in sterile technique and replace the contaminated field or item before continuing.", difficulty: "medium", topic: "sterile technique" },
-    { q: "A patient develops sudden stridor after a procedure. What is the nurse's priority response?", a: "Treat it as an airway emergency, call for immediate help, support oxygenation, and prepare for rapid airway intervention.", difficulty: "hard", topic: "airway emergency" },
-    { q: "Which finding most strongly suggests sepsis is progressing to instability?", a: "Worsening mental status, hypotension, tachycardia, and poor perfusion together suggest possible septic shock and need urgent escalation.", difficulty: "hard", topic: "sepsis recognition" },
-    { q: "During triage, which patient should be assessed first: chest pain, fever, or stable post-op discomfort?", a: "The patient with possible life-threatening compromise such as chest pain suggestive of acute coronary syndrome should be assessed first.", difficulty: "hard", topic: "triage priority" },
-    { q: "What is the safest way to verify a nasogastric tube before giving feeding or medication?", a: "Follow the facility method for placement confirmation, most safely using approved tube-position verification before anything enters the tube.", difficulty: "medium", topic: "enteral safety" },
-    { q: "Why is repositioning a pressure-injury prevention priority for immobile patients?", a: "Regular repositioning reduces prolonged tissue pressure, improves perfusion, and lowers the risk of skin breakdown.", difficulty: "easy", topic: "skin integrity" },
-    { q: "What should the nurse do first when a patient says the pain is suddenly much worse than before?", a: "Reassess the pain fully, check vital signs, and determine whether the change suggests a new urgent complication rather than routine discomfort.", difficulty: "medium", topic: "pain assessment" },
-    { q: "What is the nurse's priority when a patient begins choking but can still cough forcefully?", a: "Encourage the patient to continue coughing and stay ready to intervene if the airway becomes more obstructed.", difficulty: "easy", topic: "airway support" },
-    { q: "Why should documentation be timely and objective?", a: "It supports continuity of care, legal safety, and accurate communication without adding opinion or unsupported conclusions.", difficulty: "easy", topic: "documentation" },
-    { q: "Which assessment finding should be escalated first after starting a blood transfusion?", a: "Fever, chills, dyspnea, back pain, or a feeling of doom because these may signal an acute transfusion reaction.", difficulty: "hard", topic: "transfusion safety" },
-    { q: "What is the priority safety action before assisting a weak patient out of bed for the first time after surgery?", a: "Assess stability first, control the environment, and use support or extra help because post-op patients are at high fall risk.", difficulty: "medium", topic: "fall prevention" },
-    { q: "Why is a focused neurologic check important after any sudden change in mentation?", a: "A rapid mental-status change may signal hypoxia, hypoglycemia, stroke, infection, or another evolving emergency that needs urgent clarification.", difficulty: "hard", topic: "neurologic assessment" },
-    { q: "What does informed consent require from the nurse during routine care?", a: "The nurse witnesses voluntariness and understanding concerns, then advocates if the patient seems confused or pressured.", difficulty: "medium", topic: "legal foundations" },
-    { q: "What is the most reliable way to prevent patient falls during toileting rounds?", a: "Anticipate toileting needs, answer call lights promptly, and stay with high-risk patients when needed.", difficulty: "easy", topic: "fall prevention" },
-    { q: "Why is SBAR useful during nursing handoff?", a: "It organizes urgent information into a concise structure so the next clinician can understand the problem and act safely.", difficulty: "easy", topic: "handoff communication" },
-    { q: "When a patient refuses a prescribed treatment, what is the nurse's best response?", a: "Assess understanding, explore concerns, provide clear information, and respect the patient's right while documenting and escalating appropriately.", difficulty: "medium", topic: "patient rights" },
-    { q: "Which patient needs the highest priority assessment: new confusion, mild nausea, or chronic shoulder pain?", a: "New confusion because an acute change in mentation may be the earliest sign of serious deterioration.", difficulty: "hard", topic: "priority setting" },
-    { q: "What is the nurse's first action if a medication dose seems unusually high?", a: "Pause before administration, verify the order, check the reference if needed, and clarify the dose rather than guessing.", difficulty: "easy", topic: "medication safety" },
-    { q: "What is the safest first response when a post-fall patient insists they are fine and tries to stand up immediately?", a: "Stop the patient from standing, assess for injury and neurologic change first, and only mobilize again after safety is re-established.", difficulty: "medium", topic: "fall response" },
-    { q: "Why is pain reassessment required after an analgesic is given?", a: "It confirms whether the intervention worked, whether the dose was adequate, and whether adverse effects or escalating pain are developing.", difficulty: "easy", topic: "pain management" },
-    { q: "What should the nurse prioritize when a patient with dysphagia is about to receive oral medication?", a: "Confirm swallowing safety first and use the approved route or formulation because aspiration risk overrides routine administration.", difficulty: "hard", topic: "aspiration prevention" },
-    { q: "Which finding after prolonged bed rest suggests orthostatic intolerance?", a: "Dizziness or weakness during position change suggests the patient may not tolerate sudden standing and needs slower mobilization.", difficulty: "medium", topic: "mobility" },
-    { q: "Why are time-outs required before invasive procedures?", a: "They confirm the correct patient, procedure, and site and reduce preventable wrong-site or wrong-patient events.", difficulty: "easy", topic: "patient safety" },
-    { q: "What should the nurse do first when a patient with a seizure history says an aura is starting?", a: "Protect the patient from injury, keep the airway environment safe, and prepare for seizure precautions before the event progresses.", difficulty: "hard", topic: "seizure precautions" },
-    { q: "What is the best action when a confused patient tries to remove an oxygen mask repeatedly?", a: "Assess the cause of agitation, support oxygenation, reorient calmly, and address reversible triggers rather than escalating force immediately.", difficulty: "medium", topic: "behavioral safety" },
-    { q: "Why does the nurse verify allergies even when a patient says a drug was taken before without problems?", a: "Allergy status can change, prior exposure does not guarantee safety, and verification remains part of safe medication administration.", difficulty: "easy", topic: "medication safety" },
-    { q: "What is the nursing priority when a patient suddenly reports difficulty breathing while lying flat?", a: "Raise the head of the bed, assess oxygenation, and escalate quickly because orthopnea can signal acute cardiopulmonary compromise.", difficulty: "hard", topic: "respiratory priority" },
-    { q: "Why is hourly rounding useful on a busy unit?", a: "It anticipates pain, position, personal needs, and safety concerns before they become falls, delays, or call-light emergencies.", difficulty: "easy", topic: "preventive care" },
-  ],
-  Pharmacology: [
-    { q: "What is the priority assessment before administering digoxin?", a: "Check the apical pulse for 1 full minute and hold if it is below the ordered parameter. Also review potassium because hypokalemia increases toxicity risk.", difficulty: "medium", topic: "cardiac drugs" },
-    { q: "A patient on heparin has an aPTT of 180 seconds. What is the antidote?", a: "Protamine sulfate. It reverses the anticoagulant effect of heparin and must be given carefully because it may cause hypotension.", difficulty: "hard", topic: "anticoagulants" },
-    { q: "Why is metformin held before and after IV contrast procedures?", a: "Contrast can reduce kidney function, which raises the risk of metformin-associated lactic acidosis.", difficulty: "medium", topic: "antidiabetics" },
-    { q: "What is the priority pre-administration assessment before IV morphine?", a: "Respiratory rate and level of consciousness. Hold and reassess if respirations are significantly depressed.", difficulty: "easy", topic: "opioids" },
-    { q: "What is the antidote for acetaminophen overdose?", a: "N-acetylcysteine, which replenishes glutathione and reduces liver injury when given early.", difficulty: "hard", topic: "toxicology" },
-    { q: "Which lab value is most important before giving warfarin?", a: "The INR. It shows anticoagulation intensity and helps determine bleeding risk.", difficulty: "medium", topic: "anticoagulants" },
-    { q: "What teaching is essential for a patient taking furosemide?", a: "Monitor for dizziness, dehydration, and low potassium, and rise slowly to prevent orthostatic hypotension.", difficulty: "easy", topic: "diuretics" },
-    { q: "Why should nitroglycerin tablets be stored in their original dark bottle?", a: "Nitroglycerin is sensitive to light and moisture, which can reduce potency if stored improperly.", difficulty: "easy", topic: "antianginals" },
-    { q: "What adverse effect should be watched for after insulin administration?", a: "Hypoglycemia, especially if food intake is delayed or the dose is too high.", difficulty: "easy", topic: "insulin" },
-    { q: "Why should aminoglycosides be monitored carefully?", a: "They can cause nephrotoxicity and ototoxicity, so kidney function and hearing-related symptoms matter.", difficulty: "medium", topic: "antibiotics" },
-  ],
-  "Medical-Surgical": [
-    { q: "A post-op patient has urine output of 15 mL/hour for 3 hours. What does this suggest?", a: "Oliguria. It may indicate hypovolemia, renal hypoperfusion, or obstruction and requires prompt assessment.", difficulty: "medium", topic: "renal" },
-    { q: "What does tracheal deviation away from the affected side indicate?", a: "Tension pneumothorax, a life-threatening emergency requiring immediate decompression.", difficulty: "hard", topic: "respiratory" },
-    { q: "Which electrolyte imbalance causes tall peaked T-waves?", a: "Hyperkalemia. Severe cases can progress to lethal dysrhythmias.", difficulty: "hard", topic: "electrolytes" },
-    { q: "A patient with pulmonary embolism usually presents with what sudden symptom pattern?", a: "Sudden dyspnea, pleuritic chest pain, tachycardia, and possible hypoxemia.", difficulty: "hard", topic: "cardiovascular" },
-    { q: "Why is Homans' sign no longer used to diagnose DVT?", a: "It is unreliable and may be negative even in true DVT. Doppler ultrasound is preferred.", difficulty: "medium", topic: "vascular" },
-    { q: "What is the nurse's priority action for suspected hypoglycemia in a conscious diabetic patient?", a: "Give 15 grams of fast-acting carbohydrate, then recheck blood glucose after 15 minutes.", difficulty: "easy", topic: "endocrine" },
-    { q: "What is the earliest sign of increased intracranial pressure?", a: "A change in level of consciousness, such as restlessness or confusion.", difficulty: "hard", topic: "neurologic" },
-    { q: "Which finding after thyroidectomy requires immediate action?", a: "Stridor or respiratory distress, which may indicate airway obstruction or hemorrhage.", difficulty: "hard", topic: "post-op care" },
-    { q: "What is the best position for a patient with acute dyspnea?", a: "High Fowler's or the most upright tolerated position to support ventilation.", difficulty: "easy", topic: "respiratory" },
-    { q: "What should the nurse suspect when a patient with GI bleeding becomes cool, pale, and tachycardic?", a: "Hypovolemic shock from blood loss requiring urgent assessment, support, and escalation.", difficulty: "hard", topic: "shock" },
-    { q: "What is the first nursing concern when a patient with heart failure suddenly gains 2 kilograms in two days?", a: "Fluid retention and worsening congestion because rapid weight gain can reflect decompensating heart failure.", difficulty: "medium", topic: "cardiac" },
-    { q: "Which finding is most urgent in a patient with COPD receiving oxygen therapy?", a: "Worsening somnolence, severe dyspnea, or dropping oxygen saturation because these suggest failing ventilation, not just routine disease symptoms.", difficulty: "hard", topic: "respiratory" },
-    { q: "Why is strict intake and output monitoring important in acute kidney injury?", a: "Small fluid shifts matter, and accurate intake and output helps identify worsening retention, overload, or poor renal perfusion early.", difficulty: "medium", topic: "renal" },
-    { q: "What should the nurse do first for a patient with suspected stroke who has new unilateral weakness?", a: "Treat it as time-sensitive, assess airway and glucose, note the onset time, and activate urgent stroke evaluation.", difficulty: "hard", topic: "neurologic" },
-    { q: "Which symptom pattern most strongly suggests acute appendicitis is worsening?", a: "Increasing abdominal pain with guarding, fever, and rebound tenderness suggests escalating inflammation or perforation risk.", difficulty: "medium", topic: "gastrointestinal" },
-    { q: "What is the priority teaching for a patient taking levothyroxine?", a: "Take it consistently, usually on an empty stomach, and understand that symptom improvement is gradual rather than immediate.", difficulty: "easy", topic: "endocrine" },
-    { q: "Why is chest-tube bubbling in the water-seal chamber important to assess?", a: "Intermittent bubbling may reflect expected air escape, but continuous bubbling can suggest an air leak that needs evaluation.", difficulty: "medium", topic: "respiratory" },
-    { q: "Which finding after abdominal surgery should raise concern for paralytic ileus?", a: "Increasing distention, absent bowel sounds, nausea, and inability to tolerate intake suggest slowed bowel function.", difficulty: "medium", topic: "gastrointestinal" },
-    { q: "What is the nurse's priority for a patient with suspected myocardial infarction who reports crushing chest pain?", a: "Rapid cardiac assessment, monitoring, and escalation are critical because myocardial injury is time-sensitive.", difficulty: "hard", topic: "cardiac" },
-    { q: "What is the safest nursing response to symptomatic hypocalcemia after thyroid surgery?", a: "Recognize it early, assess for tingling or tetany, and escalate because airway-threatening spasm can develop.", difficulty: "hard", topic: "electrolytes" },
-    { q: "What is the main concern when a patient with cirrhosis becomes increasingly drowsy and confused?", a: "Possible hepatic encephalopathy, which requires prompt assessment and management of the precipitating cause.", difficulty: "hard", topic: "gastrointestinal" },
-    { q: "Why should a patient with pancreatitis remain NPO during an acute flare if ordered?", a: "Resting the pancreas helps reduce stimulation and can support pain control and recovery.", difficulty: "easy", topic: "gastrointestinal" },
-    { q: "What does black, tarry stool usually suggest in Med-Surg review?", a: "Melena, which often points to upper GI bleeding and should not be dismissed as a minor finding.", difficulty: "easy", topic: "gastrointestinal" },
-    { q: "What finding matters most after insulin administration in a patient who is suddenly diaphoretic and shaky?", a: "Suspect hypoglycemia first and confirm rapidly so treatment can start without delay.", difficulty: "easy", topic: "endocrine" },
-    { q: "Why is neurovascular assessment important after casting a fractured limb?", a: "Circulation, movement, and sensation can worsen quickly if swelling compromises the extremity.", difficulty: "medium", topic: "musculoskeletal" },
-    { q: "Which finding is most concerning in a patient with suspected bowel obstruction?", a: "Persistent vomiting, distention, worsening pain, and absent bowel function together suggest escalating obstruction that needs urgent review.", difficulty: "hard", topic: "gastrointestinal" },
-    { q: "What is the priority concern when a patient with diabetic ketoacidosis becomes increasingly drowsy?", a: "Worsening metabolic instability or cerebral compromise needs urgent reassessment because declining mentation is never routine in DKA.", difficulty: "hard", topic: "endocrine" },
-    { q: "Why is a sudden drop in blood pressure with cool clammy skin after surgery alarming?", a: "It can reflect shock from bleeding or poor perfusion and requires rapid assessment rather than routine observation.", difficulty: "hard", topic: "post-op care" },
-    { q: "What should the nurse suspect when a patient with asthma has a suddenly quiet chest and worsening distress?", a: "Minimal air movement in a struggling patient may signal severe obstruction and impending respiratory failure.", difficulty: "hard", topic: "respiratory" },
-    { q: "What is the safest nursing interpretation of new unilateral calf swelling and warmth?", a: "Suspect DVT and avoid unnecessary manipulation while urgent evaluation is arranged.", difficulty: "medium", topic: "vascular" },
-    { q: "Why is daily weight more reliable than edema alone in heart-failure monitoring?", a: "Fluid retention often appears in weight first, making daily weights one of the most sensitive trend markers.", difficulty: "medium", topic: "cardiac" },
-    { q: "Which neurologic change after head injury is most urgent to escalate?", a: "A new decline in responsiveness or pupil change suggests rising intracranial danger and requires urgent escalation.", difficulty: "hard", topic: "neurologic" },
-    { q: "What does coffee-ground emesis suggest in a Med-Surg patient?", a: "Partially digested blood, often from upper GI bleeding, which still needs urgent assessment even if active bright-red bleeding is not seen.", difficulty: "medium", topic: "gastrointestinal" },
-    { q: "What is the nursing priority for a patient with severe hyperglycemia and signs of dehydration?", a: "Assess perfusion and mental status, support fluids as ordered, and treat it as a potentially unstable metabolic emergency.", difficulty: "medium", topic: "endocrine" },
-    { q: "Why is anuria after surgery more urgent than reduced output alone?", a: "Complete absence of urine can point to obstruction or severe renal compromise and needs immediate clarification.", difficulty: "hard", topic: "renal" },
-  ],
-  "Maternal & Newborn": [
-    { q: "Late decelerations during labor usually mean what?", a: "Uteroplacental insufficiency. Reposition, give oxygen, increase fluids, stop oxytocin, and notify the provider.", difficulty: "hard", topic: "fetal monitoring" },
-    { q: "What are the 4 Ts of postpartum hemorrhage?", a: "Tone, Trauma, Tissue, and Thrombin.", difficulty: "medium", topic: "postpartum" },
-    { q: "What is the expected fundal location immediately after delivery?", a: "At the level of the umbilicus.", difficulty: "easy", topic: "postpartum" },
-    { q: "What does HELLP stand for?", a: "Hemolysis, Elevated Liver enzymes, and Low Platelets.", difficulty: "hard", topic: "complications" },
-    { q: "A newborn with an Apgar score of 4 at 1 minute needs what general response?", a: "Prompt resuscitative support such as stimulation and assisted breathing as indicated, then reassessment.", difficulty: "medium", topic: "newborn" },
-    { q: "What is the priority finding in placental abruption?", a: "Painful vaginal bleeding with a tender, rigid uterus and fetal distress.", difficulty: "hard", topic: "antepartum complications" },
-    { q: "What is a priority nursing intervention for a patient receiving magnesium sulfate?", a: "Monitor respirations, deep tendon reflexes, and urine output for toxicity.", difficulty: "medium", topic: "high-risk pregnancy" },
-    { q: "Why is skin-to-skin contact encouraged after birth?", a: "It promotes thermoregulation, bonding, breastfeeding, and newborn stabilization.", difficulty: "easy", topic: "newborn care" },
-    { q: "What assessment finding suggests uterine atony?", a: "A boggy uterus with increased postpartum bleeding.", difficulty: "medium", topic: "postpartum" },
-    { q: "Why should the nurse monitor lochia after delivery?", a: "Changes in amount, color, or odor can signal expected recovery or possible complications.", difficulty: "easy", topic: "postpartum" },
-  ],
-  Pediatrics: [
-    { q: "A child with drooling, tripod position, and muffled voice most likely has what emergency?", a: "Epiglottitis. Avoid throat examination and prepare for airway support.", difficulty: "hard", topic: "respiratory emergencies" },
-    { q: "What is the epinephrine dose rule for pediatric anaphylaxis?", a: "0.01 mg/kg of 1:1000 intramuscularly, usually into the anterolateral thigh.", difficulty: "hard", topic: "emergency" },
-    { q: "Why is respiratory rate a critical pediatric assessment?", a: "Children compensate until late, so an increased respiratory rate can be an early sign of deterioration.", difficulty: "easy", topic: "vital signs" },
-    { q: "What is a classic sign of dehydration in an infant?", a: "Sunken fontanelle, along with dry mucous membranes and fewer wet diapers.", difficulty: "easy", topic: "fluids" },
-    { q: "What is the priority teaching for oral rehydration therapy?", a: "Give small, frequent sips and continue reassessing hydration status.", difficulty: "easy", topic: "fluids" },
-    { q: "What is the priority action for a febrile child actively seizing?", a: "Protect the airway and child from injury, do not restrain, and time the seizure.", difficulty: "medium", topic: "neurologic" },
-    { q: "Why should aspirin generally be avoided in children with viral illness?", a: "Because it is associated with Reye syndrome.", difficulty: "medium", topic: "medication safety" },
-    { q: "What is the priority sign of severe bronchiolitis or asthma in a child?", a: "Increasing work of breathing, fatigue, and decreasing oxygen saturation.", difficulty: "hard", topic: "respiratory" },
-    { q: "Why are weight-based doses used in pediatrics?", a: "Because medication safety depends on matching the dose to the child's size and developmental needs.", difficulty: "easy", topic: "medication safety" },
-    { q: "What is the first concern when assessing a child with persistent vomiting and diarrhea?", a: "Fluid volume deficit and the risk of rapid dehydration.", difficulty: "medium", topic: "fluids" },
-  ],
-  "Psychiatric Nursing": [
-    { q: "What is the best therapeutic response to 'Nobody cares about me'?", a: "It sounds like you're feeling very alone right now.", difficulty: "medium", topic: "therapeutic communication" },
-    { q: "What syndrome is suggested by muscle rigidity, high fever, and altered mental status after antipsychotic use?", a: "Neuroleptic malignant syndrome.", difficulty: "hard", topic: "adverse effects" },
-    { q: "What is the therapeutic lithium range?", a: "Typically 0.6 to 1.2 mEq/L, with higher levels increasing toxicity risk.", difficulty: "medium", topic: "mood stabilizers" },
-    { q: "What severe alcohol withdrawal complication peaks at 24 to 72 hours?", a: "Delirium tremens.", difficulty: "hard", topic: "withdrawal" },
-    { q: "What is the priority when a patient voices suicidal intent?", a: "Ensure safety through direct assessment, close observation, and immediate escalation per protocol.", difficulty: "hard", topic: "crisis intervention" },
-    { q: "Why are open-ended questions used in therapeutic communication?", a: "They invite the patient to share more freely and help the nurse assess thoughts and feelings.", difficulty: "easy", topic: "communication" },
-    { q: "What is a common SSRI teaching point?", a: "Benefits may take several weeks, and the patient should watch for worsening mood or suicidal thoughts early in treatment.", difficulty: "medium", topic: "antidepressants" },
-    { q: "How should the nurse respond to hallucinations?", a: "Acknowledge the patient's experience without validating the hallucination as real, then refocus on reality and safety.", difficulty: "medium", topic: "psychosis" },
-    { q: "What is the therapeutic goal of setting limits?", a: "To maintain safety and structure while remaining calm, consistent, and respectful.", difficulty: "easy", topic: "behavior management" },
-    { q: "Why is medication adherence teaching important in bipolar disorder?", a: "Stopping medication abruptly can trigger relapse, instability, and safety risks.", difficulty: "medium", topic: "mood disorders" },
-  ],
-  "Community Health": [
-    { q: "What disease does the DOH DOTS program primarily address?", a: "Tuberculosis.", difficulty: "easy", topic: "infectious disease" },
-    { q: "What level of prevention does immunization belong to?", a: "Primary prevention.", difficulty: "easy", topic: "prevention" },
-    { q: "What dengue warning signs should trigger urgent referral?", a: "Persistent vomiting, severe abdominal pain, bleeding, lethargy, and respiratory distress.", difficulty: "medium", topic: "endemic disease" },
-    { q: "What is contact tracing used for in public health?", a: "To identify exposed individuals, interrupt transmission, and guide monitoring or treatment.", difficulty: "medium", topic: "surveillance" },
-    { q: "Why is health teaching important in barangay nursing?", a: "It improves prevention, early recognition, treatment adherence, and community participation.", difficulty: "easy", topic: "health promotion" },
-    { q: "What is the priority nursing response to a suspected measles outbreak?", a: "Prompt reporting, isolation measures, contact follow-up, and immunization review.", difficulty: "hard", topic: "outbreak response" },
-    { q: "What is the nurse's role in disaster triage?", a: "Sort patients by urgency to maximize survival and use resources effectively.", difficulty: "medium", topic: "disaster nursing" },
-    { q: "What is tertiary prevention?", a: "Measures that reduce complications and improve function after disease is established.", difficulty: "medium", topic: "prevention" },
-    { q: "Why is safe water education important in community nursing?", a: "It reduces preventable diarrheal disease and supports family-level prevention.", difficulty: "easy", topic: "sanitation" },
-    { q: "What is the purpose of directly observed therapy in TB care?", a: "It improves adherence and lowers the risk of treatment failure and resistance.", difficulty: "medium", topic: "infectious disease" },
-  ],
-  "Leadership & Management": [
-    { q: "Which task is appropriate for UAP delegation?", a: "Obtaining routine vital signs on a stable patient.", difficulty: "easy", topic: "delegation" },
-    { q: "What responsibilities cannot be delegated by the nurse?", a: "Assessment, teaching, evaluation, and judgment-based clinical decisions.", difficulty: "medium", topic: "delegation" },
-    { q: "What is the best first response to a conflict between team members during a shift?", a: "Address it early, privately, and professionally to protect patient care and team function.", difficulty: "medium", topic: "conflict management" },
-    { q: "What is the nurse manager's priority during a medication error event?", a: "Protect the patient, assess for harm, report the event, and support accurate documentation.", difficulty: "hard", topic: "safety" },
-    { q: "When assigning patients, what factor should be prioritized?", a: "Patient acuity and the competence of available staff.", difficulty: "medium", topic: "assignment" },
-    { q: "What is the purpose of incident reporting?", a: "To improve safety and systems, not to punish staff.", difficulty: "easy", topic: "quality improvement" },
-    { q: "What is the best task for a float nurse who is unfamiliar with a unit?", a: "Stable patients and routine tasks within clearly verified competency.", difficulty: "medium", topic: "staffing" },
-    { q: "Why is closed-loop communication important during emergencies?", a: "It confirms that directions were heard, understood, and acted on.", difficulty: "hard", topic: "communication" },
-    { q: "What is the nurse leader's role during staffing shortage?", a: "Prioritize patient safety, match assignments carefully, and communicate escalation needs early.", difficulty: "hard", topic: "staffing" },
-    { q: "Why is delegation follow-up important?", a: "The nurse remains accountable for the outcome and must verify that the task was completed safely.", difficulty: "medium", topic: "delegation" },
-  ],
-};
-
-const BANK_ITEMS_PER_BUCKET = 42;
-const BUCKET_DIFFICULTIES = ["easy", "medium", "hard"];
-const QUESTION_LEAD_INS = [
-  "Board recall:",
-  "Focused review:",
-  "Nursing priority check:",
-  "PRC NLE review:",
-  "Clinical decision point:",
-  "Exam coaching prompt:",
-];
-const QUESTION_TEMPLATES = [
-  (entry) => entry.q,
-  (entry, subject) => `Which statement is most accurate about ${entry.topic} in ${subject}?`,
-  (entry, subject) => `A patient scenario highlights ${entry.topic}. What should the nurse remember first in ${subject}?`,
-  (entry, subject) => `What is the safest nursing takeaway for ${entry.topic} in ${subject}?`,
-  (entry, subject) => `Which clue most strongly points to the correct response for ${entry.topic} in ${subject}?`,
-  (entry, subject, difficulty) => `For a ${difficulty} ${subject} review item about ${entry.topic}, which response is best?`,
-  (entry, subject) => `During review of ${subject}, what key principle should be tied to ${entry.topic}?`,
-  (entry, subject) => `If ${entry.topic} appears in a ${subject} question stem, what answer should come to mind?`,
-  (entry, subject) => `Which nursing judgment matters most when ${entry.topic} appears in ${subject}?`,
-  (entry, subject, difficulty) => `A ${difficulty} board item on ${entry.topic} is testing which safe response in ${subject}?`,
-  (entry, subject) => `What board-level reminder should stay attached to ${entry.topic} during ${subject} review?`,
-];
-const ANSWER_REMINDERS = [
-  (entry, subject) => `Board focus: connect ${entry.topic} to the safest nursing priority in ${subject}.`,
-  (entry, subject, difficulty) => `Review clue: this is the ${difficulty} takeaway the stem is pointing toward in ${subject}.`,
-  (entry) => `Memory hook: if the item is really about ${entry.topic}, this is the answer to anchor first.`,
-  (entry, subject) => `Clinical anchor: keep ${entry.topic} tied to the safest next nursing step in ${subject}.`,
-  (entry) => `Review note: this concept is meant to feel automatic by the time you sit for boards.`,
-];
-const FLASHCARD_RATING_POINTS = {
-  easy: 1,
-  hard: 0.45,
-  again: 0,
-};
-const SLOW_RESPONSE_THRESHOLDS_MS = {
-  flashcard: 12000,
-  quiz: 25000,
-  remediation: 22000,
-  simulation: 30000,
-};
-
-function average(values) {
-  return values.length ? values.reduce((total, value) => total + Number(value || 0), 0) / values.length : 0;
-}
-
-function createPerformanceBucket(subject, topic = "") {
-  return {
-    subject: subject || "Mixed Review",
-    topic: topic || "",
-    attempts: 0,
-    scorePoints: 0,
-    misses: 0,
-    lowConfidence: 0,
-    slowResponses: 0,
-    timeSamples: 0,
-    totalTimeMs: 0,
-    repeatedMisses: 0,
-    moduleStats: {
-      flashcard: { attempts: 0, scorePoints: 0, misses: 0, slowResponses: 0 },
-      quiz: { attempts: 0, scorePoints: 0, misses: 0, slowResponses: 0 },
-      remediation: { attempts: 0, scorePoints: 0, misses: 0, slowResponses: 0 },
-      simulation: { attempts: 0, scorePoints: 0, misses: 0, slowResponses: 0 },
-    },
-    missCounts: {},
-    recentScores: [],
-  };
-}
-
-function getPerformanceKey(subject, topic = "") {
-  return `${normalize(subject || "Mixed Review")}::${normalize(topic || "")}`;
-}
-
-function getOrCreatePerformanceBucket(bucketMap, subject, topic = "") {
-  const key = getPerformanceKey(subject, topic);
-  if (!bucketMap.has(key)) {
-    bucketMap.set(key, createPerformanceBucket(subject, topic));
-  }
-  return bucketMap.get(key);
-}
-
-function recordPerformanceAttempt(bucketMap, {
-  subject,
-  topic,
-  module,
-  scorePoint,
-  missKey,
-  lowConfidence = false,
-  timeMs = 0,
-  sessionScore = null,
-}) {
-  const bucket = getOrCreatePerformanceBucket(bucketMap, subject, topic);
-  const safeModule = ["flashcard", "quiz", "remediation", "simulation"].includes(module) ? module : "quiz";
-  const moduleBucket = bucket.moduleStats[safeModule];
-  const safeScorePoint = clamp(Number(scorePoint || 0), 0, 1);
-  const safeTime = Math.max(Number(timeMs || 0), 0);
-  const isMiss = safeScorePoint < 0.6;
-  const isSlow = safeTime >= (SLOW_RESPONSE_THRESHOLDS_MS[safeModule] || 22000);
-
-  bucket.attempts += 1;
-  bucket.scorePoints += safeScorePoint;
-  moduleBucket.attempts += 1;
-  moduleBucket.scorePoints += safeScorePoint;
-
-  if (isMiss) {
-    bucket.misses += 1;
-    moduleBucket.misses += 1;
-    if (missKey) {
-      bucket.missCounts[missKey] = (bucket.missCounts[missKey] || 0) + 1;
-    }
-  }
-
-  if (lowConfidence) {
-    bucket.lowConfidence += 1;
-  }
-
-  if (safeTime > 0) {
-    bucket.timeSamples += 1;
-    bucket.totalTimeMs += safeTime;
-  }
-
-  if (isSlow) {
-    bucket.slowResponses += 1;
-    moduleBucket.slowResponses += 1;
-  }
-
-  if (typeof sessionScore === "number") {
-    bucket.recentScores.push(sessionScore);
-    if (bucket.recentScores.length > 4) {
-      bucket.recentScores = bucket.recentScores.slice(-4);
-    }
-  }
-}
-
-function summarizePerformanceBuckets(reviewSessions) {
-  const topicBuckets = new Map();
-  const subjectBuckets = new Map();
-  const subjectSessionScores = {};
-
-  reviewSessions
-    .slice()
-    .reverse()
-    .forEach((session) => {
-      const sessionMode = session.isRemediation || String(session.sourceLabel || "").toLowerCase().includes("remediation")
-        ? "remediation"
-        : session.mode;
-      const sessionScore = Number(session.score || 0);
-      const sessionItems = session.cards || session.questions || [];
-      const touchedSubjects = new Set();
-
-      if (!sessionItems.length) {
-        return;
-      }
-
-      const pushSubjectScore = (subjectValue) => {
-        const key = subjectValue || "Mixed Review";
-        if (touchedSubjects.has(key)) {
-          return;
-        }
-        touchedSubjects.add(key);
-        subjectSessionScores[key] = subjectSessionScores[key] || [];
-        subjectSessionScores[key].push(sessionScore);
-      };
-
-      if (sessionMode === "flashcard") {
-        sessionItems.forEach((card, index) => {
-          const subjectValue = card.subject || session.subject || "Mixed Review";
-          const topicValue = card.topic || session.topic || "";
-          const rating = session.cardRatings?.[card.id];
-          if (!rating) {
-            return;
-          }
-          const responseTime = session.responseTimes?.[card.id] || 0;
-          const scorePoint = FLASHCARD_RATING_POINTS[rating] ?? 0;
-          const missKey = normalize(card.question || card.q || `${subjectValue}-${topicValue}-${index}`);
-
-          recordPerformanceAttempt(topicBuckets, {
-            subject: subjectValue,
-            topic: topicValue,
-            module: "flashcard",
-            scorePoint,
-            missKey,
-            lowConfidence: rating !== "easy",
-            timeMs: responseTime,
-            sessionScore,
-          });
-          recordPerformanceAttempt(subjectBuckets, {
-            subject: subjectValue,
-            topic: "",
-            module: "flashcard",
-            scorePoint,
-            missKey,
-            lowConfidence: rating !== "easy",
-            timeMs: responseTime,
-            sessionScore,
-          });
-          pushSubjectScore(subjectValue);
-        });
-        return;
-      }
-
-      sessionItems.forEach((item, index) => {
-        if (item.userAnswer === null || typeof item.userAnswer === "undefined") {
-          return;
-        }
-
-        const subjectValue = item.subject || session.subject || "Mixed Review";
-        const topicValue = item.topic || session.topic || "";
-        const isCorrect = normalize(item.userAnswer) === normalize(item.correctAnswer);
-        const responseTime =
-          session.responseTimes?.[item.id] ||
-          session.responseTimes?.[item.prompt] ||
-          session.responseTimes?.[String(index)] ||
-          0;
-        const missKey = normalize(item.prompt || `${subjectValue}-${topicValue}-${index}`);
-
-        recordPerformanceAttempt(topicBuckets, {
-          subject: subjectValue,
-          topic: topicValue,
-          module: sessionMode,
-          scorePoint: isCorrect ? 1 : 0,
-          missKey,
-          timeMs: responseTime,
-          sessionScore,
-        });
-        recordPerformanceAttempt(subjectBuckets, {
-          subject: subjectValue,
-          topic: "",
-          module: sessionMode,
-          scorePoint: isCorrect ? 1 : 0,
-          missKey,
-          timeMs: responseTime,
-          sessionScore,
-        });
-        pushSubjectScore(subjectValue);
-      });
-    });
-
-  const finalizeBucket = (bucket) => {
-    const accuracy = bucket.attempts ? bucket.scorePoints / bucket.attempts : 0;
-    const missRate = bucket.attempts ? bucket.misses / bucket.attempts : 0;
-    const lowConfidenceRate = bucket.attempts ? bucket.lowConfidence / bucket.attempts : 0;
-    const slowRate = bucket.timeSamples ? bucket.slowResponses / bucket.timeSamples : 0;
-    const repeatedMisses = Object.values(bucket.missCounts).reduce(
-      (total, count) => total + Math.max(Number(count || 0) - 1, 0),
-      0
-    );
-    const repeatedMissRate = bucket.attempts ? repeatedMisses / bucket.attempts : 0;
-    const moduleAccuracy = Object.fromEntries(
-      Object.entries(bucket.moduleStats).map(([key, value]) => [
-        key,
-        value.attempts ? value.scorePoints / value.attempts : 0,
-      ])
-    );
-    const avgResponseTimeMs = bucket.timeSamples ? Math.round(bucket.totalTimeMs / bucket.timeSamples) : 0;
-    const remediationPenalty =
-      bucket.moduleStats.remediation.attempts && moduleAccuracy.remediation < 0.75 ? 0.14 : 0;
-    const simulationPenalty =
-      bucket.moduleStats.simulation.attempts && moduleAccuracy.simulation < 0.7 ? 0.18 : 0;
-    const focusScore = clamp(
-      Math.round(
-        (
-          (1 - accuracy) * 42 +
-          missRate * 24 +
-          lowConfidenceRate * 12 +
-          slowRate * 10 +
-          Math.min(repeatedMissRate, 0.45) * 20 +
-          remediationPenalty * 100 +
-          simulationPenalty * 100
-        )
-      ),
-      0,
-      100
-    );
-
-    return {
-      ...bucket,
-      accuracy,
-      missRate,
-      lowConfidenceRate,
-      slowRate,
-      avgResponseTimeMs,
-      repeatedMisses,
-      moduleAccuracy,
-      focusScore,
-    };
-  };
-
-  const topicSummary = [...topicBuckets.values()]
-    .map(finalizeBucket)
-    .filter((bucket) => bucket.attempts >= 2 && bucket.topic)
-    .sort((left, right) => right.focusScore - left.focusScore);
-
-  const subjectSummary = [...subjectBuckets.values()]
-    .map(finalizeBucket)
-    .filter((bucket) => bucket.attempts >= 2)
-    .sort((left, right) => right.focusScore - left.focusScore);
-
-  const strongestSubject = [...subjectSummary]
-    .filter((bucket) => bucket.attempts >= 4)
-    .sort((left, right) => right.accuracy - left.accuracy)[0] || null;
-
-  const mostImprovedSubject = Object.entries(subjectSessionScores)
-    .map(([subjectValue, scores]) => {
-      if (scores.length < 2) {
-        return null;
-      }
-      const latest = Number(scores[scores.length - 1] || 0);
-      const earlierAverage = average(scores.slice(0, -1));
-      return {
-        subject: subjectValue,
-        improvement: Math.round(latest - earlierAverage),
-      };
-    })
-    .filter(Boolean)
-    .sort((left, right) => right.improvement - left.improvement)[0] || null;
-
-  const primaryFocus = topicSummary[0] || subjectSummary[0] || null;
-  let pattern = "focus-set";
-
-  if (primaryFocus) {
-    const flashcardGap = primaryFocus.moduleStats.flashcard.attempts ? 1 - primaryFocus.moduleAccuracy.flashcard : 0;
-    const quizGap = primaryFocus.moduleStats.quiz.attempts ? 1 - primaryFocus.moduleAccuracy.quiz : 0;
-    const remediationGap = primaryFocus.moduleStats.remediation.attempts ? 1 - primaryFocus.moduleAccuracy.remediation : 0;
-    const simulationGap = primaryFocus.moduleStats.simulation.attempts ? 1 - primaryFocus.moduleAccuracy.simulation : 0;
-
-    if (simulationGap >= 0.3 || primaryFocus.moduleStats.simulation.misses >= 3) {
-      pattern = "exam-practice";
-    } else if (quizGap >= flashcardGap || remediationGap >= 0.22 || primaryFocus.missRate >= 0.4) {
-      pattern = "remediation";
-    } else {
-      pattern = "focus-set";
-    }
-  }
-
-  return {
-    topicSummary,
-    subjectSummary,
-    strongestSubject,
-    mostImprovedSubject,
-    primaryFocus,
-    pattern,
-  };
-}
 
 function normalizeSeedKey(text) {
   return String(text || "").toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
@@ -808,54 +335,6 @@ function buildCustomEntries(text, selectedSubject) {
     }),
     (entry) => `${entry.subject}-${normalize(entry.q)}-${normalize(entry.a)}`
   );
-}
-
-function collectIncorrectQuestions(sessions = []) {
-  return (sessions || []).flatMap((session) =>
-    (session.questions || [])
-      .filter(
-        (item) =>
-          item &&
-          item.userAnswer &&
-          normalize(item.userAnswer) !== normalize(item.correctAnswer)
-      )
-      .map((item) => ({
-        subject: item.subject || session.subject || "Mixed Review",
-        topic: item.topic || session.topic || "",
-        difficulty: item.difficulty || session.difficulty || "medium",
-        prompt: item.prompt || "",
-      }))
-  );
-}
-
-function buildRemediationEntries(sourceEntries, incorrectItems, weakSubject) {
-  const targeted = sourceEntries.filter((entry) =>
-    incorrectItems.some(
-      (item) => {
-        const subjectMatch =
-          !item.subject || item.subject === "Mixed Review" || item.subject === entry.subject;
-        const topicTerms = getTopicSearchTerms(item.topic || item.prompt || "");
-        const haystack = normalize(
-          `${entry.subject || ""} ${entry.topic || ""} ${entry.q || entry.prompt || ""} ${entry.a || entry.answer || ""}`
-        );
-        const topicMatch = !topicTerms.length || topicTerms.some((term) => haystack.includes(term));
-        return subjectMatch && topicMatch;
-      }
-    )
-  );
-
-  if (targeted.length) {
-    return targeted;
-  }
-
-  if (weakSubject) {
-    const weakSubjectEntries = sourceEntries.filter((entry) => entry.subject === weakSubject);
-    if (weakSubjectEntries.length) {
-      return weakSubjectEntries;
-    }
-  }
-
-  return sourceEntries;
 }
 
 function matchesStudyFilter(entry, subject, difficulty, topic) {
@@ -1475,915 +954,10 @@ function selectSessionItems(pool, size, usedKeys, recentKeys, keySelector) {
   return selected.slice(0, targetSize);
 }
 
-function RequestModal({
-  open,
-  onClose,
-  onDiscard,
-  requestType,
-  setRequestType,
-  requestName,
-  setRequestName,
-  requestMessage,
-  setRequestMessage,
-  onSubmit,
-  requestHistory,
-  requestStatus,
-  requestLoading,
-  requestConfigured,
-}) {
-  if (!open) {
-    return null;
-  }
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(26, 26, 26, 0.36)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 18,
-        zIndex: 120,
-      }}
-    >
-      <div
-        style={{
-          width: "min(560px, 100%)",
-          background: C.surface,
-          border: `1px solid ${C.border}`,
-          borderRadius: 22,
-          boxShadow: "0 20px 50px rgba(15, 23, 42, 0.18)",
-          padding: 22,
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>Report or Request</div>
-            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginTop: 4 }}>
-              Send a bug report, topic request, or fix request. When the feedback inbox is configured, this goes to your central GitHub-backed request inbox.
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              type="button"
-              onClick={onClose}
-              title="Minimize"
-              style={{
-                width: 36,
-                height: 36,
-                border: `1px solid ${C.border}`,
-                background: C.surface,
-                borderRadius: 10,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                color: C.muted,
-              }}
-            >
-              <Minus size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={onDiscard}
-              title="Discard and close"
-              style={{
-                width: 36,
-                height: 36,
-                border: `1px solid ${C.border}`,
-                background: C.surface,
-                borderRadius: 10,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                color: C.muted,
-              }}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div>
-            <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
-              Request Type
-            </label>
-            <select
-              value={requestType}
-              onChange={(event) => setRequestType(event.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: `1px solid ${C.border}`,
-                background: "#FBFAF7",
-                fontSize: 13,
-                outline: "none",
-              }}
-            >
-              {["Bug Report", "Topic Request", "Feature Request", "Content Fix", "General Feedback"].map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
-              Name
-            </label>
-            <input
-              value={requestName}
-              onChange={(event) => setRequestName(event.target.value)}
-              placeholder="Optional name"
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: `1px solid ${C.border}`,
-                background: "#FBFAF7",
-                fontSize: 13,
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
-            Message
-          </label>
-          <textarea
-            value={requestMessage}
-            onChange={(event) => setRequestMessage(event.target.value)}
-            placeholder="Describe what should be added, fixed, or improved..."
-            style={{
-              width: "100%",
-              minHeight: 130,
-              padding: "12px 14px",
-              borderRadius: 14,
-              border: `1px solid ${C.border}`,
-              background: "#FBFAF7",
-              fontSize: 14,
-              lineHeight: 1.65,
-              resize: "vertical",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-          />
-        </div>
-
-        {requestStatus ? (
-          <div
-            style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              background: requestConfigured ? C.accentLight : C.amberLight,
-              border: `1px solid ${requestConfigured ? C.accentMid : C.amber}`,
-              fontSize: 13,
-              lineHeight: 1.6,
-            }}
-          >
-            {requestStatus}
-          </div>
-        ) : null}
-
-        <div
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            background: requestConfigured ? C.accentLight : C.pill,
-            border: `1px solid ${requestConfigured ? C.accentMid : C.border}`,
-            fontSize: 12,
-            color: requestConfigured ? C.accent : C.muted,
-          }}
-        >
-          {requestConfigured
-            ? "Central inbox is active. New requests are being sent to the site handler."
-            : "Central inbox is not configured yet. Requests will fall back to local device storage until the GitHub feedback token is added."}
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ fontSize: 12, color: C.muted }}>
-            Recent requests saved here: <strong>{requestHistory.length}</strong>
-          </div>
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={!requestMessage.trim() || requestLoading}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 12,
-              border: "none",
-              background: requestMessage.trim() && !requestLoading ? C.accent : C.border,
-              color: requestMessage.trim() && !requestLoading ? "#fff" : C.muted,
-              fontWeight: 700,
-              cursor: requestMessage.trim() && !requestLoading ? "pointer" : "not-allowed",
-            }}
-          >
-            {requestLoading ? "Submitting..." : "Submit Request"}
-          </button>
-        </div>
-
-        {requestHistory.length ? (
-          <div
-            style={{
-              borderTop: `1px solid ${C.border}`,
-              paddingTop: 14,
-              display: "grid",
-              gap: 10,
-            }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 800, color: C.muted }}>Recent Request History</div>
-            {requestHistory.slice(0, 3).map((entry) => (
-              <div
-                key={entry.id}
-                style={{
-                  border: `1px solid ${C.border}`,
-                  background: "#FBFAF7",
-                  borderRadius: 14,
-                  padding: 12,
-                }}
-              >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{entry.type}</div>
-                    <div style={{ fontSize: 11, color: C.faint }}>{new Date(entry.createdAt).toLocaleString()}</div>
-                  </div>
-                {entry.url ? (
-                  <div style={{ fontSize: 11, color: C.accent, marginBottom: 6 }}>
-                    <a href={entry.url} target="_blank" rel="noreferrer" style={{ color: C.accent }}>
-                      Open request #{entry.number}
-                    </a>
-                  </div>
-                ) : null}
-                <div style={{ fontSize: 12, color: C.text, lineHeight: 1.6 }}>{entry.message}</div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function TermsModal({ open, onClose }) {
-  if (!open) {
-    return null;
-  }
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(26, 26, 26, 0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 18,
-        zIndex: 140,
-      }}
-    >
-      <div
-        style={{
-          width: "min(680px, 100%)",
-          maxHeight: "min(86vh, 760px)",
-          overflowY: "auto",
-          background: C.surface,
-          border: `1px solid ${C.border}`,
-          borderRadius: 22,
-          boxShadow: "0 20px 50px rgba(15, 23, 42, 0.18)",
-          padding: 24,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              CareDrop
-            </div>
-            <div style={{ marginTop: 6, fontSize: 26, fontWeight: 900, letterSpacing: "-0.04em" }}>
-              Terms and Conditions
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              border: `1px solid ${C.border}`,
-              background: "#FBFAF7",
-              color: C.muted,
-              cursor: "pointer",
-              fontWeight: 800,
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        <div style={{ marginTop: 16, display: "grid", gap: 16, fontSize: 14, lineHeight: 1.8, color: C.text }}>
-          <div>
-            CareDrop is a study-support platform built to help learners review flashcards, quizzes, uploaded notes, and AI explanations more consistently. By creating an account or signing in, you agree to use the platform responsibly and for educational purposes.
-          </div>
-          <div>
-            <strong>1. Educational use only.</strong> CareDrop is for review, recall practice, and learning support. It does not replace licensed medical judgment, formal instruction, clinical supervision, or emergency decision-making.
-          </div>
-          <div>
-            <strong>2. Accuracy and judgment.</strong> We work to make the study experience reliable, but learners are still responsible for cross-checking important academic, medication, and clinical information with trusted references, instructors, and current guidelines.
-          </div>
-          <div>
-            <strong>3. Account responsibility.</strong> You are responsible for the information you enter, the files you upload, and any activity that takes place while signed in on your device or account.
-          </div>
-          <div>
-            <strong>4. Uploaded material.</strong> Only upload notes, documents, and materials you are allowed to use. Do not upload sensitive patient information, protected health information, or content that violates privacy, law, or school policy.
-          </div>
-          <div>
-            <strong>5. AI-assisted responses.</strong> AI explanations and generated review content are intended to support study sessions, not to function as definitive clinical authority. Use them as guided review support, especially when clarifying mistakes and difficult concepts.
-          </div>
-          <div>
-            <strong>6. Progress and saved work.</strong> CareDrop may store study progress, saved sessions, and settings locally or through connected services such as Supabase when configured. This helps restore continuity across sessions and devices.
-          </div>
-          <div>
-            <strong>7. Respectful use.</strong> Do not use CareDrop to submit abusive content, misuse feedback/reporting tools, interfere with the service, or attempt to access information that is not yours.
-          </div>
-          <div>
-            <strong>8. Platform updates.</strong> Features, content, and integrations may improve over time. Continued use of CareDrop means you accept those changes as part of the platform’s evolution.
-          </div>
-        </div>
-
-        <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "11px 16px",
-              borderRadius: 12,
-              border: "none",
-              background: C.accent,
-              color: "#fff",
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AuthScreen({
-  width,
-  authMode,
-  setAuthMode,
-  authName,
-  setAuthName,
-  authEmail,
-  setAuthEmail,
-  authPassword,
-  setAuthPassword,
-  authConfirmPassword,
-  setAuthConfirmPassword,
-  termsAccepted,
-  setTermsAccepted,
-  onOpenTerms,
-  cloudSyncReady,
-  authNotice,
-  onDismissNotice,
-  authError,
-  authLoading,
-  forgotPasswordLoading,
-  onSubmit,
-  onForgotPassword,
-}) {
-  const isRegister = authMode === "register";
-  const stacked = width < 940;
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  useEffect(() => {
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-  }, [authMode]);
-
-  function renderPasswordInput({ value, onChange, placeholder, visible, setVisible }) {
-    return (
-      <div style={{ position: "relative" }}>
-        <input
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-          type={visible ? "text" : "password"}
-          style={{
-            width: "100%",
-            padding: "12px 46px 12px 14px",
-            borderRadius: 14,
-            border: `1px solid ${C.border}`,
-            background: "#FBFAF7",
-            fontSize: 14,
-            outline: "none",
-            boxSizing: "border-box",
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => setVisible((current) => !current)}
-          aria-label={visible ? "Hide password" : "Show password"}
-          style={{
-            position: "absolute",
-            top: "50%",
-            right: 10,
-            transform: "translateY(-50%)",
-            width: 28,
-            height: 28,
-            borderRadius: 999,
-            border: "none",
-            background: "transparent",
-            color: C.muted,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-          }}
-        >
-          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(180deg, #F5F2EA 0%, #F8F6F1 100%)",
-        padding: width < 640 ? 16 : 24,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
-      }}
-    >
-      <div
-        style={{
-          width: "min(1100px, 100%)",
-          display: "grid",
-          gridTemplateColumns: stacked ? "1fr" : "minmax(0, 1.1fr) minmax(340px, 440px)",
-          gap: 20,
-          alignItems: "stretch",
-        }}
-      >
-        <div
-          style={{
-            background: "linear-gradient(145deg, #112240 0%, #16305C 70%, #214778 100%)",
-            borderRadius: 28,
-            padding: stacked ? 24 : 34,
-            color: "#fff",
-            minHeight: stacked ? 420 : 560,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-            boxShadow: "0 24px 50px rgba(15, 23, 42, 0.16)",
-            position: "relative",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              inset: "auto -60px -70px auto",
-              width: 220,
-              height: 220,
-              borderRadius: "50%",
-              background: "radial-gradient(circle, rgba(139,229,175,0.25) 0%, rgba(139,229,175,0.02) 65%, transparent 70%)",
-            }}
-          />
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 12,
-                  background: "rgba(255,255,255,0.12)",
-                  overflow: "hidden",
-                }}
-              >
-                <img src={LOGO_SRC} alt="CareDrop logo" style={{ width: "100%", height: "100%", display: "block" }} />
-              </div>
-              <div style={{ fontWeight: 800, fontSize: 20 }}>
-                Care<span style={{ color: "#8BE5AF" }}>Drop</span>
-              </div>
-            </div>
-            <div style={{ marginTop: 28, fontSize: stacked ? 34 : 46, lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.05em", maxWidth: 520 }}>
-              Study smarter. Learn from mistakes. Build confidence.
-            </div>
-            <div style={{ marginTop: 18, fontSize: 15, lineHeight: 1.85, color: "rgba(233,239,247,0.84)", maxWidth: 560 }}>
-              Continue your flashcards, quizzes, uploads, weak-area review, and saved sessions in one supportive workspace built for real learners preparing for demanding exams.
-            </div>
-            <div
-              style={{
-                marginTop: 26,
-                display: "grid",
-                gap: 12,
-                maxWidth: 520,
-              }}
-            >
-              {[
-                "Return to saved sessions without losing your review rhythm.",
-                "Track weak areas, quiz accuracy, and next recommended actions.",
-                "Use AI explanations when you miss an item and need clearer guidance.",
-              ].map((message) => (
-                <div
-                  key={message}
-                  style={{
-                    display: "flex",
-                    gap: 12,
-                    alignItems: "flex-start",
-                    padding: "12px 14px",
-                    borderRadius: 16,
-                    background: "rgba(255,255,255,0.06)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 999,
-                      background: "#8BE5AF",
-                      marginTop: 6,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div style={{ fontSize: 14, lineHeight: 1.7, color: "rgba(238,243,249,0.9)" }}>{message}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ fontSize: 13, color: "rgba(233,239,247,0.78)", lineHeight: 1.7, maxWidth: 520 }}>
-            {cloudSyncReady
-              ? "Cloud sync is available, so your progress can follow you across devices once Supabase is connected."
-              : "You can still use CareDrop locally today. Free cloud sync becomes available after Supabase keys are added."}
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: C.surface,
-            border: `1px solid ${C.border}`,
-            borderRadius: 28,
-            padding: 28,
-            boxShadow: "0 18px 36px rgba(15, 23, 42, 0.08)",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-          }}
-        >
-          <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
-            {[
-              ["login", "Sign In"],
-              ["register", "Register"],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setAuthMode(value)}
-                style={{
-                  flex: 1,
-                  padding: "12px 14px",
-                  borderRadius: 14,
-                  border: authMode === value ? "1px solid rgba(23, 43, 77, 0.12)" : `1px solid ${C.border}`,
-                  background: authMode === value ? "linear-gradient(135deg, #1A2740 0%, #24385E 100%)" : "#FBFAF7",
-                  color: authMode === value ? "#fff" : C.text,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.04em" }}>
-            {isRegister ? "Create your learner account" : "Welcome back"}
-          </div>
-          <div style={{ marginTop: 8, fontSize: 14, color: C.muted, lineHeight: 1.7 }}>
-            {isRegister
-              ? "Set up your account to save sessions, track progress, and build a review history you can return to."
-              : "Pick up where you left off and keep your review momentum moving."}
-          </div>
-
-          <div style={{ marginTop: 22, display: "grid", gap: 12 }}>
-            {isRegister ? (
-              <div>
-                <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
-                  Name
-                </label>
-                <input
-                  value={authName}
-                  onChange={(event) => setAuthName(event.target.value)}
-                  placeholder="Your name"
-                  style={{
-                    width: "100%",
-                    padding: "12px 14px",
-                    borderRadius: 14,
-                    border: `1px solid ${C.border}`,
-                    background: "#FBFAF7",
-                    fontSize: 14,
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-            ) : null}
-
-            <div>
-              <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
-                Email
-              </label>
-              <input
-                value={authEmail}
-                onChange={(event) => setAuthEmail(event.target.value)}
-                placeholder="name@example.com"
-                type="email"
-                style={{
-                  width: "100%",
-                  padding: "12px 14px",
-                  borderRadius: 14,
-                  border: `1px solid ${C.border}`,
-                  background: "#FBFAF7",
-                  fontSize: 14,
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
-              />
-            </div>
-
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 6 }}>
-                <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block" }}>
-                  Password
-                </label>
-                {!isRegister && cloudSyncReady ? (
-                  <button
-                    type="button"
-                    onClick={onForgotPassword}
-                    disabled={authLoading || forgotPasswordLoading}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      padding: 0,
-                      color: C.accent,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: authLoading || forgotPasswordLoading ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {forgotPasswordLoading ? "Sending reset..." : "Forgot password?"}
-                  </button>
-                ) : null}
-              </div>
-              {renderPasswordInput({
-                value: authPassword,
-                onChange: (event) => setAuthPassword(event.target.value),
-                placeholder: "At least 8 characters",
-                visible: showPassword,
-                setVisible: setShowPassword,
-              })}
-            </div>
-
-            {isRegister ? (
-              <div>
-                <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, display: "block", marginBottom: 6 }}>
-                  Confirm Password
-                </label>
-                {renderPasswordInput({
-                  value: authConfirmPassword,
-                  onChange: (event) => setAuthConfirmPassword(event.target.value),
-                  placeholder: "Repeat password",
-                  visible: showConfirmPassword,
-                  setVisible: setShowConfirmPassword,
-                })}
-              </div>
-            ) : null}
-          </div>
-
-          {authNotice ? (
-            <div
-              style={{
-                marginTop: 16,
-                padding: "16px 16px 14px",
-                borderRadius: 16,
-                background: "#F4FBF7",
-                border: `1px solid ${C.accentMid}`,
-                color: C.text,
-              }}
-            >
-              <div style={{ fontSize: 12, color: C.accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                {authNotice.title}
-              </div>
-              <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7 }}>
-                {authNotice.body}
-              </div>
-              <button
-                type="button"
-                onClick={onDismissNotice}
-                style={{
-                  marginTop: 12,
-                  padding: "9px 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${C.accentMid}`,
-                  background: "#FFFFFF",
-                  color: C.accent,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {authNotice.actionLabel || "Continue"}
-              </button>
-            </div>
-          ) : null}
-
-          {authError ? (
-            <div
-              style={{
-                marginTop: 16,
-                padding: "11px 13px",
-                borderRadius: 14,
-                background: C.redLight,
-                border: `1px solid ${C.red}`,
-                color: C.text,
-                fontSize: 13,
-                lineHeight: 1.6,
-              }}
-            >
-              {authError}
-            </div>
-          ) : null}
-
-          <label
-            style={{
-              marginTop: 16,
-              display: "flex",
-              gap: 10,
-              alignItems: "flex-start",
-              fontSize: 13,
-              lineHeight: 1.6,
-              color: C.text,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={termsAccepted}
-              onChange={(event) => setTermsAccepted(event.target.checked)}
-              style={{ marginTop: 2 }}
-            />
-            <span>
-              I agree to the{" "}
-              <button
-                type="button"
-                onClick={onOpenTerms}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  padding: 0,
-                  color: C.accent,
-                  fontWeight: 800,
-                  textDecoration: "underline",
-                  cursor: "pointer",
-                }}
-              >
-                Terms and Conditions
-              </button>{" "}
-              and understand that CareDrop is a reviewer tool for study support only.
-            </span>
-          </label>
-
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={authLoading || !termsAccepted}
-            style={{
-              marginTop: 20,
-              padding: "13px 16px",
-              borderRadius: 14,
-              border: "none",
-              background: authLoading || !termsAccepted ? C.border : C.accent,
-              color: authLoading || !termsAccepted ? C.muted : "#fff",
-              fontWeight: 800,
-              fontSize: 14,
-              cursor: authLoading || !termsAccepted ? "not-allowed" : "pointer",
-            }}
-          >
-            {authLoading ? "Working..." : isRegister ? "Create Account" : "Sign In"}
-          </button>
-
-          <div style={{ marginTop: 14, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
-            {cloudSyncReady
-              ? "Signed-in learners can restore progress, saved sessions, and recent study state across devices."
-              : "Cloud sync will activate after you add the free Supabase project keys in the environment settings."}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SavedSessionCard({ session, onOpen, onDelete }) {
-  const itemCount = session.questions?.length || session.cards?.length || 0;
-
-  return (
-    <div
-      style={{
-        border: `1px solid ${C.border}`,
-        borderRadius: 14,
-        padding: 14,
-        background: "#FBFAF7",
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>{buildSessionLabel(session)}</div>
-          <div style={{ fontSize: 12, color: C.muted }}>
-            {new Date(session.createdAt).toLocaleString()}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {session.saved ? <Badge label="saved" color="green" /> : null}
-          <Badge label={`${itemCount} items`} color="blue" />
-        </div>
-      </div>
-      <div style={{ fontSize: 12, color: C.muted }}>{session.sourceLabel}</div>
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12, color: C.muted }}>
-        <div>Score: <strong>{session.score ?? 0}%</strong></div>
-        <div>Answered: <strong>{session.answeredCount ?? 0}</strong></div>
-        <div>Difficulty: <strong>{session.difficulty}</strong></div>
-        <div>Mode: <strong>{session.mode}</strong></div>
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          onClick={() => onOpen(session)}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 10,
-            background: C.accentLight,
-            color: C.accent,
-            border: `1px solid ${C.accentMid}`,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          Review
-        </button>
-        <button
-          onClick={() => onDelete(session.id)}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 10,
-            background: C.redLight,
-            color: C.red,
-            border: `1px solid ${C.red}`,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          Delete
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
   const width = useWindowWidth();
   const initialUser = loadAuthSession();
   const persisted = initialUser ? loadPersisted(initialUser.id) : null;
-  const safeArray = (value) => (Array.isArray(value) ? value : []);
-  const safeObject = (value) =>
-    value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const safeString = (value, fallback = "") => (typeof value === "string" ? value : fallback);
-  const safeMode = (value, fallback = "flashcard") => {
-    if (value === "calendar") {
-      return "dashboard";
-    }
-
-    return ["dashboard", "flashcard", "quiz", "simulation", "planner", "notes", "history", "admin"].includes(value)
-      ? value
-      : fallback;
-  };
   const legacySavedSessions = safeArray(persisted?.savedQuizSessions);
   const persistedRequests = loadRequestPersisted();
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
@@ -2492,12 +1066,93 @@ export default function App() {
   const recentQuizPromptsRef = useRef(recentQuizPrompts);
   const remoteProgressLoadedRef = useRef(false);
   const lastScrollYRef = useRef(0);
-  const lastActivityAtRef = useRef(Date.now());
-  const lastActivityPersistedAtRef = useRef(0);
   const flashcardShownAtRef = useRef(Date.now());
   const quizShownAtRef = useRef(Date.now());
   const simulationShownAtRef = useRef(Date.now());
-  const inactivityTimeoutRef = useRef(null);
+
+  const progressSnapshot = useMemo(
+    () =>
+      buildProgressSnapshot({
+        subject,
+        difficulty,
+        topicFilter,
+        mode,
+        ratings,
+        sessions,
+        reviewSessions,
+        flashcards,
+        cardIdx,
+        flashcardSessionRatings,
+        flashcardResponseTimes,
+        flashcardSessionSubmitted,
+        quiz,
+        quizIdx,
+        quizResponseTimes,
+        quizSubmitted,
+        simulationQuestions,
+        simulationIdx,
+        simulationResponseTimes,
+        simulationSubmitted,
+        simulationSize,
+        simulationUsedAi,
+        remediationContext,
+        usedFlashcardIds,
+        usedFlashcardQuestions,
+        usedQuizPrompts,
+        recentFlashcardIds,
+        recentQuizPrompts,
+        noteText,
+        uploadedText,
+        uploadedFileName,
+        summaryText,
+        filterWeakOnly,
+        calendarMonth,
+        calendarSelectedDate,
+        calendarEvents,
+        plannerItems,
+        adminView,
+      }),
+    [
+      subject,
+      difficulty,
+      topicFilter,
+      mode,
+      ratings,
+      sessions,
+      reviewSessions,
+      flashcards,
+      cardIdx,
+      flashcardSessionRatings,
+      flashcardResponseTimes,
+      flashcardSessionSubmitted,
+      quiz,
+      quizIdx,
+      quizResponseTimes,
+      quizSubmitted,
+      simulationQuestions,
+      simulationIdx,
+      simulationResponseTimes,
+      simulationSubmitted,
+      simulationSize,
+      simulationUsedAi,
+      remediationContext,
+      usedFlashcardIds,
+      usedFlashcardQuestions,
+      usedQuizPrompts,
+      recentFlashcardIds,
+      recentQuizPrompts,
+      noteText,
+      uploadedText,
+      uploadedFileName,
+      summaryText,
+      filterWeakOnly,
+      calendarMonth,
+      calendarSelectedDate,
+      calendarEvents,
+      plannerItems,
+      adminView,
+    ]
+  );
 
   function applyPersistedSnapshot(snapshot, options = {}) {
     const { restoreSubject = false } = options;
@@ -2642,150 +1297,17 @@ export default function App() {
       return;
     }
 
-    window.localStorage.setItem(
-      getProgressStorageKey(currentUser.id),
-      JSON.stringify({
-        subject,
-        difficulty,
-        topicFilter,
-        mode,
-        ratings,
-        sessions,
-        reviewSessions,
-        flashcards,
-        cardIdx,
-        flashcardSessionRatings,
-        flashcardResponseTimes,
-        flashcardSessionSubmitted,
-        quiz,
-        quizIdx,
-        quizResponseTimes,
-        quizSubmitted,
-        simulationQuestions,
-        simulationIdx,
-        simulationResponseTimes,
-        simulationSubmitted,
-        simulationSize,
-        simulationUsedAi,
-        remediationContext,
-        usedFlashcardIds,
-        usedFlashcardQuestions,
-        usedQuizPrompts,
-        recentFlashcardIds,
-        recentQuizPrompts,
-        noteText,
-        uploadedText,
-        uploadedFileName,
-        summaryText,
-        filterWeakOnly,
-        calendarMonth: coerceDate(calendarMonth).toISOString(),
-        calendarSelectedDate,
-        calendarEvents,
-        plannerItems,
-        adminView,
-      })
-    );
-  }, [
-    currentUser?.id,
-    subject,
-    difficulty,
-    topicFilter,
-    mode,
-    ratings,
-    sessions,
-    reviewSessions,
-    flashcards,
-    cardIdx,
-    flashcardSessionRatings,
-    flashcardResponseTimes,
-    flashcardSessionSubmitted,
-    quiz,
-    quizIdx,
-    quizResponseTimes,
-    quizSubmitted,
-    simulationQuestions,
-    simulationIdx,
-    simulationResponseTimes,
-    simulationSubmitted,
-    simulationSize,
-    simulationUsedAi,
-    remediationContext,
-    usedFlashcardIds,
-    usedFlashcardQuestions,
-    usedQuizPrompts,
-    recentFlashcardIds,
-    recentQuizPrompts,
-    noteText,
-    uploadedText,
-    uploadedFileName,
-    summaryText,
-    filterWeakOnly,
-    calendarMonth,
-    calendarSelectedDate,
-    calendarEvents,
-    plannerItems,
-    adminView,
-  ]);
+    persistLocalSnapshot(currentUser.id, progressSnapshot, window.localStorage);
+  }, [currentUser?.id, progressSnapshot]);
 
   useEffect(() => {
     if (!supabaseConfigured || !supabase || !currentUser?.id || currentUser.provider !== "supabase" || !remoteProgressLoadedRef.current) {
       return undefined;
     }
 
-    const payload = {
-      subject,
-      difficulty,
-      topicFilter,
-      mode,
-      ratings,
-      sessions,
-      reviewSessions,
-      flashcards,
-      cardIdx,
-      flashcardSessionRatings,
-      flashcardResponseTimes,
-      flashcardSessionSubmitted,
-      quiz,
-      quizIdx,
-      quizResponseTimes,
-      quizSubmitted,
-      simulationQuestions,
-      simulationIdx,
-      simulationResponseTimes,
-      simulationSubmitted,
-      simulationSize,
-      simulationUsedAi,
-      remediationContext,
-      usedFlashcardIds,
-      usedFlashcardQuestions,
-      usedQuizPrompts,
-      recentFlashcardIds,
-      recentQuizPrompts,
-      noteText,
-      uploadedText,
-      uploadedFileName,
-      summaryText,
-      filterWeakOnly,
-      calendarMonth: coerceDate(calendarMonth).toISOString(),
-      calendarSelectedDate,
-      calendarEvents,
-      plannerItems,
-      adminView,
-    };
-
     const timeoutId = window.setTimeout(async () => {
-      const { error } = await supabase
-        .from("user_progress")
-        .upsert(
-          {
-            user_id: currentUser.id,
-            payload,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" }
-        );
-
-      if (error) {
+      const { ok } = await saveRemoteSnapshot(supabase, currentUser.id, progressSnapshot);
+      if (!ok) {
         setCloudSyncStatus("Cloud sync needs the Supabase table setup.");
         return;
       }
@@ -2794,48 +1316,7 @@ export default function App() {
     }, 900);
 
     return () => window.clearTimeout(timeoutId);
-  }, [
-    currentUser?.id,
-    currentUser?.provider,
-    subject,
-    difficulty,
-    topicFilter,
-    mode,
-    ratings,
-    sessions,
-    reviewSessions,
-    flashcards,
-    cardIdx,
-    flashcardSessionRatings,
-    flashcardResponseTimes,
-    flashcardSessionSubmitted,
-    quiz,
-    quizIdx,
-    quizResponseTimes,
-    quizSubmitted,
-    simulationQuestions,
-    simulationIdx,
-    simulationResponseTimes,
-    simulationSubmitted,
-    simulationSize,
-    simulationUsedAi,
-    remediationContext,
-    usedFlashcardIds,
-    usedFlashcardQuestions,
-    usedQuizPrompts,
-    recentFlashcardIds,
-    recentQuizPrompts,
-    noteText,
-    uploadedText,
-    uploadedFileName,
-    summaryText,
-    filterWeakOnly,
-    calendarMonth,
-    calendarSelectedDate,
-    calendarEvents,
-    plannerItems,
-    adminView,
-  ]);
+  }, [currentUser?.id, currentUser?.provider, progressSnapshot]);
 
   useEffect(() => {
     if (persisted) {
@@ -2910,11 +1391,7 @@ export default function App() {
     let active = true;
 
     async function loadRemoteProgress() {
-      const { data, error } = await supabase
-        .from("user_progress")
-        .select("payload")
-        .eq("user_id", currentUser.id)
-        .maybeSingle();
+      const { payload, error } = await loadRemoteSnapshot(supabase, currentUser.id);
 
       if (!active) {
         return;
@@ -2926,8 +1403,8 @@ export default function App() {
         return;
       }
 
-      if (data?.payload) {
-        applyPersistedSnapshot(data.payload);
+      if (payload) {
+        applyPersistedSnapshot(payload);
         setStatusMessage("Cloud progress restored successfully.");
       }
 
@@ -3207,10 +1684,7 @@ export default function App() {
   const plannerSummaryLine = plannerRecommendedItem
     ? `${plannerRecommendedItem.title}${plannerRecommendedItem.subject ? ` | ${plannerRecommendedItem.subject}` : ""}`
     : "No active planner items yet";
-  const adaptiveInsights = useMemo(
-    () => summarizePerformanceBuckets(reviewSessions),
-    [reviewSessions]
-  );
+  const adaptiveInsights = useAdaptiveInsights(reviewSessions);
   const recommendedFocus = adaptiveInsights.primaryFocus;
   const recommendedFocusReason = (() => {
     if (!recommendedFocus) {
@@ -3776,30 +2250,17 @@ export default function App() {
     clearAuthSession();
     window.location.reload();
   }
-
-  useEffect(() => {
-    if (!currentUser) {
-      return undefined;
-    }
-
-    let signingOut = false;
-
-    const expireSession = async () => {
-      if (signingOut) {
-        return;
-      }
-
-      signingOut = true;
-
-      if (supabaseConfigured && supabase && currentUser?.provider === "supabase") {
-        await supabase.auth.signOut();
-      }
-
-      clearAuthSession();
-      if (inactivityTimeoutRef.current) {
-        window.clearTimeout(inactivityTimeoutRef.current);
-        inactivityTimeoutRef.current = null;
-      }
+  useInactivityTimeout({
+    currentUser,
+    clearAuthSession,
+    saveAuthSession,
+    signOutProvider:
+      supabaseConfigured && supabase && currentUser?.provider === "supabase"
+        ? async () => {
+            await supabase.auth.signOut();
+          }
+        : undefined,
+    onExpire: () => {
       setCurrentUser(null);
       setAuthMode("login");
       setAuthPassword("");
@@ -3810,58 +2271,8 @@ export default function App() {
         body: "You were signed out after 10 minutes of inactivity. Sign in again to continue where you left off.",
         actionLabel: "Sign in again",
       });
-    };
-
-    const scheduleExpiryCheck = () => {
-      if (inactivityTimeoutRef.current) {
-        window.clearTimeout(inactivityTimeoutRef.current);
-      }
-
-      inactivityTimeoutRef.current = window.setTimeout(() => {
-        void expireSession();
-      }, AUTH_SESSION_MAX_AGE_MS);
-    };
-
-    const markActivity = () => {
-      const now = Date.now();
-      lastActivityAtRef.current = now;
-
-      if (now - lastActivityPersistedAtRef.current > 10000) {
-        saveAuthSession(currentUser);
-        lastActivityPersistedAtRef.current = now;
-      }
-
-      scheduleExpiryCheck();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        return;
-      }
-
-      if (Date.now() - lastActivityAtRef.current >= AUTH_SESSION_MAX_AGE_MS) {
-        void expireSession();
-        return;
-      }
-
-      markActivity();
-    };
-
-    const activityEvents = ["mousemove", "keydown", "click", "scroll", "touchstart", "mousedown", "focus"];
-    activityEvents.forEach((eventName) => window.addEventListener(eventName, markActivity, { passive: true }));
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    markActivity();
-
-    return () => {
-      if (inactivityTimeoutRef.current) {
-        window.clearTimeout(inactivityTimeoutRef.current);
-        inactivityTimeoutRef.current = null;
-      }
-      activityEvents.forEach((eventName) => window.removeEventListener(eventName, markActivity));
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [currentUser]);
+    },
+  });
 
   function markFlashcardsAsUsed(deck) {
     setUsedFlashcardIds((prev) => uniqueBy([...prev, ...deck.map((card) => card.id)], (value) => value));
@@ -8825,6 +7236,7 @@ export default function App() {
                         session={session}
                         onOpen={openSavedQuiz}
                         onDelete={deleteSavedQuiz}
+                        buildSessionLabel={buildSessionLabel}
                       />
                     ))}
                   </div>
