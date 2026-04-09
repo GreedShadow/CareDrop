@@ -658,6 +658,34 @@ function buildTopicFocusContext(sourceEntries, topic, difficulty = "All", limit 
   ].join("\n");
 }
 
+function buildTopicGenerationNotes(sourceEntries, topic, difficulty = "All", notes = "") {
+  const topicContext = buildTopicFocusContext(sourceEntries, topic, difficulty);
+  const uploadedNotes = String(notes || "").trim();
+
+  if (topicContext && uploadedNotes) {
+    return [
+      `CareDrop generation target: ${topic}`,
+      "Build a complete study set around this topic. Use the matched bank context first, then deepen or widen the set with the uploaded notes where relevant.",
+      topicContext,
+      `Uploaded notes:\n${uploadedNotes}`,
+    ].join("\n\n");
+  }
+
+  if (topicContext) {
+    return topicContext;
+  }
+
+  if (uploadedNotes && topic) {
+    return [
+      `CareDrop generation target: ${topic}`,
+      "The learner wants a full topic-focused set. If the uploaded notes are thin, expand with safe board-review nursing knowledge while staying centered on the requested topic.",
+      `Uploaded notes:\n${uploadedNotes}`,
+    ].join("\n\n");
+  }
+
+  return uploadedNotes;
+}
+
 function buildFlashcardVariants(entry) {
   const subject = entry.subject;
   const baseId = `${subject}-${normalize(entry.q)}`;
@@ -2408,11 +2436,29 @@ export default function App() {
   const activeTopicFocus = String(topicInput || "").trim() || String(topicFilter || "").trim();
   const subjectDisplay =
     activeTopicFocus && !hasCustomSource ? "Topic Focus" : subject || (activeTopicFocus ? "Topic Focus" : "Select a subject");
+  const bankEntries = useMemo(() => getAllEntries(), []);
   const customEntries = useMemo(
     () => (hasCustomSource ? buildCustomEntries(studyText, subject) : []),
     [hasCustomSource, studyText, subject]
   );
-  const activeEntries = customEntries.length ? customEntries : getAllEntries();
+  const activeEntries = useMemo(() => {
+    if (!hasCustomSource) {
+      return bankEntries;
+    }
+
+    if (!customEntries.length) {
+      return bankEntries;
+    }
+
+    if (activeTopicFocus) {
+      return uniqueBy(
+        [...customEntries, ...bankEntries],
+        (entry) => `${entry.subject}-${normalize(entry.q || entry.prompt)}-${normalize(entry.a || entry.answer)}`
+      );
+    }
+
+    return customEntries;
+  }, [hasCustomSource, customEntries, bankEntries, activeTopicFocus]);
 
   const weakCardIds = useMemo(
     () =>
@@ -3252,8 +3298,8 @@ export default function App() {
     clearMessages();
     const reviewSubject = resolveReviewSubject(resolvedTopic);
     const topicSeedNotes =
-      resolvedTopic && !hasCustomSource
-        ? buildTopicFocusContext(activeEntries, resolvedTopic, difficulty)
+      resolvedTopic
+        ? buildTopicGenerationNotes(activeEntries, resolvedTopic, difficulty, studyText)
         : studyText;
 
     if (!isOnline) {
@@ -3374,8 +3420,8 @@ export default function App() {
     clearMessages();
     const reviewSubject = resolveReviewSubject(resolvedTopic);
     const topicSeedNotes =
-      resolvedTopic && !hasCustomSource
-        ? buildTopicFocusContext(activeEntries, resolvedTopic, difficulty)
+      resolvedTopic
+        ? buildTopicGenerationNotes(activeEntries, resolvedTopic, difficulty, studyText)
         : studyText;
     if (!isOnline) {
       const fallbackPool = buildLocalQuizFallback(
