@@ -2613,13 +2613,10 @@ export default function App() {
       return {
         title: "Revisit your weak areas next",
         body: weakestSubject
-          ? `${weakSubjectCounts[weakestSubject]} weak cards are stacking up in ${weakestSubject}. A focused pass there will tighten recall fastest.`
-          : "Your missed and unsure cards are ready for another pass. A quick weak-card round is the cleanest next step.",
-        cta: "Review weak cards",
-        onClick: () => {
-          setFilterWeakOnly(true);
-          queueModeChange("flashcard");
-        },
+          ? `${weakSubjectCounts[weakestSubject]} recent misses are clustering in ${weakestSubject}. A short remediation set there will tighten recall faster than restarting broad review.`
+          : "Your missed and unsure cards are ready to turn into a focused remediation set while the weak spots are still fresh.",
+        cta: "Open remediation",
+        onClick: () => startRemediationMode(),
       };
     }
 
@@ -3140,11 +3137,11 @@ export default function App() {
     markFlashcardsAsUsed(deck);
 
     if (message) {
-      setStatusMessage(
-        deck.length
-          ? message
-          : "No card data exists for this exact filter yet. Try another subject or upload a document."
-      );
+      if (deck.length) {
+        setStatusMessage(message);
+      } else {
+        setApiError("No card data exists for this exact filter yet. Try another focus or upload a document to build more cards.");
+      }
     }
   }
 
@@ -3275,6 +3272,12 @@ export default function App() {
         recentQuizPromptsRef.current,
         (item) => normalize(item.prompt)
       );
+      if (!fallback.length) {
+        setQuiz([]);
+        setQuizIdx(0);
+        setApiError("No quiz data exists for this exact filter yet. Try another focus or upload a document to build more questions.");
+        return;
+      }
       setQuiz(fallback);
       setQuizIdx(0);
       setMode("quiz");
@@ -3309,6 +3312,12 @@ export default function App() {
         recentQuizPromptsRef.current,
         (item) => normalize(item.prompt)
       );
+      if (!questions.length) {
+        setQuiz([]);
+        setQuizIdx(0);
+        setApiError("No quiz data exists for this exact filter yet. Try another focus or upload a document to build more questions.");
+        return;
+      }
 
       setQuiz(questions);
       setRemediationContext(null);
@@ -3351,6 +3360,12 @@ export default function App() {
         recentQuizPromptsRef.current,
         (item) => normalize(item.prompt)
       );
+      if (!fallback.length) {
+        setQuiz([]);
+        setQuizIdx(0);
+        setApiError("No quiz data exists for this exact filter yet. Try another focus or upload a document to build more questions.");
+        return;
+      }
       setQuiz(fallback);
       setRemediationContext(null);
       setQuizIdx(0);
@@ -4075,15 +4090,12 @@ export default function App() {
     },
     {
       title: String(weakCardIds.length),
-      description: "Weak Cards",
+      description: "Weak Areas",
       icon: "WK",
-      status: weakCardIds.length ? "needs another pass" : "looking good",
-      hoverText: weakCardIds.length ? "Click to open weak-card review" : "No weak cards right now",
-      actionLabel: weakCardIds.length ? "Open weak review" : "",
-      onClick: () => {
-        setFilterWeakOnly(true);
-        queueModeChange("flashcard");
-      },
+      status: weakCardIds.length ? "ready for remediation" : "looking good",
+      hoverText: weakCardIds.length ? "Click to build a remediation set from recent misses" : "No weak cards right now",
+      actionLabel: weakCardIds.length ? "Open remediation" : "",
+      onClick: () => startRemediationMode(),
       tags: ["Review"],
       colSpan: 1,
     },
@@ -4130,6 +4142,8 @@ export default function App() {
     borderRadius: 20,
     padding: width < 640 ? 18 : 24,
     boxShadow: "0 10px 22px rgba(15, 23, 42, 0.04)",
+    contentVisibility: "auto",
+    containIntrinsicSize: "520px",
   };
 
   const dashboardGreeting = getGreeting(currentUser?.name);
@@ -4324,6 +4338,10 @@ export default function App() {
 
         <style>
           {`
+            html {
+              scroll-behavior: smooth;
+            }
+
             @keyframes caredropFadeSlide {
               from {
                 opacity: 0;
@@ -4656,59 +4674,6 @@ export default function App() {
 
               <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}`, display: "grid", gap: 10 }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                  Review Tools
-                </div>
-                <button
-                  onClick={() => setFilterWeakOnly((value) => !value)}
-                  style={{
-                    padding: "11px 14px",
-                    borderRadius: 12,
-                    border: filterWeakOnly ? `1px solid ${C.red}` : `1px solid ${C.border}`,
-                    background: filterWeakOnly ? C.redLight : C.surface,
-                    color: filterWeakOnly ? C.red : C.text,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  {filterWeakOnly ? "Showing Weak Cards Only" : "Focus Weak Cards"}
-                </button>
-                {savedSessionWaiting ? (
-                  <button
-                    type="button"
-                    onClick={() => openSavedQuiz(savedSessionWaiting)}
-                    style={{
-                      padding: "11px 14px",
-                      borderRadius: 12,
-                      border: `1px solid #C7D6E5`,
-                      background: "#EEF4FB",
-                      color: "#17355E",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Resume Saved Session
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => startRemediationMode()}
-                  disabled={!incorrectReviewItems.length && !weakCardIds.length}
-                  style={{
-                    padding: "11px 14px",
-                    borderRadius: 12,
-                    border: `1px solid ${C.border}`,
-                    background: incorrectReviewItems.length || weakCardIds.length ? "#F3FBF6" : C.border,
-                    color: incorrectReviewItems.length || weakCardIds.length ? C.accent : C.muted,
-                    fontWeight: 700,
-                    cursor: incorrectReviewItems.length || weakCardIds.length ? "pointer" : "not-allowed",
-                  }}
-                >
-                  {incorrectReviewItems.length || weakCardIds.length ? "Start Remediation Set" : "Remediation unlocks after misses"}
-                </button>
-              </div>
-
-              <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}`, display: "grid", gap: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>
                   System Status
                 </div>
                 <div
@@ -4930,7 +4895,7 @@ export default function App() {
                             : "A few concepts still need another pass"
                           : "No weak-card backlog at the moment",
                         body: weakCardIds.length
-                          ? "Use Focus Weak Cards to review the items you missed or marked as unsure without restarting everything."
+                          ? "Use remediation mode to turn recent weak cards into a fresh recovery set without rebuilding your whole review."
                           : "Once you start rating cards, CareDrop will surface the topics that deserve another pass.",
                       },
                       {
@@ -5041,25 +5006,6 @@ export default function App() {
                         </button>
                       ) : null}
                     </div>
-
-                    <div
-                      style={{
-                        borderRadius: 18,
-                        padding: 18,
-                        border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
-                      }}
-                    >
-                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                        {isAdminUser ? "Admin Snapshot" : "CareDrop Snapshot"}
-                      </div>
-                        <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 13, color: C.text }}>
-                          <div><strong>{reviewSessions.length}</strong> tracked sessions in this dashboard</div>
-                          <div><strong>{requestHistory.length}</strong> request/report items saved</div>
-                          <div><strong>{savedSessionWaiting ? 1 : 0}</strong> saved session waiting to reopen</div>
-                          <div><strong>{isOnline ? "Online" : "Offline"}</strong> system state | {cloudSyncStatus || "Cloud sync standing by"}</div>
-                        </div>
-                      </div>
 
                     <div
                       style={{
@@ -6036,6 +5982,7 @@ export default function App() {
                 {currentCard ? (
                   <>
                     <Flashcard
+                      key={`${currentCard.id || "flashcard"}-${cardIdx}`}
                       card={currentCard}
                       idx={cardIdx}
                       total={flashcards.length}
@@ -6254,8 +6201,8 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div key={`${quizItem.id}-options`} style={{ marginTop: 16, display: "grid", gap: 10, animation: "caredropFadeSlide 0.24s ease" }}>
-                      {quizItem.options.map((option) => {
+                    <div key={`${quizItem.id || "quiz"}-${quizIdx}-options`} style={{ marginTop: 16, display: "grid", gap: 10, animation: "caredropFadeSlide 0.24s ease" }}>
+                      {quizItem.options.map((option, optionIndex) => {
                         const selected = quizItem.userAnswer !== null ? quizItem.userAnswer === option : selectedQuizOption === option;
                         const correct = normalize(option) === normalize(quizItem.correctAnswer);
                         const background = showFeedback && correct
@@ -6271,7 +6218,7 @@ export default function App() {
 
                         return (
                           <label
-                            key={option}
+                            key={`${quizItem.id || "quiz"}-${quizIdx}-${optionIndex}`}
                             style={{
                               textAlign: "left",
                               padding: "14px 16px",
@@ -6554,27 +6501,28 @@ export default function App() {
                       Build a mixed board-style exam across the full CareDrop bank. Gemini helps expand parts of the set so the simulation feels broader and closer to a real long-form review exam.
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {SIMULATION_SIZE_OPTIONS.map((value) => (
+                  {!simulationLaunchOpen && simulationQuestions.length ? (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button
-                        key={value}
                         type="button"
-                        onClick={() => generateSimulationExam(value)}
-                        disabled={apiLoading}
+                        onClick={() => {
+                          setSimulationLaunchOpen(true);
+                          setStatusMessage("Choose a new simulation length to start another exam.");
+                        }}
                         style={{
                           padding: "10px 16px",
                           borderRadius: 10,
-                          border: simulationSize === value ? "none" : `1px solid ${C.border}`,
-                          background: simulationSize === value ? C.accent : C.surface,
-                          color: simulationSize === value ? "#fff" : C.text,
+                          border: `1px solid ${C.border}`,
+                          background: C.surface,
+                          color: C.text,
                           fontWeight: 700,
-                          cursor: apiLoading ? "not-allowed" : "pointer",
+                          cursor: "pointer",
                         }}
                       >
-                        {apiLoading && simulationSize === value ? "Preparing..." : `Generate ${value}`}
+                        New Simulation Setup
                       </button>
-                    ))}
-                  </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {simulationLaunchOpen ? (
@@ -6712,7 +6660,7 @@ export default function App() {
                         const active = index === simulationIdx;
                         return (
                           <button
-                            key={`${item.id}-jump`}
+                            key={`${item.id || "simulation"}-${index}-jump`}
                             type="button"
                             onClick={() => setSimulationIdx(index)}
                             style={{
@@ -6740,7 +6688,7 @@ export default function App() {
                     </div>
 
                     <div
-                      key={simulationItem.id}
+                      key={`${simulationItem.id || "simulation"}-${simulationIdx}`}
                       style={{
                         marginTop: 18,
                         background: C.panelNeutralAlt,
@@ -6774,7 +6722,7 @@ export default function App() {
                       </div>
 
                       <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
-                        {simulationItem.options.map((option) => {
+                        {simulationItem.options.map((option, optionIndex) => {
                           const selected = simulationItem.userAnswer === option;
                           const correct = normalize(option) === normalize(simulationItem.correctAnswer);
                           const background = simulationSubmitted && correct
@@ -6790,7 +6738,7 @@ export default function App() {
 
                           return (
                             <label
-                              key={`${simulationItem.id}-${option}`}
+                              key={`${simulationItem.id || "simulation"}-${simulationIdx}-${optionIndex}`}
                               style={{
                                 display: "flex",
                                 alignItems: "flex-start",
@@ -7130,7 +7078,7 @@ export default function App() {
                                 const isCorrect = !!item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer);
                                 return (
                                   <div
-                                    key={item.id}
+                                    key={`${item.id || "simulation-sheet"}-${index}`}
                                     style={{
                                       padding: "16px 18px",
                                       borderRadius: 16,

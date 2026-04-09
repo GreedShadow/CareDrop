@@ -296,13 +296,13 @@ export async function postJson(path, payload) {
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-  } catch (error) {
-    window.clearTimeout(timeoutId);
-    if (error.name === "AbortError") {
-      throw new Error("The request timed out. Please try again.");
+    } catch (error) {
+      window.clearTimeout(timeoutId);
+      if (error.name === "AbortError") {
+        throw new Error("The request timed out. Please try again.");
+      }
+      throw new Error("CareDrop could not reach the review service. Check your connection and try again in a moment.");
     }
-    throw new Error("Network error. Check the backend connection and try again.");
-  }
 
   window.clearTimeout(timeoutId);
 
@@ -341,13 +341,13 @@ export async function getJson(path) {
       method: "GET",
       signal: controller.signal,
     });
-  } catch (error) {
-    window.clearTimeout(timeoutId);
-    if (error.name === "AbortError") {
-      throw new Error("The request timed out. Please try again.");
+    } catch (error) {
+      window.clearTimeout(timeoutId);
+      if (error.name === "AbortError") {
+        throw new Error("The request timed out. Please try again.");
+      }
+      throw new Error("CareDrop could not reach the review service. Check your connection and try again in a moment.");
     }
-    throw new Error("Network error. Check the backend connection and try again.");
-  }
 
   window.clearTimeout(timeoutId);
   const rawText = await response.text();
