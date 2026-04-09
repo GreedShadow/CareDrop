@@ -48,6 +48,7 @@ import {
 import { clamp, formatTopicHeading, normalize, shuffle, uid, uniqueBy } from "./caredrop/helpers";
 import {
   buildCalendarDays,
+  coerceDate,
   formatDateKey,
   getDateInputValue,
   getMonthLabel,
@@ -1834,17 +1835,17 @@ export default function App() {
     persisted?.subjectShortcutsOpen !== false
   );
   const [calendarMonth, setCalendarMonth] = useState(
-    persisted?.calendarMonth ? new Date(persisted.calendarMonth) : new Date()
+    coerceDate(persisted?.calendarMonth)
   );
   const [calendarSelectedDate, setCalendarSelectedDate] = useState(
     persisted?.calendarSelectedDate || getDateInputValue()
   );
-  const [calendarEvents, setCalendarEvents] = useState(persisted?.calendarEvents || []);
+  const [calendarEvents, setCalendarEvents] = useState(Array.isArray(persisted?.calendarEvents) ? persisted.calendarEvents : []);
   const [calendarDraftTitle, setCalendarDraftTitle] = useState("");
   const [calendarDraftType, setCalendarDraftType] = useState("Study");
   const [calendarDraftSubject, setCalendarDraftSubject] = useState("");
   const [calendarDraftNote, setCalendarDraftNote] = useState("");
-  const [plannerItems, setPlannerItems] = useState(persisted?.plannerItems || []);
+  const [plannerItems, setPlannerItems] = useState(Array.isArray(persisted?.plannerItems) ? persisted.plannerItems : []);
   const [plannerTitle, setPlannerTitle] = useState("");
   const [plannerSubject, setPlannerSubject] = useState("");
   const [plannerMode, setPlannerMode] = useState("mixed");
@@ -1887,10 +1888,10 @@ export default function App() {
     setSummaryText(snapshot.summaryText || "Paste notes or upload a document to generate a reviewer summary.");
     setFilterWeakOnly(Boolean(snapshot.filterWeakOnly));
     setSubjectShortcutsOpen(snapshot.subjectShortcutsOpen !== false);
-    setCalendarMonth(snapshot.calendarMonth ? new Date(snapshot.calendarMonth) : new Date());
+    setCalendarMonth(coerceDate(snapshot.calendarMonth));
     setCalendarSelectedDate(snapshot.calendarSelectedDate || getDateInputValue());
-    setCalendarEvents(snapshot.calendarEvents || []);
-    setPlannerItems(snapshot.plannerItems || []);
+    setCalendarEvents(Array.isArray(snapshot.calendarEvents) ? snapshot.calendarEvents : []);
+    setPlannerItems(Array.isArray(snapshot.plannerItems) ? snapshot.plannerItems : []);
     setAdminView(snapshot.adminView || "overview");
     setFlashcards(snapshot.flashcards || []);
     setCardIdx(clamp(Number(snapshot.cardIdx || 0), 0, Math.max((snapshot.flashcards || []).length - 1, 0)));
@@ -2019,7 +2020,7 @@ export default function App() {
         summaryText,
         filterWeakOnly,
         subjectShortcutsOpen,
-        calendarMonth: calendarMonth.toISOString(),
+        calendarMonth: coerceDate(calendarMonth).toISOString(),
         calendarSelectedDate,
         calendarEvents,
         plannerItems,
@@ -2105,7 +2106,7 @@ export default function App() {
       summaryText,
       filterWeakOnly,
       subjectShortcutsOpen,
-      calendarMonth: calendarMonth.toISOString(),
+      calendarMonth: coerceDate(calendarMonth).toISOString(),
       calendarSelectedDate,
       calendarEvents,
       plannerItems,

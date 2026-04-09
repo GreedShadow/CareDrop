@@ -7,8 +7,13 @@ export const PLANNER_MODE_OPTIONS = [
   { value: "mixed", label: "Mixed Review" },
 ];
 
+export function coerceDate(value, fallback = new Date()) {
+  const date = value instanceof Date ? new Date(value) : new Date(value || fallback);
+  return Number.isNaN(date.getTime()) ? new Date(fallback) : date;
+}
+
 export function getDateInputValue(value = new Date()) {
-  const date = new Date(value);
+  const date = coerceDate(value);
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
@@ -19,19 +24,19 @@ export function formatDateKey(value) {
 }
 
 export function getMonthLabel(value) {
-  return new Date(value).toLocaleString([], {
+  return coerceDate(value).toLocaleString([], {
     month: "long",
     year: "numeric",
   });
 }
 
 export function shiftMonth(value, delta) {
-  const date = new Date(value);
+  const date = coerceDate(value);
   return new Date(date.getFullYear(), date.getMonth() + delta, 1);
 }
 
 export function startOfMonth(value) {
-  const date = new Date(value);
+  const date = coerceDate(value);
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
