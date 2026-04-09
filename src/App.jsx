@@ -517,9 +517,16 @@ function collectIncorrectQuestions(sessions = []) {
 function buildRemediationEntries(sourceEntries, incorrectItems, weakSubject) {
   const targeted = sourceEntries.filter((entry) =>
     incorrectItems.some(
-      (item) =>
-        (!item.subject || item.subject === "Mixed Review" || item.subject === entry.subject) &&
-        (!item.topic || normalize(entry.topic).includes(normalize(item.topic)) || normalize(item.prompt).includes(normalize(entry.topic)))
+      (item) => {
+        const subjectMatch =
+          !item.subject || item.subject === "Mixed Review" || item.subject === entry.subject;
+        const topicTerms = getTopicSearchTerms(item.topic || item.prompt || "");
+        const haystack = normalize(
+          `${entry.subject || ""} ${entry.topic || ""} ${entry.q || entry.prompt || ""} ${entry.a || entry.answer || ""}`
+        );
+        const topicMatch = !topicTerms.length || topicTerms.some((term) => haystack.includes(term));
+        return subjectMatch && topicMatch;
+      }
     )
   );
 
@@ -2669,11 +2676,17 @@ export default function App() {
   const currentCard = flashcards[clamp(cardIdx, 0, Math.max(flashcards.length - 1, 0))];
   const quizItem = quiz[quizIdx];
   const answeredCount = quiz.filter((item) => item.userAnswer !== null).length;
+  const unansweredQuizNumbers = quiz
+    .map((item, index) => (item.userAnswer === null ? index + 1 : null))
+    .filter(Boolean);
   const correctCount = quiz.filter(
     (item) => item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer)
   ).length;
   const simulationItem = simulationQuestions[simulationIdx];
   const simulationAnsweredCount = simulationQuestions.filter((item) => item.userAnswer !== null).length;
+  const unansweredSimulationNumbers = simulationQuestions
+    .map((item, index) => (item.userAnswer === null ? index + 1 : null))
+    .filter(Boolean);
   const simulationCorrectCount = simulationQuestions.filter(
     (item) => item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer)
   ).length;
@@ -4221,25 +4234,52 @@ export default function App() {
           }))
       : incorrectReviewItems;
 
-    const remediationEntries = buildRemediationEntries(activeEntries, incorrectItems, weakestSubject);
+    const fallbackIncorrectItems = incorrectItems.length
+      ? incorrectItems
+      : [
+          {
+            subject:
+              (baseSession?.subject && baseSession.subject !== "Mixed Review" ? baseSession.subject : "") ||
+              weakestSubject ||
+              subject ||
+              "",
+            topic: topicFilter || "",
+            prompt: topicFilter || weakestSubject || subject || "recent weak areas",
+          },
+        ];
+
+    const remediationEntries = buildRemediationEntries(activeEntries, fallbackIncorrectItems, weakestSubject);
     const targetedSubject =
       (baseSession?.subject && baseSession.subject !== "Mixed Review" ? baseSession.subject : "") ||
       weakestSubject ||
       "";
     const targetedTopic =
-      incorrectItems.find((item) => item.topic)?.topic ||
+      fallbackIncorrectItems.find((item) => item.topic)?.topic ||
       topicFilter ||
       "";
 
+    const primaryPool = buildLocalQuizFallback(
+      remediationEntries,
+      targetedSubject,
+      "All",
+      targetedTopic,
+      QUIZ_SET_SIZE * 2,
+      []
+    );
+    const fallbackPool =
+      primaryPool.length >= QUIZ_SET_SIZE
+        ? []
+        : buildLocalQuizFallback(
+            activeEntries,
+            targetedSubject,
+            "All",
+            targetedTopic,
+            QUIZ_SET_SIZE * 2,
+            []
+          );
+
     const questions = selectSessionItems(
-      buildLocalQuizFallback(
-        remediationEntries,
-        targetedSubject,
-        "All",
-        targetedTopic,
-        QUIZ_SET_SIZE * 2,
-        []
-      ),
+      [...primaryPool, ...fallbackPool],
       QUIZ_SET_SIZE,
       [],
       [],
@@ -4247,7 +4287,7 @@ export default function App() {
     );
 
     if (!questions.length) {
-      setApiError("CareDrop could not build a remediation set from the current weak areas yet.");
+      setApiError("CareDrop could not build a remediation set from the current weak areas yet. Try answering one more quiz or flashcard set first so there is more recovery data to work with.");
       return;
     }
 
@@ -5280,24 +5320,6 @@ export default function App() {
                 ) : null}
               </div>
             </div>
-
-            {weakCardIds.length && !isStudyMode ? (
-              <div
-                style={{
-                  ...panelStyle,
-                  background: C.redLight,
-                  borderColor: C.red,
-                  padding: 16,
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 800, color: C.red }}>Weak Area Insight</div>
-                <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6, marginTop: 6 }}>
-                  {weakestSubject
-                    ? `${weakCardIds.length} cards still need another pass, with the heaviest pull in ${weakestSubject}.`
-                    : `${weakCardIds.length} cards still need another pass.`}
-                </div>
-              </div>
-            ) : null}
 
           </div>
 
@@ -6882,6 +6904,22 @@ export default function App() {
                             ? "Answer saved. You can still move back and change it before final submission."
                             : "Choose an answer, use Previous or Next to move around the set, and submit only when you are ready."}
                         </div>
+                        {unansweredQuizNumbers.length && quizIdx === quiz.length - 1 ? (
+                          <div
+                            style={{
+                              marginTop: 10,
+                              padding: "10px 12px",
+                              borderRadius: 12,
+                              background: "#FFF7E8",
+                              border: `1px solid ${C.amber}`,
+                              fontSize: 13,
+                              lineHeight: 1.7,
+                              color: C.text,
+                            }}
+                          >
+                            You still need to answer question{unansweredQuizNumbers.length === 1 ? "" : "s"} {unansweredQuizNumbers.join(", ")} before you can submit this quiz.
+                          </div>
+                        ) : null}
                         <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button
                             type="button"
@@ -7497,6 +7535,22 @@ export default function App() {
                           <div style={{ marginTop: 10, fontSize: studyBodySize, color: C.muted, lineHeight: 1.7 }}>
                             Answers stay hidden while the simulation is active so the flow feels closer to an actual long-form exam. Move back through earlier questions anytime if you want to review or change an answer before the final submit on the last item.
                           </div>
+                          {unansweredSimulationNumbers.length && simulationIdx === simulationQuestions.length - 1 ? (
+                            <div
+                              style={{
+                                marginTop: 10,
+                                padding: "10px 12px",
+                                borderRadius: 12,
+                                background: "#FFF7E8",
+                                border: `1px solid ${C.amber}`,
+                                fontSize: 13,
+                                lineHeight: 1.7,
+                                color: C.text,
+                              }}
+                            >
+                              You still need to answer question{unansweredSimulationNumbers.length === 1 ? "" : "s"} {unansweredSimulationNumbers.join(", ")} before you can submit this simulation.
+                            </div>
+                          ) : null}
                         </>
                       ) : (
                         <>
