@@ -246,6 +246,320 @@ const ANSWER_REMINDERS = [
   (entry, subject) => `Clinical anchor: keep ${entry.topic} tied to the safest next nursing step in ${subject}.`,
   (entry) => `Review note: this concept is meant to feel automatic by the time you sit for boards.`,
 ];
+const FLASHCARD_RATING_POINTS = {
+  easy: 1,
+  hard: 0.45,
+  again: 0,
+};
+const SLOW_RESPONSE_THRESHOLDS_MS = {
+  flashcard: 12000,
+  quiz: 25000,
+  remediation: 22000,
+  simulation: 30000,
+};
+
+function average(values) {
+  return values.length ? values.reduce((total, value) => total + Number(value || 0), 0) / values.length : 0;
+}
+
+function createPerformanceBucket(subject, topic = "") {
+  return {
+    subject: subject || "Mixed Review",
+    topic: topic || "",
+    attempts: 0,
+    scorePoints: 0,
+    misses: 0,
+    lowConfidence: 0,
+    slowResponses: 0,
+    timeSamples: 0,
+    totalTimeMs: 0,
+    repeatedMisses: 0,
+    moduleStats: {
+      flashcard: { attempts: 0, scorePoints: 0, misses: 0, slowResponses: 0 },
+      quiz: { attempts: 0, scorePoints: 0, misses: 0, slowResponses: 0 },
+      remediation: { attempts: 0, scorePoints: 0, misses: 0, slowResponses: 0 },
+      simulation: { attempts: 0, scorePoints: 0, misses: 0, slowResponses: 0 },
+    },
+    missCounts: {},
+    recentScores: [],
+  };
+}
+
+function getPerformanceKey(subject, topic = "") {
+  return `${normalize(subject || "Mixed Review")}::${normalize(topic || "")}`;
+}
+
+function getOrCreatePerformanceBucket(bucketMap, subject, topic = "") {
+  const key = getPerformanceKey(subject, topic);
+  if (!bucketMap.has(key)) {
+    bucketMap.set(key, createPerformanceBucket(subject, topic));
+  }
+  return bucketMap.get(key);
+}
+
+function recordPerformanceAttempt(bucketMap, {
+  subject,
+  topic,
+  module,
+  scorePoint,
+  missKey,
+  lowConfidence = false,
+  timeMs = 0,
+  sessionScore = null,
+}) {
+  const bucket = getOrCreatePerformanceBucket(bucketMap, subject, topic);
+  const safeModule = ["flashcard", "quiz", "remediation", "simulation"].includes(module) ? module : "quiz";
+  const moduleBucket = bucket.moduleStats[safeModule];
+  const safeScorePoint = clamp(Number(scorePoint || 0), 0, 1);
+  const safeTime = Math.max(Number(timeMs || 0), 0);
+  const isMiss = safeScorePoint < 0.6;
+  const isSlow = safeTime >= (SLOW_RESPONSE_THRESHOLDS_MS[safeModule] || 22000);
+
+  bucket.attempts += 1;
+  bucket.scorePoints += safeScorePoint;
+  moduleBucket.attempts += 1;
+  moduleBucket.scorePoints += safeScorePoint;
+
+  if (isMiss) {
+    bucket.misses += 1;
+    moduleBucket.misses += 1;
+    if (missKey) {
+      bucket.missCounts[missKey] = (bucket.missCounts[missKey] || 0) + 1;
+    }
+  }
+
+  if (lowConfidence) {
+    bucket.lowConfidence += 1;
+  }
+
+  if (safeTime > 0) {
+    bucket.timeSamples += 1;
+    bucket.totalTimeMs += safeTime;
+  }
+
+  if (isSlow) {
+    bucket.slowResponses += 1;
+    moduleBucket.slowResponses += 1;
+  }
+
+  if (typeof sessionScore === "number") {
+    bucket.recentScores.push(sessionScore);
+    if (bucket.recentScores.length > 4) {
+      bucket.recentScores = bucket.recentScores.slice(-4);
+    }
+  }
+}
+
+function summarizePerformanceBuckets(reviewSessions) {
+  const topicBuckets = new Map();
+  const subjectBuckets = new Map();
+  const subjectSessionScores = {};
+
+  reviewSessions
+    .slice()
+    .reverse()
+    .forEach((session) => {
+      const sessionMode = session.isRemediation || String(session.sourceLabel || "").toLowerCase().includes("remediation")
+        ? "remediation"
+        : session.mode;
+      const sessionScore = Number(session.score || 0);
+      const sessionItems = session.cards || session.questions || [];
+      const touchedSubjects = new Set();
+
+      if (!sessionItems.length) {
+        return;
+      }
+
+      const pushSubjectScore = (subjectValue) => {
+        const key = subjectValue || "Mixed Review";
+        if (touchedSubjects.has(key)) {
+          return;
+        }
+        touchedSubjects.add(key);
+        subjectSessionScores[key] = subjectSessionScores[key] || [];
+        subjectSessionScores[key].push(sessionScore);
+      };
+
+      if (sessionMode === "flashcard") {
+        sessionItems.forEach((card, index) => {
+          const subjectValue = card.subject || session.subject || "Mixed Review";
+          const topicValue = card.topic || session.topic || "";
+          const rating = session.cardRatings?.[card.id];
+          if (!rating) {
+            return;
+          }
+          const responseTime = session.responseTimes?.[card.id] || 0;
+          const scorePoint = FLASHCARD_RATING_POINTS[rating] ?? 0;
+          const missKey = normalize(card.question || card.q || `${subjectValue}-${topicValue}-${index}`);
+
+          recordPerformanceAttempt(topicBuckets, {
+            subject: subjectValue,
+            topic: topicValue,
+            module: "flashcard",
+            scorePoint,
+            missKey,
+            lowConfidence: rating !== "easy",
+            timeMs: responseTime,
+            sessionScore,
+          });
+          recordPerformanceAttempt(subjectBuckets, {
+            subject: subjectValue,
+            topic: "",
+            module: "flashcard",
+            scorePoint,
+            missKey,
+            lowConfidence: rating !== "easy",
+            timeMs: responseTime,
+            sessionScore,
+          });
+          pushSubjectScore(subjectValue);
+        });
+        return;
+      }
+
+      sessionItems.forEach((item, index) => {
+        if (item.userAnswer === null || typeof item.userAnswer === "undefined") {
+          return;
+        }
+
+        const subjectValue = item.subject || session.subject || "Mixed Review";
+        const topicValue = item.topic || session.topic || "";
+        const isCorrect = normalize(item.userAnswer) === normalize(item.correctAnswer);
+        const responseTime =
+          session.responseTimes?.[item.id] ||
+          session.responseTimes?.[item.prompt] ||
+          session.responseTimes?.[String(index)] ||
+          0;
+        const missKey = normalize(item.prompt || `${subjectValue}-${topicValue}-${index}`);
+
+        recordPerformanceAttempt(topicBuckets, {
+          subject: subjectValue,
+          topic: topicValue,
+          module: sessionMode,
+          scorePoint: isCorrect ? 1 : 0,
+          missKey,
+          timeMs: responseTime,
+          sessionScore,
+        });
+        recordPerformanceAttempt(subjectBuckets, {
+          subject: subjectValue,
+          topic: "",
+          module: sessionMode,
+          scorePoint: isCorrect ? 1 : 0,
+          missKey,
+          timeMs: responseTime,
+          sessionScore,
+        });
+        pushSubjectScore(subjectValue);
+      });
+    });
+
+  const finalizeBucket = (bucket) => {
+    const accuracy = bucket.attempts ? bucket.scorePoints / bucket.attempts : 0;
+    const missRate = bucket.attempts ? bucket.misses / bucket.attempts : 0;
+    const lowConfidenceRate = bucket.attempts ? bucket.lowConfidence / bucket.attempts : 0;
+    const slowRate = bucket.timeSamples ? bucket.slowResponses / bucket.timeSamples : 0;
+    const repeatedMisses = Object.values(bucket.missCounts).reduce(
+      (total, count) => total + Math.max(Number(count || 0) - 1, 0),
+      0
+    );
+    const repeatedMissRate = bucket.attempts ? repeatedMisses / bucket.attempts : 0;
+    const moduleAccuracy = Object.fromEntries(
+      Object.entries(bucket.moduleStats).map(([key, value]) => [
+        key,
+        value.attempts ? value.scorePoints / value.attempts : 0,
+      ])
+    );
+    const avgResponseTimeMs = bucket.timeSamples ? Math.round(bucket.totalTimeMs / bucket.timeSamples) : 0;
+    const remediationPenalty =
+      bucket.moduleStats.remediation.attempts && moduleAccuracy.remediation < 0.75 ? 0.14 : 0;
+    const simulationPenalty =
+      bucket.moduleStats.simulation.attempts && moduleAccuracy.simulation < 0.7 ? 0.18 : 0;
+    const focusScore = clamp(
+      Math.round(
+        (
+          (1 - accuracy) * 42 +
+          missRate * 24 +
+          lowConfidenceRate * 12 +
+          slowRate * 10 +
+          Math.min(repeatedMissRate, 0.45) * 20 +
+          remediationPenalty * 100 +
+          simulationPenalty * 100
+        )
+      ),
+      0,
+      100
+    );
+
+    return {
+      ...bucket,
+      accuracy,
+      missRate,
+      lowConfidenceRate,
+      slowRate,
+      avgResponseTimeMs,
+      repeatedMisses,
+      moduleAccuracy,
+      focusScore,
+    };
+  };
+
+  const topicSummary = [...topicBuckets.values()]
+    .map(finalizeBucket)
+    .filter((bucket) => bucket.attempts >= 2 && bucket.topic)
+    .sort((left, right) => right.focusScore - left.focusScore);
+
+  const subjectSummary = [...subjectBuckets.values()]
+    .map(finalizeBucket)
+    .filter((bucket) => bucket.attempts >= 2)
+    .sort((left, right) => right.focusScore - left.focusScore);
+
+  const strongestSubject = [...subjectSummary]
+    .filter((bucket) => bucket.attempts >= 4)
+    .sort((left, right) => right.accuracy - left.accuracy)[0] || null;
+
+  const mostImprovedSubject = Object.entries(subjectSessionScores)
+    .map(([subjectValue, scores]) => {
+      if (scores.length < 2) {
+        return null;
+      }
+      const latest = Number(scores[scores.length - 1] || 0);
+      const earlierAverage = average(scores.slice(0, -1));
+      return {
+        subject: subjectValue,
+        improvement: Math.round(latest - earlierAverage),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.improvement - left.improvement)[0] || null;
+
+  const primaryFocus = topicSummary[0] || subjectSummary[0] || null;
+  let pattern = "focus-set";
+
+  if (primaryFocus) {
+    const flashcardGap = primaryFocus.moduleStats.flashcard.attempts ? 1 - primaryFocus.moduleAccuracy.flashcard : 0;
+    const quizGap = primaryFocus.moduleStats.quiz.attempts ? 1 - primaryFocus.moduleAccuracy.quiz : 0;
+    const remediationGap = primaryFocus.moduleStats.remediation.attempts ? 1 - primaryFocus.moduleAccuracy.remediation : 0;
+    const simulationGap = primaryFocus.moduleStats.simulation.attempts ? 1 - primaryFocus.moduleAccuracy.simulation : 0;
+
+    if (simulationGap >= 0.3 || primaryFocus.moduleStats.simulation.misses >= 3) {
+      pattern = "exam-practice";
+    } else if (quizGap >= flashcardGap || remediationGap >= 0.22 || primaryFocus.missRate >= 0.4) {
+      pattern = "remediation";
+    } else {
+      pattern = "focus-set";
+    }
+  }
+
+  return {
+    topicSummary,
+    subjectSummary,
+    strongestSubject,
+    mostImprovedSubject,
+    primaryFocus,
+    pattern,
+  };
+}
 
 function normalizeSeedKey(text) {
   return String(text || "").toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
@@ -2097,13 +2411,16 @@ export default function App() {
   const [flashcards, setFlashcards] = useState([]);
   const [cardIdx, setCardIdx] = useState(0);
   const [flashcardSessionRatings, setFlashcardSessionRatings] = useState({});
+  const [flashcardResponseTimes, setFlashcardResponseTimes] = useState(safeObject(persisted?.flashcardResponseTimes));
   const [flashcardSessionSubmitted, setFlashcardSessionSubmitted] = useState(false);
   const [quiz, setQuiz] = useState([]);
   const [quizIdx, setQuizIdx] = useState(0);
+  const [quizResponseTimes, setQuizResponseTimes] = useState(safeObject(persisted?.quizResponseTimes));
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizAnswerSheetOpen, setQuizAnswerSheetOpen] = useState(false);
   const [simulationQuestions, setSimulationQuestions] = useState([]);
   const [simulationIdx, setSimulationIdx] = useState(0);
+  const [simulationResponseTimes, setSimulationResponseTimes] = useState(safeObject(persisted?.simulationResponseTimes));
   const [simulationSubmitted, setSimulationSubmitted] = useState(false);
   const [simulationSize, setSimulationSize] = useState(50);
   const [simulationUsedAi, setSimulationUsedAi] = useState(false);
@@ -2148,9 +2465,6 @@ export default function App() {
   const [requestHistory, setRequestHistory] = useState(persistedRequests);
   const [requestLoading, setRequestLoading] = useState(false);
   const [requestConfigured, setRequestConfigured] = useState(false);
-  const [subjectShortcutsOpen, setSubjectShortcutsOpen] = useState(
-    persisted?.subjectShortcutsOpen !== false
-  );
   const [calendarMonth, setCalendarMonth] = useState(
     coerceDate(persisted?.calendarMonth)
   );
@@ -2180,6 +2494,10 @@ export default function App() {
   const lastScrollYRef = useRef(0);
   const lastActivityAtRef = useRef(Date.now());
   const lastActivityPersistedAtRef = useRef(0);
+  const flashcardShownAtRef = useRef(Date.now());
+  const quizShownAtRef = useRef(Date.now());
+  const simulationShownAtRef = useRef(Date.now());
+  const inactivityTimeoutRef = useRef(null);
 
   function applyPersistedSnapshot(snapshot, options = {}) {
     const { restoreSubject = false } = options;
@@ -2206,7 +2524,6 @@ export default function App() {
     setUploadedFileName(safeString(snapshot.uploadedFileName));
     setSummaryText(safeString(snapshot.summaryText, "Paste notes or upload a document to generate a reviewer summary."));
     setFilterWeakOnly(Boolean(snapshot.filterWeakOnly));
-    setSubjectShortcutsOpen(snapshot.subjectShortcutsOpen !== false);
     setCalendarMonth(coerceDate(snapshot.calendarMonth));
     setCalendarSelectedDate(snapshot.calendarSelectedDate || getDateInputValue());
     setCalendarEvents(Array.isArray(snapshot.calendarEvents) ? snapshot.calendarEvents : []);
@@ -2215,13 +2532,16 @@ export default function App() {
     setFlashcards(safeArray(snapshot.flashcards));
     setCardIdx(clamp(Number(snapshot.cardIdx || 0), 0, Math.max(safeArray(snapshot.flashcards).length - 1, 0)));
     setFlashcardSessionRatings(safeObject(snapshot.flashcardSessionRatings));
+    setFlashcardResponseTimes(safeObject(snapshot.flashcardResponseTimes));
     setFlashcardSessionSubmitted(Boolean(snapshot.flashcardSessionSubmitted));
     setQuiz(safeArray(snapshot.quiz));
     setQuizIdx(clamp(Number(snapshot.quizIdx || 0), 0, Math.max(safeArray(snapshot.quiz).length - 1, 0)));
+    setQuizResponseTimes(safeObject(snapshot.quizResponseTimes));
     setQuizSubmitted(Boolean(snapshot.quizSubmitted));
     setQuizAnswerSheetOpen(false);
     setSimulationQuestions(safeArray(snapshot.simulationQuestions));
     setSimulationIdx(clamp(Number(snapshot.simulationIdx || 0), 0, Math.max(safeArray(snapshot.simulationQuestions).length - 1, 0)));
+    setSimulationResponseTimes(safeObject(snapshot.simulationResponseTimes));
     setSimulationSubmitted(Boolean(snapshot.simulationSubmitted));
     setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(snapshot.simulationSize)) ? Number(snapshot.simulationSize) : 50);
     setSimulationUsedAi(Boolean(snapshot.simulationUsedAi));
@@ -2335,12 +2655,15 @@ export default function App() {
         flashcards,
         cardIdx,
         flashcardSessionRatings,
+        flashcardResponseTimes,
         flashcardSessionSubmitted,
         quiz,
         quizIdx,
+        quizResponseTimes,
         quizSubmitted,
         simulationQuestions,
         simulationIdx,
+        simulationResponseTimes,
         simulationSubmitted,
         simulationSize,
         simulationUsedAi,
@@ -2355,7 +2678,6 @@ export default function App() {
         uploadedFileName,
         summaryText,
         filterWeakOnly,
-        subjectShortcutsOpen,
         calendarMonth: coerceDate(calendarMonth).toISOString(),
         calendarSelectedDate,
         calendarEvents,
@@ -2375,12 +2697,15 @@ export default function App() {
     flashcards,
     cardIdx,
     flashcardSessionRatings,
+    flashcardResponseTimes,
     flashcardSessionSubmitted,
     quiz,
     quizIdx,
+    quizResponseTimes,
     quizSubmitted,
     simulationQuestions,
     simulationIdx,
+    simulationResponseTimes,
     simulationSubmitted,
     simulationSize,
     simulationUsedAi,
@@ -2395,7 +2720,6 @@ export default function App() {
     uploadedFileName,
     summaryText,
     filterWeakOnly,
-    subjectShortcutsOpen,
     calendarMonth,
     calendarSelectedDate,
     calendarEvents,
@@ -2419,12 +2743,15 @@ export default function App() {
       flashcards,
       cardIdx,
       flashcardSessionRatings,
+      flashcardResponseTimes,
       flashcardSessionSubmitted,
       quiz,
       quizIdx,
+      quizResponseTimes,
       quizSubmitted,
       simulationQuestions,
       simulationIdx,
+      simulationResponseTimes,
       simulationSubmitted,
       simulationSize,
       simulationUsedAi,
@@ -2439,7 +2766,6 @@ export default function App() {
       uploadedFileName,
       summaryText,
       filterWeakOnly,
-      subjectShortcutsOpen,
       calendarMonth: coerceDate(calendarMonth).toISOString(),
       calendarSelectedDate,
       calendarEvents,
@@ -2481,12 +2807,15 @@ export default function App() {
     flashcards,
     cardIdx,
     flashcardSessionRatings,
+    flashcardResponseTimes,
     flashcardSessionSubmitted,
     quiz,
     quizIdx,
+    quizResponseTimes,
     quizSubmitted,
     simulationQuestions,
     simulationIdx,
+    simulationResponseTimes,
     simulationSubmitted,
     simulationSize,
     simulationUsedAi,
@@ -2501,7 +2830,6 @@ export default function App() {
     uploadedFileName,
     summaryText,
     filterWeakOnly,
-    subjectShortcutsOpen,
     calendarMonth,
     calendarSelectedDate,
     calendarEvents,
@@ -2879,6 +3207,47 @@ export default function App() {
   const plannerSummaryLine = plannerRecommendedItem
     ? `${plannerRecommendedItem.title}${plannerRecommendedItem.subject ? ` | ${plannerRecommendedItem.subject}` : ""}`
     : "No active planner items yet";
+  const adaptiveInsights = useMemo(
+    () => summarizePerformanceBuckets(reviewSessions),
+    [reviewSessions]
+  );
+  const recommendedFocus = adaptiveInsights.primaryFocus;
+  const recommendedFocusReason = (() => {
+    if (!recommendedFocus) {
+      return "Complete a flashcard, quiz, or simulation session and CareDrop will start surfacing the areas that may benefit from extra practice.";
+    }
+
+    if (adaptiveInsights.pattern === "exam-practice") {
+      return `Recent exam-style results suggest ${recommendedFocus.subject}${recommendedFocus.topic ? ` | ${formatTopicHeading(recommendedFocus.topic)}` : ""} needs broader application practice before the next full run.`;
+    }
+
+    if (adaptiveInsights.pattern === "remediation") {
+      return `Repeated misses are clustering around ${recommendedFocus.topic ? formatTopicHeading(recommendedFocus.topic) : recommendedFocus.subject}, so you may benefit from extra application-based review next.`;
+    }
+
+    return `Accuracy and confidence are softer in ${recommendedFocus.topic ? formatTopicHeading(recommendedFocus.topic) : recommendedFocus.subject}, which looks more recall-based right now.`;
+  })();
+  const recommendedFocusActionLabel =
+    adaptiveInsights.pattern === "exam-practice"
+      ? "Retry Weak Topics"
+      : adaptiveInsights.pattern === "remediation"
+        ? "Start Remediation Quiz"
+        : "Start Focus Set";
+  const recommendedFocusSecondaryLabel =
+    adaptiveInsights.pattern === "focus-set" ? "Review Missed Items" : "Start Focus Set";
+
+  useEffect(() => {
+    flashcardShownAtRef.current = Date.now();
+  }, [currentCard?.id]);
+
+  useEffect(() => {
+    quizShownAtRef.current = Date.now();
+  }, [quizItem?.id, quizIdx]);
+
+  useEffect(() => {
+    simulationShownAtRef.current = Date.now();
+  }, [simulationItem?.id, simulationIdx]);
+
   const featureUsageSummary = [
     { label: "Flashcard sets", value: reviewSessions.filter((session) => session.mode === "flashcard").length },
     { label: "Quiz sessions", value: reviewSessions.filter((session) => session.mode === "quiz").length },
@@ -3028,6 +3397,62 @@ export default function App() {
     setRequestName("");
     setRequestMessage("");
     setRequestStatus("");
+  }
+
+  function applyRecommendedFocusTarget() {
+    if (!recommendedFocus) {
+      return;
+    }
+
+    setSubject(recommendedFocus.subject && recommendedFocus.subject !== "Mixed Review" ? recommendedFocus.subject : "");
+    setTopicFilter(recommendedFocus.topic || "");
+    setTopicInput(recommendedFocus.topic || "");
+  }
+
+  async function startRecommendedFocusSet() {
+    clearMessages();
+    applyRecommendedFocusTarget();
+    const nextTopic = recommendedFocus?.topic || "";
+
+    queueModeChange("flashcard");
+    if (nextTopic) {
+      await generateClaudeFlashcards(nextTopic);
+      return;
+    }
+
+    loadLocalFlashcardSet("Your recommended flashcard focus set is ready.", nextTopic);
+  }
+
+  async function startRecommendedReviewAction() {
+    clearMessages();
+
+    if (!recommendedFocus) {
+      queueModeChange("flashcard");
+      if (!flashcards.length) {
+        loadLocalFlashcardSet("Your next flashcard set is ready.");
+      }
+      return;
+    }
+
+    applyRecommendedFocusTarget();
+
+    if (adaptiveInsights.pattern === "exam-practice") {
+      openSimulationLauncher();
+      setStatusMessage(
+        recommendedFocus.subject && recommendedFocus.subject !== "Mixed Review"
+          ? `Choose a simulation length to retry broader exam-style practice, with extra attention on ${recommendedFocus.subject}.`
+          : "Choose a simulation length to retry broader exam-style practice."
+      );
+      return;
+    }
+
+    if (adaptiveInsights.pattern === "remediation" && (incorrectReviewItems.length || weakCardIds.length)) {
+      startRemediationMode();
+      return;
+    }
+
+    queueModeChange("quiz");
+    await generateQuiz(recommendedFocus.topic || "");
   }
 
   function resetCalendarDraft() {
@@ -3359,22 +3784,8 @@ export default function App() {
 
     let signingOut = false;
 
-    const markActivity = () => {
-      const now = Date.now();
-      lastActivityAtRef.current = now;
-
-      if (now - lastActivityPersistedAtRef.current > 30000) {
-        saveAuthSession(currentUser);
-        lastActivityPersistedAtRef.current = now;
-      }
-    };
-
-    const checkActivity = window.setInterval(async () => {
+    const expireSession = async () => {
       if (signingOut) {
-        return;
-      }
-
-      if (Date.now() - lastActivityAtRef.current < AUTH_SESSION_MAX_AGE_MS) {
         return;
       }
 
@@ -3385,6 +3796,10 @@ export default function App() {
       }
 
       clearAuthSession();
+      if (inactivityTimeoutRef.current) {
+        window.clearTimeout(inactivityTimeoutRef.current);
+        inactivityTimeoutRef.current = null;
+      }
       setCurrentUser(null);
       setAuthMode("login");
       setAuthPassword("");
@@ -3395,16 +3810,56 @@ export default function App() {
         body: "You were signed out after 10 minutes of inactivity. Sign in again to continue where you left off.",
         actionLabel: "Sign in again",
       });
-    }, 30000);
+    };
 
-    const activityEvents = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+    const scheduleExpiryCheck = () => {
+      if (inactivityTimeoutRef.current) {
+        window.clearTimeout(inactivityTimeoutRef.current);
+      }
+
+      inactivityTimeoutRef.current = window.setTimeout(() => {
+        void expireSession();
+      }, AUTH_SESSION_MAX_AGE_MS);
+    };
+
+    const markActivity = () => {
+      const now = Date.now();
+      lastActivityAtRef.current = now;
+
+      if (now - lastActivityPersistedAtRef.current > 10000) {
+        saveAuthSession(currentUser);
+        lastActivityPersistedAtRef.current = now;
+      }
+
+      scheduleExpiryCheck();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        return;
+      }
+
+      if (Date.now() - lastActivityAtRef.current >= AUTH_SESSION_MAX_AGE_MS) {
+        void expireSession();
+        return;
+      }
+
+      markActivity();
+    };
+
+    const activityEvents = ["mousemove", "keydown", "click", "scroll", "touchstart", "mousedown", "focus"];
     activityEvents.forEach((eventName) => window.addEventListener(eventName, markActivity, { passive: true }));
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     markActivity();
 
     return () => {
-      window.clearInterval(checkActivity);
+      if (inactivityTimeoutRef.current) {
+        window.clearTimeout(inactivityTimeoutRef.current);
+        inactivityTimeoutRef.current = null;
+      }
       activityEvents.forEach((eventName) => window.removeEventListener(eventName, markActivity));
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [currentUser]);
 
@@ -3461,6 +3916,7 @@ export default function App() {
       setFlashcards([]);
       setCardIdx(0);
       setFlashcardSessionRatings({});
+      setFlashcardResponseTimes({});
       setFlashcardSessionSubmitted(false);
 
       if (message) {
@@ -3475,6 +3931,7 @@ export default function App() {
     setRemediationContext(null);
     setCardIdx(0);
     setFlashcardSessionRatings({});
+    setFlashcardResponseTimes({});
     setFlashcardSessionSubmitted(false);
     markFlashcardsAsUsed(deck);
 
@@ -3545,6 +4002,7 @@ export default function App() {
       setCardIdx(0);
       setMode("flashcard");
       setFlashcardSessionRatings({});
+      setFlashcardResponseTimes({});
       setFlashcardSessionSubmitted(false);
       markFlashcardsAsUsed(deck);
       setStatusMessage(
@@ -3644,11 +4102,13 @@ export default function App() {
       if (!fallback.length) {
         setQuiz([]);
         setQuizIdx(0);
+        setQuizResponseTimes({});
         setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
         return;
       }
       setQuiz(fallback);
       setQuizIdx(0);
+      setQuizResponseTimes({});
       setMode("quiz");
       setQuizSubmitted(false);
       setQuizAnswerSheetOpen(false);
@@ -3659,6 +4119,7 @@ export default function App() {
     setApiLoading(true);
     setQuizSubmitted(false);
     setQuizAnswerSheetOpen(false);
+    setQuizResponseTimes({});
 
     try {
       const aiQuestions = await requestQuizBatch(
@@ -3688,6 +4149,7 @@ export default function App() {
       if (!questions.length) {
         setQuiz([]);
         setQuizIdx(0);
+        setQuizResponseTimes({});
         setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
         return;
       }
@@ -3695,6 +4157,7 @@ export default function App() {
       setQuiz(questions);
       setRemediationContext(null);
       setQuizIdx(0);
+      setQuizResponseTimes({});
       setMode("quiz");
       setStatusMessage(
         questions.length >= QUIZ_SET_SIZE
@@ -3736,12 +4199,14 @@ export default function App() {
       if (!fallback.length) {
         setQuiz([]);
         setQuizIdx(0);
+        setQuizResponseTimes({});
         setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
         return;
       }
       setQuiz(fallback);
       setRemediationContext(null);
       setQuizIdx(0);
+      setQuizResponseTimes({});
       setMode("quiz");
       setApiError(
         error.message || "Gemini quiz generation failed. A local 10-question backup quiz has been loaded."
@@ -3773,6 +4238,7 @@ export default function App() {
     setApiLoading(true);
     setSimulationSubmitted(false);
     setSimulationUsedAi(false);
+    setSimulationResponseTimes({});
 
     try {
       const localPool = selectSessionItems(
@@ -3834,6 +4300,7 @@ export default function App() {
       setRemediationContext(null);
       setSimulationIdx(0);
       setSimulationSize(finalTarget);
+      setSimulationResponseTimes({});
       setSimulationSubmitted(false);
       setSimulationLaunchOpen(false);
       setMode("simulation");
@@ -3876,6 +4343,7 @@ export default function App() {
       setRemediationContext(null);
       setSimulationIdx(0);
       setSimulationSize(finalTarget);
+      setSimulationResponseTimes({});
       setSimulationSubmitted(false);
       setSimulationLaunchOpen(false);
       setMode("simulation");
@@ -4002,10 +4470,12 @@ export default function App() {
       cards: flashcards,
       currentIndex: cardIdx,
       cardRatings: flashcardSessionRatings,
+      responseTimes: flashcardResponseTimes,
       score: flashcards.length ? Math.round((flashcardStrongCount / flashcards.length) * 100) : 0,
       answeredCount: flashcardCompletedCount,
       correctCount: flashcardStrongCount,
       weakCount: flashcardNeedsReviewCount,
+      isRemediation: Boolean(remediationContext),
     };
 
     recordReviewSession(session);
@@ -4033,10 +4503,12 @@ export default function App() {
           : "Generated from CareDrop subject bank",
       questions: quiz,
       currentIndex: quizIdx,
+      responseTimes: quizResponseTimes,
       score: quiz.length ? Math.round((correctCount / quiz.length) * 100) : 0,
       answeredCount,
       correctCount,
       submitted: true,
+      isRemediation: Boolean(remediationContext),
     };
 
     recordReviewSession(session);
@@ -4050,9 +4522,15 @@ export default function App() {
       return;
     }
 
+    const elapsed = Math.max(Date.now() - flashcardShownAtRef.current, 0);
+
     setFlashcardSessionRatings((prev) => ({
       ...prev,
       [currentCard.id]: key,
+    }));
+    setFlashcardResponseTimes((prev) => ({
+      ...prev,
+      [currentCard.id]: prev[currentCard.id] ?? elapsed,
     }));
     setRatings((prev) => ({
       ...prev,
@@ -4070,6 +4548,8 @@ export default function App() {
       return;
     }
 
+    const elapsed = Math.max(Date.now() - quizShownAtRef.current, 0);
+
     setQuiz((prev) =>
       prev.map((item, index) =>
         index === quizIdx
@@ -4080,12 +4560,18 @@ export default function App() {
           : item
       )
     );
+    setQuizResponseTimes((prev) => ({
+      ...prev,
+      [quizItem.id || quizItem.prompt || String(quizIdx)]: prev[quizItem.id || quizItem.prompt || String(quizIdx)] ?? elapsed,
+    }));
   }
 
   function handleSimulationAnswer(option) {
     if (!simulationItem || simulationSubmitted) {
       return;
     }
+
+    const elapsed = Math.max(Date.now() - simulationShownAtRef.current, 0);
 
     setSimulationQuestions((prev) =>
       prev.map((item, index) =>
@@ -4097,6 +4583,11 @@ export default function App() {
           : item
       )
     );
+    setSimulationResponseTimes((prev) => ({
+      ...prev,
+      [simulationItem.id || simulationItem.prompt || String(simulationIdx)]:
+        prev[simulationItem.id || simulationItem.prompt || String(simulationIdx)] ?? elapsed,
+    }));
   }
 
   function toggleSimulationFlag() {
@@ -4135,9 +4626,11 @@ export default function App() {
         : "Generated from CareDrop subject bank",
       questions: quiz,
       currentIndex: quizIdx,
+      responseTimes: quizResponseTimes,
       score,
       answeredCount,
       submitted: quizSubmitted,
+      isRemediation: Boolean(remediationContext),
       saved: true,
     };
 
@@ -4152,6 +4645,7 @@ export default function App() {
       setFlashcards(session.cards || []);
       setCardIdx(clamp(session.currentIndex || 0, 0, Math.max((session.cards || []).length - 1, 0)));
       setFlashcardSessionRatings(session.cardRatings || {});
+      setFlashcardResponseTimes(session.responseTimes || {});
       setFlashcardSessionSubmitted(true);
       setMode("flashcard");
       setStatusMessage(`Loaded review session: ${buildSessionLabel(session)}.`);
@@ -4161,6 +4655,7 @@ export default function App() {
     if (session.mode === "simulation") {
       setSimulationQuestions(session.questions || []);
       setSimulationIdx(clamp(session.currentIndex || 0, 0, Math.max((session.questions || []).length - 1, 0)));
+      setSimulationResponseTimes(session.responseTimes || {});
       setSimulationSubmitted(true);
       setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(session.simulationSize)) ? Number(session.simulationSize) : 50);
       setSimulationUsedAi(Boolean(session.usedAi));
@@ -4173,6 +4668,7 @@ export default function App() {
 
     setQuiz(session.questions || []);
     setQuizIdx(clamp(session.currentIndex || 0, 0, Math.max((session.questions || []).length - 1, 0)));
+    setQuizResponseTimes(session.responseTimes || {});
     setQuizSubmitted(Boolean(session.submitted));
     setQuizAnswerSheetOpen(false);
     setMode("quiz");
@@ -4196,6 +4692,7 @@ export default function App() {
         : "Simulation built from the CareDrop review bank",
       questions: simulationQuestions,
       currentIndex: simulationIdx,
+      responseTimes: simulationResponseTimes,
       score: simulationQuestions.length ? Math.round((simulationCorrectCount / simulationQuestions.length) * 100) : 0,
       answeredCount: simulationAnsweredCount,
       correctCount: simulationCorrectCount,
@@ -4298,6 +4795,7 @@ export default function App() {
       }))
     );
     setQuizIdx(0);
+    setQuizResponseTimes({});
     setQuizSubmitted(false);
     setQuizAnswerSheetOpen(false);
     setMode("quiz");
@@ -4339,13 +4837,16 @@ export default function App() {
     setFlashcards([]);
     setCardIdx(0);
     setFlashcardSessionRatings({});
+    setFlashcardResponseTimes({});
     setFlashcardSessionSubmitted(false);
     setQuiz([]);
     setQuizIdx(0);
+    setQuizResponseTimes({});
     setQuizSubmitted(false);
     setQuizAnswerSheetOpen(false);
     setSimulationQuestions([]);
     setSimulationIdx(0);
+    setSimulationResponseTimes({});
     setSimulationSubmitted(false);
     setSimulationSize(50);
     setSimulationUsedAi(false);
@@ -5205,85 +5706,6 @@ export default function App() {
                 </div>
               </div>
 
-              <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
-                <button
-                  type="button"
-                  onClick={() => setSubjectShortcutsOpen((value) => !value)}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                      Subject Shortcuts
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: 12, color: "rgba(231,244,237,0.6)" }}>
-                      Quick jump between major review areas
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 18, color: "#D7ECE0", fontWeight: 700 }}>
-                    {subjectShortcutsOpen ? "▾" : "▸"}
-                  </div>
-                </button>
-
-                {subjectShortcutsOpen ? (
-                  <div
-                    style={{
-                      marginTop: 14,
-                      display: "grid",
-                      gap: 8,
-                      maxHeight: 300,
-                      overflowY: "auto",
-                      paddingRight: 4,
-                    }}
-                  >
-                    {SUBJECT_OPTIONS.map((value) => (
-                      <button
-                        key={value}
-                        onClick={() => {
-                          setSubject(value);
-                          queueModeChange("flashcard");
-                        }}
-                        style={{
-                          width: "100%",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: "10px 12px",
-                          borderRadius: 14,
-                          border: `1px solid ${subject === value ? "#8FD7B1" : "rgba(255,255,255,0.08)"}`,
-                          background: subject === value ? "rgba(143,215,177,0.16)" : "rgba(255,255,255,0.04)",
-                          color: subject === value ? "#F5FFF8" : "#EAF4EE",
-                          fontSize: 13,
-                          fontWeight: subject === value ? 800 : 700,
-                          cursor: "pointer",
-                          textAlign: "left",
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: 999,
-                            background: subject === value ? "#8AF0B2" : "rgba(255,255,255,0.28)",
-                            flexShrink: 0,
-                          }}
-                        />
-                        <span>{value}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
               <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}`, display: "grid", gap: 10 }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
                   System Status
@@ -5530,6 +5952,126 @@ export default function App() {
                         </button>
                       );
                     })}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.15fr) minmax(280px, 0.85fr)",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Recommended Focus
+                      </div>
+                      <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", color: C.text }}>
+                          {recommendedFocus?.subject || "Start with one short set"}
+                        </div>
+                        {recommendedFocus?.topic ? <Badge label={formatTopicHeading(recommendedFocus.topic)} color="blue" /> : null}
+                        {recommendedFocus ? <Badge label="Needs more focus" color="amber" /> : <Badge label="Ready when you are" color="green" />}
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.75, color: C.text }}>
+                        {recommendedFocusReason}
+                      </div>
+                      <div style={{ marginTop: 12, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+                        Suggested next action: <strong style={{ color: C.text }}>{recommendedFocusActionLabel}</strong>
+                      </div>
+                      <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void startRecommendedReviewAction();
+                          }}
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 12,
+                            border: "none",
+                            background: C.accent,
+                            color: "#fff",
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {recommendedFocusActionLabel}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (incorrectReviewItems.length || weakCardIds.length) {
+                              startRemediationMode();
+                              return;
+                            }
+                            void startRecommendedFocusSet();
+                          }}
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 12,
+                            border: `1px solid ${C.border}`,
+                            background: C.surface,
+                            color: C.text,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {recommendedFocusSecondaryLabel}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                        display: "grid",
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Performance Signals
+                      </div>
+                      <div style={{ display: "grid", gap: 10 }}>
+                        <div>
+                          <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Strongest subject</div>
+                          <div style={{ marginTop: 4, fontSize: 15, fontWeight: 800, color: C.text }}>
+                            {adaptiveInsights.strongestSubject
+                              ? `${adaptiveInsights.strongestSubject.subject} · ${Math.round(adaptiveInsights.strongestSubject.accuracy * 100)}% steady`
+                              : "Build a few sessions first"}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Most improved subject</div>
+                          <div style={{ marginTop: 4, fontSize: 15, fontWeight: 800, color: C.text }}>
+                            {adaptiveInsights.mostImprovedSubject
+                              ? `${adaptiveInsights.mostImprovedSubject.subject} · +${adaptiveInsights.mostImprovedSubject.improvement}%`
+                              : "Improvement trends will appear after repeated review"}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Recent weak trend</div>
+                          <div style={{ marginTop: 4, fontSize: 15, fontWeight: 800, color: C.text }}>
+                            {recommendedFocus
+                              ? `${recommendedFocus.subject}${recommendedFocus.topic ? ` · ${formatTopicHeading(recommendedFocus.topic)}` : ""}`
+                              : "No repeating weak area yet"}
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+                            {recommendedFocus
+                              ? `Focus priority ${recommendedFocus.focusScore}/100 based on misses, confidence, speed, and cross-module performance.`
+                              : "Once CareDrop has a little more review history, it will rank subjects and topics by priority for you."}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div
