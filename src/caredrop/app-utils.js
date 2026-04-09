@@ -260,7 +260,8 @@ export function loadRequestPersisted() {
 
   try {
     const raw = window.localStorage.getItem(REQUEST_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
