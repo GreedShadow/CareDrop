@@ -4284,6 +4284,56 @@ export default function App() {
     loadLocalFlashcardSet("Fresh local flashcards loaded after reset.");
   }
 
+  function resetStudyProgressToZero() {
+    if (!currentUser?.id) {
+      return;
+    }
+
+    clearMessages();
+
+    setSubject("");
+    setDifficulty("All");
+    setTopicFilter("");
+    setTopicInput("");
+    setMode("dashboard");
+    setFlashcards([]);
+    setCardIdx(0);
+    setFlashcardSessionRatings({});
+    setFlashcardSessionSubmitted(false);
+    setQuiz([]);
+    setQuizIdx(0);
+    setQuizSubmitted(false);
+    setQuizAnswerSheetOpen(false);
+    setSimulationQuestions([]);
+    setSimulationIdx(0);
+    setSimulationSubmitted(false);
+    setSimulationSize(50);
+    setSimulationUsedAi(false);
+    setSimulationAnswerSheetOpen(false);
+    setSimulationLaunchOpen(true);
+    setRatings({});
+    setSessions(0);
+    setReviewSessions([]);
+    setUsedFlashcardIds([]);
+    setUsedFlashcardQuestions([]);
+    setUsedQuizPrompts([]);
+    setRecentFlashcardIds([]);
+    setRecentQuizPrompts([]);
+    setRemediationContext(null);
+    setFilterWeakOnly(false);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(getProgressStorageKey(currentUser.id));
+    }
+
+    setCloudSyncStatus(
+      currentUser.provider === "supabase"
+        ? "Cloud reset queued for this account."
+        : "Local study progress reset for this account."
+    );
+    setStatusMessage("Study progress was reset to zero for this account.");
+  }
+
   function removeUploadedSource() {
     setUploadedFileName("");
     setUploadedText("");
@@ -5948,6 +5998,45 @@ export default function App() {
             {mode === "admin" && isAdminUser ? (
               <AnalyticsCard title="Admin Overview">
                 <div style={{ display: "grid", gap: 16 }}>
+                  <div
+                    style={{
+                      borderRadius: 18,
+                      padding: 16,
+                      border: `1px solid ${C.red}`,
+                      background: C.redLight,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 14,
+                      alignItems: isMobile ? "flex-start" : "center",
+                      flexDirection: isMobile ? "column" : "row",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 12, color: C.red, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        Test Reset
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 13, color: C.text, lineHeight: 1.7 }}>
+                        Reset this account&apos;s flashcards, quizzes, simulation exam state, review history, and tracked study progress back to zero so you can test the product from a clean slate.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetStudyProgressToZero}
+                      style={{
+                        padding: "10px 16px",
+                        borderRadius: 12,
+                        border: `1px solid ${C.red}`,
+                        background: "#FFFFFF",
+                        color: C.red,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Reset Study Data
+                    </button>
+                  </div>
+
                   <div
                     style={{
                       display: "flex",
