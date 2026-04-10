@@ -1070,6 +1070,7 @@ export default function App() {
   const [adminUsersLoading, setAdminUsersLoading] = useState(false);
   const [adminUsersError, setAdminUsersError] = useState("");
   const [headerVisible, setHeaderVisible] = useState(true);
+  const isAdminUser = isAdminEmail(currentUser?.email);
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
   const usedFlashcardQuestionsRef = useRef(usedFlashcardQuestions);
@@ -1693,7 +1694,6 @@ export default function App() {
     reviewSessions.find((session) => session.saved && session.mode === "quiz") ||
     reviewSessions.find((session) => session.saved);
   const studyStreak = getStudyStreak(reviewSessions);
-  const isAdminUser = isAdminEmail(currentUser?.email);
   const savedSessionCount = reviewSessions.filter((session) => session.saved).length;
   const todayKey = getDateKey();
   const todayAnsweredCount = reviewSessions
