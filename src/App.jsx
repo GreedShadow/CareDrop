@@ -1077,6 +1077,14 @@ export default function App() {
     return initialThemeMode;
   });
   const isAdminUser = isAdminEmail(currentUser?.email);
+  const toggleThemeMode = () => {
+    setThemeMode((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      applyThemeMode(next);
+      persistThemeMode(next);
+      return next;
+    });
+  };
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
   const usedFlashcardQuestionsRef = useRef(usedFlashcardQuestions);
@@ -3767,7 +3775,7 @@ export default function App() {
           onSubmit={handleAuthSubmit}
           onForgotPassword={handleForgotPassword}
           themeMode={themeMode}
-          onToggleTheme={() => setThemeMode((current) => (current === "dark" ? "light" : "dark"))}
+          onToggleTheme={toggleThemeMode}
         />
         <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
       </>
@@ -3878,7 +3886,7 @@ export default function App() {
           >
             {currentUser.name}
           </div>
-          <ThemeToggle mode={themeMode} onToggle={() => setThemeMode((current) => (current === "dark" ? "light" : "dark"))} />
+          <ThemeToggle mode={themeMode} onToggle={toggleThemeMode} />
           <button
             type="button"
             onClick={handleSignOut}

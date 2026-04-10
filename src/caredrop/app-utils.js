@@ -171,7 +171,7 @@ export function loadAuthSession() {
   }
 
   try {
-    const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
+    const raw = window.sessionStorage.getItem(AUTH_SESSION_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
 
     if (!parsed) {
@@ -196,7 +196,7 @@ export function saveAuthSession(user) {
     return;
   }
 
-  window.localStorage.setItem(
+  window.sessionStorage.setItem(
     AUTH_SESSION_KEY,
     JSON.stringify({
       ...user,
@@ -210,7 +210,7 @@ export function clearAuthSession() {
     return;
   }
 
-  window.localStorage.removeItem(AUTH_SESSION_KEY);
+  window.sessionStorage.removeItem(AUTH_SESSION_KEY);
 }
 
 export function loadAccounts() {

@@ -4,10 +4,11 @@ import { loadAuthSession } from "./app-utils";
 describe("loadAuthSession", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("returns null for expired auth sessions", () => {
-    window.localStorage.setItem(
+    window.sessionStorage.setItem(
       AUTH_SESSION_KEY,
       JSON.stringify({
         id: "u1",
@@ -20,7 +21,7 @@ describe("loadAuthSession", () => {
   });
 
   it("returns active auth sessions", () => {
-    window.localStorage.setItem(
+    window.sessionStorage.setItem(
       AUTH_SESSION_KEY,
       JSON.stringify({
         id: "u1",

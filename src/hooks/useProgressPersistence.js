@@ -28,20 +28,20 @@ export function useInactivityTimeout({ currentUser, clearAuthSession, saveAuthSe
   const inactivityTimeoutRef = useRef(null);
   const lastActivityAtRef = useRef(Date.now());
   const lastActivityPersistedAtRef = useRef(0);
+  const signingOutRef = useRef(false);
 
   useEffect(() => {
     if (!currentUser) {
+      signingOutRef.current = false;
       return undefined;
     }
 
-    let signingOut = false;
-
     const expireSession = async () => {
-      if (signingOut) {
+      if (signingOutRef.current) {
         return;
       }
 
-      signingOut = true;
+      signingOutRef.current = true;
       await signOutProvider?.();
       clearAuthSession();
 
@@ -88,9 +88,15 @@ export function useInactivityTimeout({ currentUser, clearAuthSession, saveAuthSe
       markActivity();
     };
 
+    const handlePageHide = () => {
+      clearAuthSession();
+    };
+
     const activityEvents = ["mousemove", "keydown", "click", "scroll", "touchstart", "mousedown", "focus"];
     activityEvents.forEach((eventName) => window.addEventListener(eventName, markActivity, { passive: true }));
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("beforeunload", handlePageHide);
 
     markActivity();
 
@@ -102,6 +108,8 @@ export function useInactivityTimeout({ currentUser, clearAuthSession, saveAuthSe
 
       activityEvents.forEach((eventName) => window.removeEventListener(eventName, markActivity));
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("beforeunload", handlePageHide);
     };
   }, [clearAuthSession, currentUser, onExpire, saveAuthSession, signOutProvider]);
 }
