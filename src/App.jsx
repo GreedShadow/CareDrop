@@ -78,6 +78,11 @@ import {
 } from "./services/progressRepository";
 import { buildRemediationEntries, collectIncorrectQuestions } from "./services/remediation";
 import {
+  buildDueFlashcardPool,
+  getDueTodayCount,
+  updateCardSchedule,
+} from "./services/spacedRepetition";
+import {
   ANSWER_REMINDERS,
   BANK_ITEMS_PER_BUCKET,
   BUCKET_DIFFICULTIES,
@@ -986,6 +991,7 @@ export default function App() {
   const [mode, setMode] = useState(safeMode(persisted?.mode));
   const [flashcards, setFlashcards] = useState([]);
   const [cardIdx, setCardIdx] = useState(0);
+  const [cardSchedule, setCardSchedule] = useState(safeObject(persisted?.cardSchedule));
   const [flashcardSessionRatings, setFlashcardSessionRatings] = useState({});
   const [flashcardResponseTimes, setFlashcardResponseTimes] = useState(safeObject(persisted?.flashcardResponseTimes));
   const [flashcardSessionSubmitted, setFlashcardSessionSubmitted] = useState(false);
@@ -1058,7 +1064,11 @@ export default function App() {
   const [plannerMode, setPlannerMode] = useState("mixed");
   const [plannerDueDate, setPlannerDueDate] = useState(getDateInputValue());
   const [plannerNotes, setPlannerNotes] = useState("");
-  const [adminView, setAdminView] = useState(["overview", "feedback", "planning", "activity"].includes(persisted?.adminView) ? persisted.adminView : "overview");
+  const [adminView, setAdminView] = useState(["overview", "feedback", "planning", "activity", "users"].includes(persisted?.adminView) ? persisted.adminView : "overview");
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminUsersConfigured, setAdminUsersConfigured] = useState(false);
+  const [adminUsersLoading, setAdminUsersLoading] = useState(false);
+  const [adminUsersError, setAdminUsersError] = useState("");
   const [headerVisible, setHeaderVisible] = useState(true);
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
@@ -1084,6 +1094,7 @@ export default function App() {
         reviewSessions,
         flashcards,
         cardIdx,
+        cardSchedule,
         flashcardSessionRatings,
         flashcardResponseTimes,
         flashcardSessionSubmitted,
@@ -1124,6 +1135,7 @@ export default function App() {
       reviewSessions,
       flashcards,
       cardIdx,
+      cardSchedule,
       flashcardSessionRatings,
       flashcardResponseTimes,
       flashcardSessionSubmitted,
@@ -1185,9 +1197,10 @@ export default function App() {
     setCalendarSelectedDate(snapshot.calendarSelectedDate || getDateInputValue());
     setCalendarEvents(Array.isArray(snapshot.calendarEvents) ? snapshot.calendarEvents : []);
     setPlannerItems(Array.isArray(snapshot.plannerItems) ? snapshot.plannerItems : []);
-    setAdminView(["overview", "feedback", "planning", "activity"].includes(snapshot.adminView) ? snapshot.adminView : "overview");
+    setAdminView(["overview", "feedback", "planning", "activity", "users"].includes(snapshot.adminView) ? snapshot.adminView : "overview");
     setFlashcards(safeArray(snapshot.flashcards));
     setCardIdx(clamp(Number(snapshot.cardIdx || 0), 0, Math.max(safeArray(snapshot.flashcards).length - 1, 0)));
+    setCardSchedule(safeObject(snapshot.cardSchedule));
     setFlashcardSessionRatings(safeObject(snapshot.flashcardSessionRatings));
     setFlashcardResponseTimes(safeObject(snapshot.flashcardResponseTimes));
     setFlashcardSessionSubmitted(Boolean(snapshot.flashcardSessionSubmitted));
@@ -1453,6 +1466,53 @@ export default function App() {
     loadCentralRequests();
   }, []);
 
+  useEffect(() => {
+    if (!isAdminUser || !currentUser) {
+      setAdminUsers([]);
+      setAdminUsersConfigured(false);
+      setAdminUsersError("");
+      return;
+    }
+
+    let active = true;
+
+    async function loadAdminUsers() {
+      setAdminUsersLoading(true);
+      setAdminUsersError("");
+
+      try {
+        const data = await getJson("/api/admin/users");
+        if (!active) {
+          return;
+        }
+
+        setAdminUsers(Array.isArray(data.users) ? data.users : []);
+        setAdminUsersConfigured(Boolean(data.configured));
+        if (!data.configured && data.error) {
+          setAdminUsersError(data.error);
+        }
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        setAdminUsers([]);
+        setAdminUsersConfigured(false);
+        setAdminUsersError(error.message || "Admin user analytics could not load right now.");
+      } finally {
+        if (active) {
+          setAdminUsersLoading(false);
+        }
+      }
+    }
+
+    loadAdminUsers();
+
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id, isAdminUser, reviewSessions.length]);
+
   const studyText = buildStudyText(noteText, uploadedText);
   const hasCustomSource = Boolean(studyText);
   const activeTopicFocus = String(topicInput || "").trim() || String(topicFilter || "").trim();
@@ -1706,6 +1766,7 @@ export default function App() {
     : "No active planner items yet";
   const adaptiveInsights = useAdaptiveInsights(reviewSessions);
   const recommendedFocus = adaptiveInsights.primaryFocus;
+  const dueTodayCount = useMemo(() => getDueTodayCount(cardSchedule), [cardSchedule]);
   const recommendedFocusReason = (() => {
     if (!recommendedFocus) {
       return "Complete a flashcard, quiz, or simulation session and CareDrop will start surfacing the areas that may benefit from extra practice.";
@@ -1729,6 +1790,21 @@ export default function App() {
         : "Start Focus Set";
   const recommendedFocusSecondaryLabel =
     adaptiveInsights.pattern === "focus-set" ? "Review Missed Items" : "Start Focus Set";
+  const recommendationExplanationItems = adaptiveInsights.recommendationReasons?.length
+    ? adaptiveInsights.recommendationReasons
+    : ["CareDrop will explain its next recommendation more clearly after a little more review data is available."];
+  const remediationEffectivenessLine = adaptiveInsights.remediationSummary?.improvedTopic
+    ? `${formatTopicHeading(adaptiveInsights.remediationSummary.improvedTopic.topic || adaptiveInsights.remediationSummary.improvedTopic.subject)} is responding better after remediation.`
+    : adaptiveInsights.remediationSummary?.strugglingTopic
+      ? `${formatTopicHeading(adaptiveInsights.remediationSummary.strugglingTopic.topic || adaptiveInsights.remediationSummary.strugglingTopic.subject)} still needs another pass even after remediation.`
+      : "Remediation recovery trends will appear after at least one before-and-after recovery attempt.";
+  const adminUserAverageScore = adminUsers.length
+    ? Math.round(adminUsers.reduce((total, user) => total + Number(user.averageScore || 0), 0) / adminUsers.length)
+    : 0;
+  const adminMostActiveUser = adminUsers[0] || null;
+  const adminWeakestUser = [...adminUsers]
+    .filter((user) => user.weakSubject || Number(user.averageScore || 0) > 0)
+    .sort((left, right) => Number(left.averageScore || 0) - Number(right.averageScore || 0))[0] || null;
 
   useEffect(() => {
     flashcardShownAtRef.current = Date.now();
@@ -2332,22 +2408,42 @@ export default function App() {
   function buildLocalFlashcardSet(activeTopic = topicFilter) {
     const resolvedTopic = getActiveTopicFocus(activeTopic);
     const reviewSubject = resolveReviewSubject(resolvedTopic);
-    let candidates = uniqueBy(
+    const candidates = uniqueBy(
       getExactEntries(activeEntries, reviewSubject, difficulty, resolvedTopic).flatMap((entry) => buildFlashcardVariants(entry)),
       (card) => card.id
     );
+    const filteredCandidates = filterWeakOnly
+      ? candidates.filter((card) => weakCardIds.includes(card.id))
+      : candidates;
+    const dueCandidates = buildDueFlashcardPool(filteredCandidates, cardSchedule);
 
-    if (filterWeakOnly) {
-      candidates = candidates.filter((card) => weakCardIds.includes(card.id));
+    if (dueCandidates.length >= FLASHCARD_SET_SIZE) {
+      return selectSessionItems(
+        dueCandidates,
+        FLASHCARD_SET_SIZE,
+        hasCustomSource ? [] : usedFlashcardIdsRef.current,
+        recentFlashcardIdsRef.current,
+        (card) => card.id
+      );
     }
 
-    return selectSessionItems(
-      candidates,
-      FLASHCARD_SET_SIZE,
+    const remainingCandidates = filteredCandidates.filter((card) => !dueCandidates.some((dueCard) => dueCard.id === card.id));
+    const dueSelection = selectSessionItems(
+      dueCandidates,
+      Math.min(dueCandidates.length, FLASHCARD_SET_SIZE),
+      [],
+      [],
+      (card) => card.id
+    );
+    const fillSelection = selectSessionItems(
+      remainingCandidates,
+      FLASHCARD_SET_SIZE - dueSelection.length,
       hasCustomSource ? [] : usedFlashcardIdsRef.current,
       recentFlashcardIdsRef.current,
       (card) => card.id
     );
+
+    return [...dueSelection, ...fillSelection].slice(0, FLASHCARD_SET_SIZE);
   }
 
   function loadLocalFlashcardSet(message, activeTopic = topicFilter) {
@@ -2933,7 +3029,7 @@ export default function App() {
     const session = {
       id: uid(),
       createdAt: new Date().toISOString(),
-      mode: "quiz",
+      mode: remediationContext ? "remediation" : "quiz",
       subject,
       difficulty,
       topic: topicFilter,
@@ -2950,6 +3046,7 @@ export default function App() {
       correctCount,
       submitted: true,
       isRemediation: Boolean(remediationContext),
+      previousScore: remediationContext?.previousScore ?? null,
     };
 
     recordReviewSession(session);
@@ -2977,6 +3074,13 @@ export default function App() {
       ...prev,
       [currentCard.id]: key,
     }));
+    setCardSchedule((prev) =>
+      updateCardSchedule(prev, {
+        cardId: currentCard.id,
+        rating: key,
+        reviewedAt: new Date(),
+      })
+    );
 
     if (cardIdx < flashcards.length - 1) {
       setCardIdx((value) => value + 1);
@@ -3244,6 +3348,7 @@ export default function App() {
       sourceSessionId: baseSession?.id || "",
       weakestSubject: targetedSubject || remediationEntries[0]?.subject || "",
       topic: targetedTopic,
+      previousScore: Number(baseSession?.score || 0),
       createdAt: new Date().toISOString(),
     });
     setStatusMessage(
@@ -3277,6 +3382,7 @@ export default function App() {
     setMode("dashboard");
     setFlashcards([]);
     setCardIdx(0);
+    setCardSchedule({});
     setFlashcardSessionRatings({});
     setFlashcardResponseTimes({});
     setFlashcardSessionSubmitted(false);
@@ -4485,9 +4591,34 @@ export default function App() {
                       <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.75, color: C.text }}>
                         {recommendedFocusReason}
                       </div>
+                      <div
+                        style={{
+                          marginTop: 12,
+                          padding: "12px 14px",
+                          borderRadius: 14,
+                          background: "#F5F9F6",
+                          border: `1px solid ${C.border}`,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          Why this is recommended
+                        </div>
+                        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                          {recommendationExplanationItems.map((reason) => (
+                            <div key={reason} style={{ fontSize: 13, lineHeight: 1.7, color: C.text }}>
+                              • {reason}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                       <div style={{ marginTop: 12, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
                         Suggested next action: <strong style={{ color: C.text }}>{recommendedFocusActionLabel}</strong>
                       </div>
+                      {dueTodayCount ? (
+                        <div style={{ marginTop: 8, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+                          {dueTodayCount} flashcard{dueTodayCount === 1 ? "" : "s"} due today can be used as your next lighter review queue.
+                        </div>
+                      ) : null}
                       <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
                         <button
                           type="button"
@@ -4601,7 +4732,9 @@ export default function App() {
                       <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7, color: C.text }}>
                         {savedSessionWaiting
                           ? `You still have ${buildSessionLabel(savedSessionWaiting)} waiting. Reopening saved work is one of the easiest ways to keep your review streak healthy.`
-                          : studyStreak
+                          : dueTodayCount
+                            ? `${dueTodayCount} card${dueTodayCount === 1 ? "" : "s"} are due today for spaced review, so you already have a gentle retention queue ready.`
+                            : studyStreak
                             ? `You are on a ${studyStreak}-day streak. One more short set today protects that rhythm.`
                             : "No streak yet. One completed session today is enough to start a steady review pattern."}
                       </div>
@@ -4621,10 +4754,18 @@ export default function App() {
                       <div style={{ marginTop: 10, fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em" }}>
                         {incorrectReviewItems.length || weakCardIds.length ? "Weak-area recovery ready" : "Build it after your first misses"}
                       </div>
+                      {adaptiveInsights.remediationSummary?.improved ? (
+                        <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <Badge label="Recovery improving" color="green" />
+                        </div>
+                      ) : null}
                       <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7, color: C.text }}>
                         {incorrectReviewItems.length || weakCardIds.length
                           ? `${incorrectReviewItems.length || weakCardIds.length} review misses are available to turn into a fresh remediation quiz, with extra emphasis on ${remediationFocusSubject || "your weakest subjects"}.`
                           : "Once quiz or simulation misses begin to appear, CareDrop can turn them into a short recovery set instead of making you search manually."}
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.7, color: C.muted }}>
+                        {remediationEffectivenessLine}
                       </div>
                       {incorrectReviewItems.length || weakCardIds.length ? (
                         <button
@@ -5118,6 +5259,7 @@ export default function App() {
                       ["feedback", "Feedback"],
                       ["planning", "Planning"],
                       ["activity", "Activity"],
+                      ["users", "Users"],
                     ].map(([value, label]) => (
                       <button
                         key={value}
@@ -5150,6 +5292,15 @@ export default function App() {
                         label: "Tracked Sessions",
                         value: reviewSessions.length,
                         helper: reviewSessions.length ? `${reviewSessionAverage}% average session score` : "No sessions tracked yet",
+                      },
+                      {
+                        label: "Learners",
+                        value: adminUsersConfigured ? adminUsers.length : "—",
+                        helper: adminUsersConfigured
+                          ? adminUsers.length
+                            ? `${adminUserAverageScore}% average learner score`
+                            : "No synced learners yet"
+                          : "User analytics needs server-side Supabase admin access",
                       },
                       {
                         label: "Saved Sessions",
@@ -5573,6 +5724,107 @@ export default function App() {
                       </div>
                       <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                         Readiness score snapshot: <strong>{readinessScore}%</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: adminView === "users" ? "grid" : "none",
+                      gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.1fr) minmax(300px, 0.9fr)",
+                      gap: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Learner Analytics
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.7, color: C.muted }}>
+                            Signed-in learner progress synced from Supabase for admin review.
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 12, color: adminUsersConfigured ? C.accent : C.amber, fontWeight: 800 }}>
+                          {adminUsersConfigured ? "Supabase admin access connected" : "Needs SUPABASE_SERVICE_ROLE_KEY"}
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                        {adminUsersLoading ? (
+                          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                            Loading learner analytics...
+                          </div>
+                        ) : adminUsers.length ? (
+                          adminUsers.slice(0, 12).map((user) => (
+                            <div
+                              key={user.id}
+                              style={{
+                                padding: "14px 16px",
+                                borderRadius: 14,
+                                background: "#FFFFFF",
+                                border: `1px solid ${C.border}`,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                                <div>
+                                  <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
+                                    {user.name || user.email || "Unnamed learner"}
+                                  </div>
+                                  <div style={{ marginTop: 4, fontSize: 12, color: C.muted }}>
+                                    {user.email || "No email available"}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                  <Badge label={`${user.averageScore || 0}% avg`} color={Number(user.averageScore || 0) >= 75 ? "green" : Number(user.averageScore || 0) >= 60 ? "amber" : "red"} />
+                                  <Badge label={`${user.totalSessions || 0} sessions`} color="gray" />
+                                </div>
+                              </div>
+                              <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+                                <div>Last active: <strong style={{ color: C.text }}>{user.lastActiveAt ? getLocalDateLabel(user.lastActiveAt) : "No study sessions yet"}</strong></div>
+                                <div>Weakest visible area: <strong style={{ color: C.text }}>{user.weakSubject || "Not enough data yet"}</strong></div>
+                                <div>Modules used: <strong style={{ color: C.text }}>{user.flashcardSessions || 0}</strong> flashcards, <strong style={{ color: C.text }}>{user.quizSessions || 0}</strong> quizzes, <strong style={{ color: C.text }}>{user.simulationSessions || 0}</strong> simulations</div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                            {adminUsersError || "No synced learners are visible yet. Once learners sign in and sync progress, they will appear here."}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        padding: 18,
+                        border: `1px solid ${C.border}`,
+                        background: "#FCFBF8",
+                        display: "grid",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        User Signals
+                      </div>
+                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        Most active learner: <strong>{adminMostActiveUser?.name || adminMostActiveUser?.email || "Not enough synced data yet"}</strong>
+                      </div>
+                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        Average learner score: <strong>{adminUserAverageScore}%</strong>
+                      </div>
+                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        Learner needing the most support: <strong>{adminWeakestUser?.name || adminWeakestUser?.email || "Not enough synced data yet"}</strong>{adminWeakestUser?.weakSubject ? ` in ${adminWeakestUser.weakSubject}` : ""}
+                      </div>
+                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        Sync requirement: <strong>{adminUsersConfigured ? "Connected" : "Add SUPABASE_SERVICE_ROLE_KEY to the server environment"}</strong>
                       </div>
                     </div>
                   </div>

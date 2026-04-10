@@ -19,6 +19,7 @@ function createPerformanceBucket(subject, topic = "") {
     modules: new Set(),
     scores: [],
     remediationScores: [],
+    remediationPairs: [],
   };
 }
 
@@ -47,6 +48,7 @@ function recordPerformanceAttempt(
     module = "quiz",
     score = null,
     remediationScore = null,
+    previousScore = null,
   }
 ) {
   const bucket = getOrCreatePerformanceBucket(bucketMap, subject, topic);
@@ -68,6 +70,14 @@ function recordPerformanceAttempt(
 
   if (typeof remediationScore === "number") {
     bucket.remediationScores.push(remediationScore);
+  }
+
+  if (typeof remediationScore === "number" && typeof previousScore === "number") {
+    bucket.remediationPairs.push({
+      before: previousScore,
+      after: remediationScore,
+      delta: remediationScore - previousScore,
+    });
   }
 }
 
@@ -92,9 +102,9 @@ export function summarizePerformanceBuckets(reviewSessions) {
       const topic = item.topic || session.topic || "";
       const key = item.id || item.prompt || item.question || `${session.id}-${index}`;
       const responseTime = Number(responseTimes[key] || 0);
-      const selected = item.selected;
-      const correctOption = item.answer;
-      const rating = item.rating;
+      const selected = item.selected ?? item.userAnswer;
+      const correctOption = item.answer ?? item.correctAnswer;
+      const rating = item.rating ?? session.cardRatings?.[key] ?? null;
       const correct =
         typeof item.correct === "boolean"
           ? item.correct
@@ -114,6 +124,7 @@ export function summarizePerformanceBuckets(reviewSessions) {
         module: session.mode || "review",
         score: sessionScore,
         remediationScore: session.mode === "remediation" ? sessionScore : null,
+        previousScore: session.mode === "remediation" ? Number(session.previousScore || 0) : null,
       });
 
       recordPerformanceAttempt(subjectBuckets, {
@@ -125,6 +136,7 @@ export function summarizePerformanceBuckets(reviewSessions) {
         module: session.mode || "review",
         score: sessionScore,
         remediationScore: session.mode === "remediation" ? sessionScore : null,
+        previousScore: session.mode === "remediation" ? Number(session.previousScore || 0) : null,
       });
     });
 
@@ -137,6 +149,7 @@ export function summarizePerformanceBuckets(reviewSessions) {
         module: session.mode || "review",
         score: sessionScore,
         remediationScore: session.mode === "remediation" ? sessionScore : null,
+        previousScore: session.mode === "remediation" ? Number(session.previousScore || 0) : null,
       });
     }
   });
@@ -149,6 +162,9 @@ export function summarizePerformanceBuckets(reviewSessions) {
       bucket.remediationScores.length > 1
         ? bucket.remediationScores[bucket.remediationScores.length - 1] - bucket.remediationScores[0]
         : 0;
+    const remediationEffectiveness = bucket.remediationPairs.length
+      ? average(bucket.remediationPairs.map((pair) => pair.delta))
+      : 0;
     const focusScore = Math.round(
       ((1 - accuracy) * 45) +
         Math.min(bucket.repeatedMisses * 8, 20) +
@@ -169,6 +185,7 @@ export function summarizePerformanceBuckets(reviewSessions) {
       focusScore,
       modules: [...bucket.modules],
       improvement,
+      remediationEffectiveness,
       latestScore: bucket.scores.length ? bucket.scores[bucket.scores.length - 1] : 0,
     };
   };
@@ -224,6 +241,52 @@ export function summarizePerformanceBuckets(reviewSessions) {
     };
   })();
 
+  const recommendationReasons = [];
+
+  if (primaryFocus) {
+    if (primaryFocus.accuracy < 0.65) {
+      recommendationReasons.push(`Accuracy is down to ${Math.round(primaryFocus.accuracy * 100)}% in this area.`);
+    }
+
+    if (primaryFocus.repeatedMisses > 0) {
+      recommendationReasons.push(`Repeated misses are clustering here (${primaryFocus.repeatedMisses} repeated misses).`);
+    }
+
+    if (primaryFocus.averageResponseTime > 18000) {
+      recommendationReasons.push(`Response times are slower here at about ${Math.round(primaryFocus.averageResponseTime / 1000)} seconds per item.`);
+    }
+
+    if (primaryFocus.lowConfidenceRatio >= 0.35) {
+      recommendationReasons.push("Confidence still looks soft here, so another calm pass may help the answer pattern stick.");
+    }
+
+    if (primaryFocus.remediationEffectiveness < 5 && primaryFocus.modules.includes("remediation")) {
+      recommendationReasons.push("Recent remediation is still not lifting this topic enough yet.");
+    }
+  }
+
+  const remediationSummary = (() => {
+    const remediationBuckets = topicSummary
+      .filter((item) => item.modules.includes("remediation") && item.attempts >= 1)
+      .sort((left, right) => right.remediationEffectiveness - left.remediationEffectiveness);
+
+    const improved = remediationBuckets.find((item) => item.remediationEffectiveness > 0) || null;
+    const struggling = remediationBuckets.find((item) => item.remediationEffectiveness <= 0) || null;
+
+    return {
+      improvedTopic: improved,
+      strugglingTopic: struggling,
+      improved: Boolean(improved),
+    };
+  })();
+
+  const pattern =
+    recommendedAction.type === "simulation"
+      ? "exam-practice"
+      : recommendedAction.type === "remediation"
+        ? "remediation"
+        : "focus-set";
+
   return {
     primaryFocus,
     topicSummary,
@@ -231,5 +294,8 @@ export function summarizePerformanceBuckets(reviewSessions) {
     strongestSubject,
     mostImprovedSubject,
     recommendedAction,
+    recommendationReasons,
+    remediationSummary,
+    pattern,
   };
 }

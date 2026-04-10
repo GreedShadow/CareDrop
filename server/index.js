@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import cors from "cors";
 import express from "express";
 import multer from "multer";
+import { listAdminUsers } from "./admin-analytics.js";
 import { buildStudyContext, generateJson, generateText, model, requireClient } from "./ai-utils.js";
 import { generateValidatedCards, generateValidatedQuestions } from "./ai-validation.js";
 import { extractFileText, SUPPORTED_EXTENSIONS } from "./extract-utils.js";
@@ -78,6 +79,19 @@ app.post("/api/feedback", async (req, res) => {
   } catch (error) {
     console.error("Feedback create error:", error);
     return jsonError(res, 500, error.message || "Failed to submit the feedback request.");
+  }
+});
+
+app.get("/api/admin/users", async (_req, res) => {
+  try {
+    const payload = await listAdminUsers();
+    return res.json({
+      success: true,
+      ...payload,
+    });
+  } catch (error) {
+    console.error("Admin users error:", error);
+    return jsonError(res, 500, error.message || "Failed to load admin analytics.");
   }
 });
 

@@ -47,6 +47,7 @@ You should choose and document one production path clearly:
 - `GEMINI_MODEL`
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` for admin user analytics
 - `VITE_ADMIN_EMAILS`
 - `GITHUB_FEEDBACK_TOKEN`
 - `GITHUB_FEEDBACK_REPO`
@@ -85,6 +86,14 @@ CareDrop can use Supabase's free tier for sign-in and progress sync.
 5. Redeploy the app.
 
 If Supabase keys are not configured, the app falls back to device-local accounts and storage.
+
+## Admin User Analytics
+
+To let the admin dashboard see synced learner activity across users, add:
+
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+This is server-only and should not be exposed as a `VITE_` variable. Once configured, the admin area can load user-level study summaries from `user_progress`.
 
 ## Structured Data Roadmap
 

@@ -14,6 +14,7 @@ describe("progressRepository", () => {
       reviewSessions: [],
       flashcards: [],
       cardIdx: 0,
+      cardSchedule: {},
       flashcardSessionRatings: {},
       flashcardResponseTimes: {},
       flashcardSessionSubmitted: false,
@@ -48,6 +49,7 @@ describe("progressRepository", () => {
     expect(snapshot.subject).toBe("Pharmacology");
     expect(snapshot.calendarMonth).toContain("2026-04-01");
     expect(snapshot.uploadedFileName).toBe("file.txt");
+    expect(snapshot.cardSchedule).toEqual({});
   });
 
   it("creates structured rows from snapshot data", () => {

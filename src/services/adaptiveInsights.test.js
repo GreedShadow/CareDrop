@@ -36,5 +36,48 @@ describe("summarizePerformanceBuckets", () => {
     expect(result.primaryFocus.topic).toBe("cardio");
     expect(result.recommendedAction).toBeTruthy();
     expect(["remediation", "simulation"]).toContain(result.recommendedAction.type);
+    expect(result.recommendationReasons.length).toBeGreaterThan(0);
+    expect(result.pattern).toBeTruthy();
+  });
+
+  it("tracks remediation recovery trends", () => {
+    const sessions = [
+      {
+        id: "r1",
+        mode: "remediation",
+        subject: "Pharmacology",
+        score: 78,
+        previousScore: 42,
+        topic: "insulin",
+        questions: [{ id: "q1", topic: "insulin", selected: 1, answer: 1 }],
+      },
+    ];
+
+    const result = summarizePerformanceBuckets(sessions);
+
+    expect(result.remediationSummary.improved).toBe(true);
+    expect(result.remediationSummary.improvedTopic?.topic).toBe("insulin");
+  });
+
+  it("reads flashcard ratings from saved cardRatings maps", () => {
+    const sessions = [
+      {
+        id: "f1",
+        mode: "flashcard",
+        subject: "Fundamentals",
+        score: 50,
+        responseTimes: { card1: 8000, card2: 12000 },
+        cardRatings: { card1: "again", card2: "easy" },
+        cards: [
+          { id: "card1", topic: "infection control" },
+          { id: "card2", topic: "infection control" },
+        ],
+      },
+    ];
+
+    const result = summarizePerformanceBuckets(sessions);
+
+    expect(result.primaryFocus?.subject).toBe("Fundamentals");
+    expect(result.primaryFocus?.topic).toBe("infection control");
   });
 });
