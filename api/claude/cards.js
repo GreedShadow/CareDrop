@@ -2,32 +2,9 @@ import { sendJson, readJsonBody } from "../utils.js";
 import {
   buildStudyContext,
   generateJson,
-  model,
   requireClient,
 } from "../../server/ai-utils.js";
-
-const cardSchema = {
-  type: "object",
-  properties: {
-    cards: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          subject: { type: "string" },
-          difficulty: { type: "string", enum: ["easy", "medium", "hard"] },
-          question: { type: "string" },
-          answer: { type: "string" },
-          rationale: { type: "string" },
-          notes: { type: "string" },
-          topic: { type: "string" },
-        },
-        required: ["subject", "difficulty", "question", "answer", "rationale", "notes", "topic"],
-      },
-    },
-  },
-  required: ["cards"],
-};
+import { generateValidatedCards } from "../../server/ai-validation.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -58,10 +35,9 @@ export default async function handler(req, res) {
         ? "Use a balanced mix of easy, medium, and hard flashcards."
         : `Every flashcard must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
 
-    const parsed = await generateJson(client, {
-      systemInstruction:
-        `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt.`,
-      prompt: [
+    const systemInstruction =
+      `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt.`;
+    const prompt = [
         "Build nursing study cards for a learner preparing for the Philippine PRC Nurse Licensure Examination.",
         difficultyInstruction,
         context,
@@ -69,12 +45,18 @@ export default async function handler(req, res) {
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the cards fresh and distinct.",
-      ].join("\n\n"),
-      schema: cardSchema,
-      maxOutputTokens: 2200,
-    });
+      ].join("\n\n");
 
-    const cards = Array.isArray(parsed?.cards) ? parsed.cards.slice(0, count) : [];
+    const cards = await generateValidatedCards({
+      client,
+      generateJson,
+      systemInstruction,
+      prompt,
+      count,
+      difficulty,
+      maxOutputTokens: 2200,
+      logger: console,
+    });
     return sendJson(res, 200, { success: true, cards });
   } catch (error) {
     console.error("Vercel Gemini cards error:", error);

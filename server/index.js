@@ -6,6 +6,7 @@ import cors from "cors";
 import express from "express";
 import multer from "multer";
 import { buildStudyContext, generateJson, generateText, model, requireClient } from "./ai-utils.js";
+import { generateValidatedCards, generateValidatedQuestions } from "./ai-validation.js";
 import { extractFileText, SUPPORTED_EXTENSIONS } from "./extract-utils.js";
 import { createFeedbackRequest, listFeedbackRequests } from "./feedback-utils.js";
 
@@ -197,10 +198,9 @@ app.post("/api/claude/cards", async (req, res) => {
         ? "Use a balanced mix of easy, medium, and hard flashcards."
         : `Every flashcard must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
 
-    const parsed = await generateJson(client, {
-      systemInstruction:
-        `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt.`,
-      prompt: [
+    const systemInstruction =
+      `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt.`;
+    const prompt = [
         "Build nursing study cards for a learner preparing for the Philippine PRC Nurse Licensure Examination.",
         difficultyInstruction,
         context,
@@ -208,33 +208,18 @@ app.post("/api/claude/cards", async (req, res) => {
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the cards fresh and distinct.",
-      ].join("\n\n"),
-      schema: {
-        type: "object",
-        properties: {
-          cards: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                subject: { type: "string" },
-                difficulty: { type: "string", enum: ["easy", "medium", "hard"] },
-                question: { type: "string" },
-                answer: { type: "string" },
-                rationale: { type: "string" },
-                notes: { type: "string" },
-                topic: { type: "string" },
-              },
-              required: ["subject", "difficulty", "question", "answer", "rationale", "notes", "topic"],
-            },
-          },
-        },
-        required: ["cards"],
-      },
-      maxOutputTokens: 2200,
-    });
+      ].join("\n\n");
 
-    const cards = Array.isArray(parsed?.cards) ? parsed.cards.slice(0, count) : [];
+    const cards = await generateValidatedCards({
+      client,
+      generateJson,
+      systemInstruction,
+      prompt,
+      count,
+      difficulty,
+      maxOutputTokens: 2200,
+      logger: console,
+    });
     return res.json({ success: true, cards });
   } catch (error) {
     console.error("Gemini cards error:", error);
@@ -271,10 +256,9 @@ app.post("/api/claude/quiz", async (req, res) => {
       ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form board review: broad subject coverage, clinically varied stems, strong prioritization language, and no repetitive wording.`
       : "Make the set feel like a focused quiz batch.";
 
-    const parsed = await generateJson(client, {
-      systemInstruction:
-        "You generate PRC NLE-style nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.",
-      prompt: [
+    const systemInstruction =
+      "You generate PRC NLE-style nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
+    const prompt = [
         `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
         difficultyInstruction,
         examInstruction,
@@ -283,39 +267,18 @@ app.post("/api/claude/quiz", async (req, res) => {
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the questions fresh and not repetitive.",
-      ].join("\n\n"),
-      schema: {
-        type: "object",
-        properties: {
-          questions: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                subject: { type: "string" },
-                difficulty: { type: "string", enum: ["easy", "medium", "hard"] },
-                topic: { type: "string" },
-                prompt: { type: "string" },
-                correctAnswer: { type: "string" },
-                options: {
-                  type: "array",
-                  items: { type: "string" },
-                  minItems: 4,
-                  maxItems: 4,
-                },
-                rationale: { type: "string" },
-                notes: { type: "string" },
-              },
-              required: ["subject", "difficulty", "topic", "prompt", "correctAnswer", "options", "rationale", "notes"],
-            },
-          },
-        },
-        required: ["questions"],
-      },
-      maxOutputTokens: 3600,
-    });
+      ].join("\n\n");
 
-    const questions = Array.isArray(parsed?.questions) ? parsed.questions.slice(0, count) : [];
+    const questions = await generateValidatedQuestions({
+      client,
+      generateJson,
+      systemInstruction,
+      prompt,
+      count,
+      difficulty,
+      maxOutputTokens: 3600,
+      logger: console,
+    });
     return res.json({ success: true, questions });
   } catch (error) {
     console.error("Gemini quiz error:", error);

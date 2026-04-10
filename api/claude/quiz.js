@@ -2,38 +2,9 @@ import { sendJson, readJsonBody } from "../utils.js";
 import {
   buildStudyContext,
   generateJson,
-  model,
   requireClient,
 } from "../../server/ai-utils.js";
-
-const quizSchema = {
-  type: "object",
-  properties: {
-    questions: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          subject: { type: "string" },
-          difficulty: { type: "string", enum: ["easy", "medium", "hard"] },
-          topic: { type: "string" },
-          prompt: { type: "string" },
-          correctAnswer: { type: "string" },
-          options: {
-            type: "array",
-            items: { type: "string" },
-            minItems: 4,
-            maxItems: 4,
-          },
-          rationale: { type: "string" },
-          notes: { type: "string" },
-        },
-        required: ["subject", "difficulty", "topic", "prompt", "correctAnswer", "options", "rationale", "notes"],
-      },
-    },
-  },
-  required: ["questions"],
-};
+import { generateValidatedQuestions } from "../../server/ai-validation.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -69,10 +40,9 @@ export default async function handler(req, res) {
       ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form board review: broad subject coverage, clinically varied stems, strong prioritization language, and no repetitive wording.`
       : "Make the set feel like a focused quiz batch.";
 
-    const parsed = await generateJson(client, {
-      systemInstruction:
-        "You generate PRC NLE-style nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.",
-      prompt: [
+    const systemInstruction =
+      "You generate PRC NLE-style nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
+    const prompt = [
         `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
         difficultyInstruction,
         examInstruction,
@@ -81,12 +51,18 @@ export default async function handler(req, res) {
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the questions fresh and not repetitive.",
-      ].join("\n\n"),
-      schema: quizSchema,
-      maxOutputTokens: 3600,
-    });
+      ].join("\n\n");
 
-    const questions = Array.isArray(parsed?.questions) ? parsed.questions.slice(0, count) : [];
+    const questions = await generateValidatedQuestions({
+      client,
+      generateJson,
+      systemInstruction,
+      prompt,
+      count,
+      difficulty,
+      maxOutputTokens: 3600,
+      logger: console,
+    });
     return sendJson(res, 200, { success: true, questions });
   } catch (error) {
     console.error("Vercel Gemini quiz error:", error);

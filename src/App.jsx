@@ -67,6 +67,7 @@ import { RequestModal } from "./features/admin/RequestModal";
 import { AuthScreen } from "./features/auth/AuthScreen";
 import { TermsModal } from "./features/auth/TermsModal";
 import { SavedSessionCard } from "./features/history/SavedSessionCard";
+import { ErrorBoundary } from "./features/shared/ErrorBoundary";
 import { useAdaptiveInsights } from "./hooks/useAdaptiveInsights";
 import { safeArray, safeMode, safeObject, safeString, useInactivityTimeout } from "./hooks/useProgressPersistence";
 import {
@@ -976,6 +977,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(!supabaseConfigured);
   const [cloudSyncReady, setCloudSyncReady] = useState(supabaseConfigured);
   const [cloudSyncStatus, setCloudSyncStatus] = useState("");
+  const [cloudSyncState, setCloudSyncState] = useState("saved-local");
   const [subject, setSubject] = useState("");
   const [difficulty, setDifficulty] = useState(safeString(persisted?.difficulty, "All"));
   const [topicFilter, setTopicFilter] = useState(safeString(persisted?.topicFilter));
@@ -1298,6 +1300,11 @@ export default function App() {
     }
 
     persistLocalSnapshot(currentUser.id, progressSnapshot, window.localStorage);
+    setCloudSyncState(
+      supabaseConfigured && currentUser?.provider === "supabase"
+        ? (isOnline ? "queued-sync" : "saved-local")
+        : "saved-local"
+    );
   }, [currentUser?.id, progressSnapshot]);
 
   useEffect(() => {
@@ -1305,18 +1312,28 @@ export default function App() {
       return undefined;
     }
 
+    setCloudSyncState(isOnline ? "queued-sync" : "saved-local");
     const timeoutId = window.setTimeout(async () => {
+      if (!isOnline) {
+        setCloudSyncStatus("Saved locally. Cloud sync will resume when your connection returns.");
+        setCloudSyncState("saved-local");
+        return;
+      }
+
+      setCloudSyncState("syncing");
       const { ok } = await saveRemoteSnapshot(supabase, currentUser.id, progressSnapshot);
       if (!ok) {
         setCloudSyncStatus("Cloud sync needs the Supabase table setup.");
+        setCloudSyncState("sync-failed");
         return;
       }
 
       setCloudSyncStatus("Cloud sync active.");
+      setCloudSyncState("synced");
     }, 900);
 
     return () => window.clearTimeout(timeoutId);
-  }, [currentUser?.id, currentUser?.provider, progressSnapshot]);
+  }, [currentUser?.id, currentUser?.provider, isOnline, progressSnapshot]);
 
   useEffect(() => {
     if (persisted) {
@@ -1391,6 +1408,7 @@ export default function App() {
     let active = true;
 
     async function loadRemoteProgress() {
+      setCloudSyncState(isOnline ? "syncing" : "saved-local");
       const { payload, error } = await loadRemoteSnapshot(supabase, currentUser.id);
 
       if (!active) {
@@ -1399,6 +1417,7 @@ export default function App() {
 
       if (error) {
         setCloudSyncStatus("Cloud progress table is not ready yet.");
+        setCloudSyncState("sync-failed");
         remoteProgressLoadedRef.current = true;
         return;
       }
@@ -1409,6 +1428,7 @@ export default function App() {
       }
 
       setCloudSyncStatus("Cloud sync active.");
+      setCloudSyncState("synced");
       remoteProgressLoadedRef.current = true;
     }
 
@@ -1729,6 +1749,16 @@ export default function App() {
     { label: "Planner items", value: plannerItems.length },
     { label: "Calendar events", value: calendarEvents.length },
   ];
+  const adminModeActive = mode === "admin" && isAdminUser;
+  const syncStatusTone = cloudSyncState === "sync-failed"
+    ? { bg: "#FFF1F2", border: "#F4A8B4", label: "Sync failed" }
+    : cloudSyncState === "queued-sync"
+      ? { bg: "#FFF7E8", border: C.amber, label: "Queued for sync" }
+      : cloudSyncState === "syncing"
+        ? { bg: "#EEF4FB", border: "#C7D6E5", label: "Syncing" }
+        : cloudSyncState === "synced"
+          ? { bg: "#F3FBF6", border: "#B9E3CA", label: "Synced to cloud" }
+          : { bg: "#F8F5EE", border: C.border, label: "Saved locally" };
   const adminFeedbackItems = useMemo(
     () => sortByDateDesc(requestHistory, "createdAt"),
     [requestHistory]
@@ -4030,134 +4060,196 @@ export default function App() {
                 </div>
               </div>
 
-              <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
-                  Review Filters
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Difficulty</label>
-                  <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} style={selectStyle}>
-                    {DIFFICULTIES.map((value) => (
-                      <option key={value} value={value}>
-                        {value}
-                      </option>
-                    ))}
-                  </select>
+              {adminModeActive ? (
+                <>
+                  <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                      Admin Sections
+                    </div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {[
+                        ["overview", "Overview"],
+                        ["feedback", "Feedback"],
+                        ["planning", "Planning"],
+                        ["activity", "Activity"],
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => queueAdminViewChange(value)}
+                          style={{
+                            padding: "11px 12px",
+                            borderRadius: 12,
+                            border: adminView === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
+                            background: adminView === value ? C.accentLight : C.surface,
+                            color: adminView === value ? C.accent : C.text,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                  <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Subject</label>
-                  <select value={subject} onChange={(event) => setSubject(event.target.value)} style={selectStyle}>
-                    <option value="">Select a subject</option>
-                    {SUBJECT_OPTIONS.map((value) => (
-                      <option key={value} value={value}>
-                        {value}
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}`, display: "grid", gap: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                      Admin Status
+                    </div>
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 12,
+                        background: "#F8F5EE",
+                        border: `1px solid ${C.border}`,
+                        fontSize: 13,
+                        lineHeight: 1.7,
+                        color: C.text,
+                      }}
+                    >
+                      <strong>Admin mode active</strong>
+                      {" · "}
+                      Learner study filters are hidden here so the admin area feels separate from active review.
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                      Review Filters
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Difficulty</label>
+                      <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} style={selectStyle}>
+                        {DIFFICULTIES.map((value) => (
+                          <option key={value} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
 
-                  <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Topic Focus</label>
-                  <input
-                    value={topicInput}
-                    onChange={(event) => setTopicInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        submitReviewFocus();
-                      }
-                    }}
-                    placeholder="cardiac drugs, dengue, delegation..."
-                    style={{
-                      ...selectStyle,
-                      cursor: "text",
-                    }}
-                  />
+                      <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Subject</label>
+                      <select value={subject} onChange={(event) => setSubject(event.target.value)} style={selectStyle}>
+                        <option value="">Select a subject</option>
+                        {SUBJECT_OPTIONS.map((value) => (
+                          <option key={value} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
 
-                  <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Preferred Action</label>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    {[
-                      ["flashcard", "Flashcards"],
-                      ["quiz", "Quiz"],
-                    ].map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setFocusAction(value)}
+                      <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Topic Focus</label>
+                      <input
+                        value={topicInput}
+                        onChange={(event) => setTopicInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            submitReviewFocus();
+                          }
+                        }}
+                        placeholder="cardiac drugs, dengue, delegation..."
                         style={{
-                          padding: "11px 12px",
+                          ...selectStyle,
+                          cursor: "text",
+                        }}
+                      />
+
+                      <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Preferred Action</label>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        {[
+                          ["flashcard", "Flashcards"],
+                          ["quiz", "Quiz"],
+                        ].map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setFocusAction(value)}
+                            style={{
+                              padding: "11px 12px",
+                              borderRadius: 12,
+                              border: focusAction === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
+                              background: focusAction === value ? C.accentLight : C.surface,
+                              color: focusAction === value ? C.accent : C.text,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={submitReviewFocus}
+                        disabled={apiLoading}
+                        style={{
+                          marginTop: 4,
+                          padding: "11px 14px",
                           borderRadius: 12,
-                          border: focusAction === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
-                          background: focusAction === value ? C.accentLight : C.surface,
-                          color: focusAction === value ? C.accent : C.text,
-                          fontWeight: 700,
-                          cursor: "pointer",
+                          border: "none",
+                          background: apiLoading ? C.border : C.accent,
+                          color: apiLoading ? C.muted : "#fff",
+                          fontWeight: 800,
+                          cursor: apiLoading ? "not-allowed" : "pointer",
                         }}
                       >
-                        {label}
+                        {apiLoading
+                          ? "Preparing..."
+                          : `Generate ${focusAction === "quiz" ? "Quiz" : "Flashcards"}`}
                       </button>
-                    ))}
+                    </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={submitReviewFocus}
-                    disabled={apiLoading}
-                    style={{
-                      marginTop: 4,
-                      padding: "11px 14px",
-                      borderRadius: 12,
-                      border: "none",
-                      background: apiLoading ? C.border : C.accent,
-                      color: apiLoading ? C.muted : "#fff",
-                      fontWeight: 800,
-                      cursor: apiLoading ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {apiLoading
-                      ? "Preparing..."
-                      : `Generate ${focusAction === "quiz" ? "Quiz" : "Flashcards"}`}
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}`, display: "grid", gap: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                  System Status
-                </div>
-                <div
-                  style={{
-                    padding: "12px 14px",
-                    borderRadius: 12,
-                    background: isOnline ? "#F3FBF6" : "#EEF4FB",
-                    border: `1px solid ${isOnline ? "#B9E3CA" : "#C7D6E5"}`,
-                    fontSize: 13,
-                    lineHeight: 1.7,
-                    color: C.text,
-                  }}
-                >
-                  <strong>{isOnline ? "Online" : "Offline"}</strong>
-                  {" · "}
-                  {cloudSyncStatus || (cloudSyncReady ? "Cloud sync standing by." : "Cloud sync not connected yet.")}
-                </div>
-                {remediationContext ? (
-                  <div
-                    style={{
-                      padding: "12px 14px",
-                      borderRadius: 12,
-                      background: C.surface,
-                      border: `1px solid ${C.border}`,
-                      fontSize: 12,
-                      lineHeight: 1.7,
-                      color: C.muted,
-                    }}
-                  >
-                    Latest remediation focus: <strong style={{ color: C.text }}>{remediationContext.weakestSubject || remediationContext.topic || "mixed weak areas"}</strong>
+                  <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}`, display: "grid", gap: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                      System Status
+                    </div>
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 12,
+                        background: syncStatusTone.bg,
+                        border: `1px solid ${syncStatusTone.border}`,
+                        fontSize: 13,
+                        lineHeight: 1.7,
+                        color: C.text,
+                      }}
+                    >
+                      <strong>{isOnline ? "Online" : "Offline"}</strong>
+                      {" · "}
+                      <strong>{syncStatusTone.label}</strong>
+                      {" · "}
+                      {cloudSyncStatus || (cloudSyncReady ? "Cloud sync standing by." : "Cloud sync not connected yet.")}
+                    </div>
+                    {remediationContext ? (
+                      <div
+                        style={{
+                          padding: "12px 14px",
+                          borderRadius: 12,
+                          background: C.surface,
+                          border: `1px solid ${C.border}`,
+                          fontSize: 12,
+                          lineHeight: 1.7,
+                          color: C.muted,
+                        }}
+                      >
+                        Latest remediation focus: <strong style={{ color: C.text }}>{remediationContext.weakestSubject || remediationContext.topic || "mixed weak areas"}</strong>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
+                </>
+              )}
             </div>
 
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             {mode === "dashboard" ? (
+              <ErrorBoundary label="Dashboard overview" onReset={() => queueModeChange("dashboard")}>
               <AnalyticsCard
                 title="Dashboard Overview"
                 footer={
@@ -4968,9 +5060,11 @@ export default function App() {
                   </div>
                 </div>
               </AnalyticsCard>
+              </ErrorBoundary>
             ) : null}
 
             {mode === "admin" && isAdminUser ? (
+              <ErrorBoundary label="Admin area" onReset={() => queueModeChange("admin")} onBack={() => queueModeChange("dashboard")}>
               <AnalyticsCard title="Admin Overview">
                 <div style={{ display: "grid", gap: 16 }}>
                   <div
@@ -5484,9 +5578,11 @@ export default function App() {
                   </div>
                 </div>
               </AnalyticsCard>
+              </ErrorBoundary>
             ) : null}
 
             {mode === "flashcard" ? (
+              <ErrorBoundary label="Flashcards" onReset={() => queueModeChange("flashcard")} onBack={() => queueModeChange("dashboard")}>
               <div style={panelStyle}>
                 <div
                   style={{
@@ -5659,9 +5755,11 @@ export default function App() {
                   </div>
                 )}
               </div>
+              </ErrorBoundary>
             ) : null}
 
             {mode === "quiz" ? (
+              <ErrorBoundary label="Quiz workspace" onReset={() => queueModeChange("quiz")} onBack={() => queueModeChange("dashboard")}>
               <div style={panelStyle}>
                 <div
                   style={{
@@ -6089,9 +6187,11 @@ export default function App() {
                   </>
                 )}
               </div>
+              </ErrorBoundary>
             ) : null}
 
             {mode === "simulation" ? (
+              <ErrorBoundary label="Simulation exam" onReset={() => queueModeChange("simulation")} onBack={() => queueModeChange("dashboard")}>
               <div style={panelStyle}>
                 <div
                   style={{
@@ -6742,9 +6842,11 @@ export default function App() {
                   </>
                 )}
               </div>
+              </ErrorBoundary>
             ) : null}
 
             {mode === "notes" ? (
+              <ErrorBoundary label="Notes and upload" onReset={() => queueModeChange("notes")} onBack={() => queueModeChange("dashboard")}>
               <div style={panelStyle}>
                 <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Notes & Upload</div>
                 <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>
@@ -6961,9 +7063,11 @@ export default function App() {
                   </div>
                 ) : null}
               </div>
+              </ErrorBoundary>
             ) : null}
 
             {mode === "planner" ? (
+              <ErrorBoundary label="Planner" onReset={() => queueModeChange("planner")} onBack={() => queueModeChange("dashboard")}>
               <div style={panelStyle}>
                 <div
                   style={{
@@ -7221,9 +7325,11 @@ export default function App() {
                   </div>
                 </div>
               </div>
+              </ErrorBoundary>
             ) : null}
 
             {mode === "history" ? (
+              <ErrorBoundary label="Review history" onReset={() => queueModeChange("history")} onBack={() => queueModeChange("dashboard")}>
               <div style={panelStyle}>
                 <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12 }}>
                   Review History
@@ -7246,6 +7352,7 @@ export default function App() {
                   </div>
                 )}
               </div>
+              </ErrorBoundary>
             ) : null}
           </div>
         </div>
