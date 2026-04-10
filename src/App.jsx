@@ -9,6 +9,7 @@ import {
   ProgressRing,
   SidebarNavButton,
   SubjectTab,
+  ThemeToggle,
 } from "./caredrop/components";
 import {
   FLASHCARD_SET_SIZE,
@@ -62,7 +63,7 @@ import {
   sortByDateAsc,
   sortByDateDesc,
 } from "./caredrop/planning";
-import { C } from "./caredrop/theme";
+import { applyThemeMode, C, getPreferredThemeMode, persistThemeMode } from "./caredrop/theme";
 import { RequestModal } from "./features/admin/RequestModal";
 import { AuthScreen } from "./features/auth/AuthScreen";
 import { TermsModal } from "./features/auth/TermsModal";
@@ -1070,6 +1071,11 @@ export default function App() {
   const [adminUsersLoading, setAdminUsersLoading] = useState(false);
   const [adminUsersError, setAdminUsersError] = useState("");
   const [headerVisible, setHeaderVisible] = useState(true);
+  const [themeMode, setThemeMode] = useState(() => {
+    const initialThemeMode = getPreferredThemeMode();
+    applyThemeMode(initialThemeMode);
+    return initialThemeMode;
+  });
   const isAdminUser = isAdminEmail(currentUser?.email);
 
   const usedFlashcardIdsRef = useRef(usedFlashcardIds);
@@ -1082,6 +1088,11 @@ export default function App() {
   const flashcardShownAtRef = useRef(Date.now());
   const quizShownAtRef = useRef(Date.now());
   const simulationShownAtRef = useRef(Date.now());
+
+  useEffect(() => {
+    applyThemeMode(themeMode);
+    persistThemeMode(themeMode);
+  }, [themeMode]);
 
   const progressSnapshot = useMemo(
     () =>
@@ -3642,7 +3653,7 @@ export default function App() {
     padding: "10px 12px",
     borderRadius: 10,
     border: `1px solid ${C.border}`,
-    background: C.surface,
+    background: C.surfaceMuted,
     fontSize: 13,
     color: C.text,
     outline: "none",
@@ -3656,7 +3667,7 @@ export default function App() {
     border: `1px solid ${C.border}`,
     borderRadius: 20,
     padding: width < 640 ? 18 : 24,
-    boxShadow: "0 10px 22px rgba(15, 23, 42, 0.04)",
+    boxShadow: C.shellShadow,
     contentVisibility: "auto",
     containIntrinsicSize: "520px",
   };
@@ -3755,6 +3766,8 @@ export default function App() {
           forgotPasswordLoading={forgotPasswordLoading}
           onSubmit={handleAuthSubmit}
           onForgotPassword={handleForgotPassword}
+          themeMode={themeMode}
+          onToggleTheme={() => setThemeMode((current) => (current === "dark" ? "light" : "dark"))}
         />
         <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
       </>
@@ -3765,15 +3778,15 @@ export default function App() {
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(180deg, #EDF4EF 0%, #F8FBF9 100%)",
+        background: C.appGradient,
         fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
         color: C.text,
       }}
     >
       <nav
         style={{
-          background: "linear-gradient(90deg, #0A5A39 0%, #0E6B47 52%, #127A52 100%)",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          background: C.navGradient,
+          borderBottom: C.navPillBorder,
           padding: isMobile ? "12px 14px" : "12px 24px",
           minHeight: isMobile ? 88 : 68,
           display: "flex",
@@ -3788,7 +3801,7 @@ export default function App() {
           zIndex: 20,
           transform: headerVisible ? "translateY(0)" : "translateY(-100%)",
           transition: "transform 0.28s ease",
-          boxShadow: headerVisible ? "0 12px 26px rgba(8, 59, 40, 0.18)" : "none",
+          boxShadow: headerVisible ? C.shellShadow : "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -3801,7 +3814,7 @@ export default function App() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#fff",
+              color: C.navText,
               overflow: "hidden",
               border: "1px solid rgba(255,255,255,0.1)",
             }}
@@ -3817,10 +3830,10 @@ export default function App() {
             />
           </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 18, color: "#FFFFFF" }}>
+            <div style={{ fontWeight: 800, fontSize: 18, color: C.navText }}>
               Care<span style={{ color: "#8FF2B6" }}>Drop</span>
             </div>
-            <div style={{ fontSize: 11, color: "rgba(230,243,236,0.72)" }}>
+            <div style={{ fontSize: 11, color: C.navSubtle }}>
               Review command center
             </div>
           </div>
@@ -3830,11 +3843,11 @@ export default function App() {
             style={{
               padding: "8px 14px",
               borderRadius: 999,
-              background: "rgba(255,255,255,0.08)",
-              border: "1px solid rgba(255,255,255,0.12)",
+              background: C.navPillBg,
+              border: C.navPillBorder,
               fontSize: 12,
               fontWeight: 700,
-              color: "#EAF6EF",
+              color: C.navPillText,
             }}
           >
             {isOnline ? "Connected" : "Offline review"}
@@ -3843,11 +3856,11 @@ export default function App() {
             style={{
               padding: "8px 14px",
               borderRadius: 999,
-              background: "rgba(255,255,255,0.08)",
-              border: "1px solid rgba(255,255,255,0.12)",
+              background: C.navPillBg,
+              border: C.navPillBorder,
               fontSize: 12,
               fontWeight: 700,
-              color: "#EAF6EF",
+              color: C.navPillText,
             }}
           >
             {dashboardDateLabel}
@@ -3856,24 +3869,25 @@ export default function App() {
             style={{
               padding: "8px 14px",
               borderRadius: 999,
-              background: "rgba(255,255,255,0.12)",
-              border: "1px solid rgba(255,255,255,0.14)",
+              background: C.navPillBg,
+              border: C.navPillBorder,
               fontSize: 12,
               fontWeight: 700,
-              color: "#FFFFFF",
+              color: C.navText,
             }}
           >
             {currentUser.name}
           </div>
+          <ThemeToggle mode={themeMode} onToggle={() => setThemeMode((current) => (current === "dark" ? "light" : "dark"))} />
           <button
             type="button"
             onClick={handleSignOut}
             style={{
               padding: "8px 14px",
               borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(255,255,255,0.04)",
-              color: "#F0F8F3",
+              border: C.navPillBorder,
+              background: C.navActionBg,
+              color: C.navText,
               fontWeight: 700,
               cursor: "pointer",
             }}
@@ -3938,6 +3952,29 @@ export default function App() {
           {`
             html {
               scroll-behavior: smooth;
+            }
+
+            body {
+              background: ${C.bg};
+              color: ${C.text};
+            }
+
+            * {
+              scrollbar-color: ${C.borderStrong} ${C.surface};
+            }
+
+            *::-webkit-scrollbar {
+              width: 10px;
+              height: 10px;
+            }
+
+            *::-webkit-scrollbar-thumb {
+              background: ${C.borderStrong};
+              border-radius: 999px;
+            }
+
+            *::-webkit-scrollbar-track {
+              background: ${C.surface};
             }
 
             @keyframes caredropFadeSlide {

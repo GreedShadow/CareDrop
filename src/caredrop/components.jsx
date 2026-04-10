@@ -201,7 +201,7 @@ export function Flashcard({ card, idx, total, onRate }) {
                 footer: "Tap or press Space to flip the card",
                 background: C.panelNeutralAlt,
                 borderColor: C.panelNeutralDark,
-                accentColor: "#85796A",
+                accentColor: C.faint,
                 extra: null,
               },
               {
@@ -209,16 +209,16 @@ export function Flashcard({ card, idx, total, onRate }) {
                 heading: "Answer",
                 body: card.answer,
                 footer: null,
-                background: `linear-gradient(135deg, ${C.panelNeutral} 0%, #fff 100%)`,
-                borderColor: "#CFC5B7",
-                accentColor: "#6C6255",
+                background: `linear-gradient(135deg, ${C.panelNeutral} 0%, ${C.surface} 100%)`,
+                borderColor: C.panelNeutralDark,
+                accentColor: C.muted,
                 extra: (
                   <div
                     style={{
                       marginTop: 16,
                       padding: 14,
                       borderRadius: 14,
-                      background: "#FFFFFF",
+                      background: C.surface,
                       border: `1.5px solid ${C.panelNeutralDark}`,
                       fontSize: 13,
                       lineHeight: 1.65,
@@ -494,6 +494,72 @@ export function SidebarNavButton({ active, label, hint, onClick, badge }) {
           }}
         >
           {badge}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+export function ThemeToggle({ mode = "light", onToggle, showLabel = false }) {
+  const dark = mode === "dark";
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+      title={dark ? "Switch to light mode" : "Switch to dark mode"}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: showLabel ? 10 : 0,
+        padding: showLabel ? "4px 10px 4px 4px" : 4,
+        minWidth: showLabel ? 110 : 72,
+        height: 42,
+        borderRadius: 999,
+        border: `1px solid ${dark ? "#FFFFFF" : C.border}`,
+        background: dark ? "#050505" : C.surface,
+        color: dark ? "#FFFFFF" : C.text,
+        cursor: "pointer",
+        boxShadow: dark ? "0 10px 20px rgba(0,0,0,0.22)" : "0 8px 18px rgba(15, 23, 42, 0.08)",
+        transition: "background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease",
+      }}
+    >
+      <span
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: "50%",
+          background: dark ? "#FFFFFF" : "#0F1110",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+          overflow: "hidden",
+          transition: "transform 0.22s ease, background 0.22s ease",
+          transform: dark ? "translateX(0)" : "translateX(0)",
+          boxShadow: dark ? "0 0 0 1px rgba(0,0,0,0.04)" : "0 0 0 1px rgba(255,255,255,0.06)",
+        }}
+      >
+        {dark ? (
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+            <path
+              d="M14.88 5.01c-1.4.2-2.78.95-3.84 2.05a6.87 6.87 0 0 0-1.95 4.95c.07 1.5.65 2.96 1.67 4.13-3.7-.15-6.73-3.15-6.9-6.95A7.17 7.17 0 0 1 11.03 2c1.53 0 2.98.47 4.2 1.35.18.13.1.41-.13.44-.08.01-.15.02-.22.03Z"
+              fill="#060807"
+            />
+            <path d="m14.9 6.1.64 1.49 1.48.63-1.48.64-.64 1.48-.63-1.48-1.49-.64 1.49-.63.63-1.49Z" fill="#060807" />
+            <path d="m17.79 10.91.48 1.1 1.1.47-1.1.48-.48 1.1-.47-1.1-1.1-.48 1.1-.47.47-1.1Z" fill="#060807" />
+          </svg>
+        ) : (
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+            <circle cx="11" cy="11" r="4.2" fill="#FFFFFF" />
+            <path d="M11 2.4v2.2M11 17.4v2.2M19.6 11h-2.2M4.6 11H2.4M17.1 4.9l-1.55 1.55M6.45 15.55 4.9 17.1M17.1 17.1l-1.55-1.55M6.45 6.45 4.9 4.9" stroke="#FFFFFF" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        )}
+      </span>
+      {showLabel ? (
+        <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+          {dark ? "Dark" : "Light"}
         </span>
       ) : null}
     </button>

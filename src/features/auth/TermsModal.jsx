@@ -10,7 +10,7 @@ export function TermsModal({ open, onClose }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(26, 26, 26, 0.4)",
+        background: C.modalOverlay,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -26,7 +26,7 @@ export function TermsModal({ open, onClose }) {
           background: C.surface,
           border: `1px solid ${C.border}`,
           borderRadius: 22,
-          boxShadow: "0 20px 50px rgba(15, 23, 42, 0.18)",
+          boxShadow: C.shellShadow,
           padding: 24,
         }}
       >
@@ -47,7 +47,7 @@ export function TermsModal({ open, onClose }) {
               height: 36,
               borderRadius: 999,
               border: `1px solid ${C.border}`,
-              background: "#FBFAF7",
+              background: C.surfaceMuted,
               color: C.muted,
               cursor: "pointer",
               fontWeight: 800,
