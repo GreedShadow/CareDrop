@@ -4110,7 +4110,7 @@ export default function App() {
               top: 0,
               left: 0,
               bottom: 0,
-              width: "min(272px, 72vw)",
+              width: "min(236px, 64vw)",
               background: "linear-gradient(180deg, #083B28 0%, #0A5135 100%)",
               borderRight: "1px solid rgba(8,59,40,0.5)",
               boxShadow: "0 18px 34px rgba(7, 38, 24, 0.28)",
