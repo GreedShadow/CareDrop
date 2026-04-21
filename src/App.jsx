@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { MessageCircleMore } from "lucide-react";
+import { Menu, MessageCircleMore, X } from "lucide-react";
 import {
   AIPanel,
   AnalyticsCard,
@@ -1071,6 +1071,7 @@ export default function App() {
   const [adminUsersLoading, setAdminUsersLoading] = useState(false);
   const [adminUsersError, setAdminUsersError] = useState("");
   const [headerVisible, setHeaderVisible] = useState(true);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [themeMode, setThemeMode] = useState(() => {
     const initialThemeMode = getPreferredThemeMode();
     applyThemeMode(initialThemeMode);
@@ -1246,6 +1247,11 @@ export default function App() {
     });
   }
 
+  function navigateToMode(nextMode) {
+    setMobileDrawerOpen(false);
+    queueModeChange(nextMode);
+  }
+
   function queueAdminViewChange(nextView) {
     window.requestAnimationFrame(() => {
       setAdminView(nextView);
@@ -1253,6 +1259,7 @@ export default function App() {
   }
 
   function openSimulationLauncher() {
+    setMobileDrawerOpen(false);
     setSimulationLaunchOpen(true);
     queueModeChange("simulation");
   }
@@ -3689,13 +3696,81 @@ export default function App() {
   });
   const isMobile = width < 640;
   const isNarrowTablet = width < 820;
+  const usesDrawerNav = width < 960;
   const isStudyMode = mode === "flashcard" || mode === "quiz" || mode === "simulation";
   const studySectionPadding = isMobile ? 16 : 22;
   const studyMetaSize = 12;
   const studyQuestionSize = isMobile ? 18 : 20;
   const studyBodySize = isMobile ? 14 : 15;
   const studyActionPadding = isMobile ? "10px 14px" : "10px 16px";
-  const headerHeight = isMobile ? 88 : 68;
+  const headerHeight = usesDrawerNav ? (isMobile ? 72 : 68) : isMobile ? 88 : 68;
+  const primaryNavItems = [
+    {
+      key: "dashboard",
+      active: mode === "dashboard",
+      label: "Dashboard",
+      hint: "Overview and next steps",
+      onClick: () => navigateToMode("dashboard"),
+    },
+    {
+      key: "flashcard",
+      active: mode === "flashcard",
+      label: "Flashcards",
+      hint: "Focused card review",
+      badge: flashcards.length || "",
+      onClick: () => navigateToMode("flashcard"),
+    },
+    {
+      key: "quiz",
+      active: mode === "quiz",
+      label: "Quiz",
+      hint: "Board-style drills",
+      badge: quiz.length || "",
+      onClick: () => navigateToMode("quiz"),
+    },
+    {
+      key: "simulation",
+      active: mode === "simulation",
+      label: "Simulation Exam",
+      hint: "Mixed 50-500 item exam mode",
+      badge: simulationQuestions.length || "",
+      onClick: openSimulationLauncher,
+    },
+    {
+      key: "planner",
+      active: mode === "planner",
+      label: "Planner",
+      hint: "Goals, due dates, and next study targets",
+      badge: plannerOpenItems.length || "",
+      onClick: () => navigateToMode("planner"),
+    },
+    {
+      key: "notes",
+      active: mode === "notes",
+      label: "Notes & Upload",
+      hint: "Files, summaries, and AI",
+      onClick: () => navigateToMode("notes"),
+    },
+    {
+      key: "history",
+      active: mode === "history",
+      label: "Review History",
+      hint: "Saved sessions and returns",
+      badge: reviewSessions.length || "",
+      onClick: () => navigateToMode("history"),
+    },
+  ];
+
+  if (isAdminUser) {
+    primaryNavItems.push({
+      key: "admin",
+      active: mode === "admin",
+      label: "Admin",
+      hint: "Feedback, trends, and product signals",
+      badge: requestHistory.length || "",
+      onClick: () => navigateToMode("admin"),
+    });
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3729,6 +3804,37 @@ export default function App() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    setMobileDrawerOpen(false);
+  }, [usesDrawerNav]);
+
+  useEffect(() => {
+    if (!usesDrawerNav) {
+      return undefined;
+    }
+
+    if (!mobileDrawerOpen) {
+      document.body.style.overflow = "";
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileDrawerOpen, usesDrawerNav]);
+
+  useEffect(() => {
+    if (!currentUser || !usesDrawerNav) {
+      return;
+    }
+
+    setMode("dashboard");
+    setMobileDrawerOpen(false);
+  }, [currentUser?.id, usesDrawerNav]);
 
   if (!authReady) {
     return (
@@ -3800,8 +3906,8 @@ export default function App() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          flexDirection: isMobile ? "column" : "row",
-          gap: isMobile ? 10 : 0,
+          flexDirection: usesDrawerNav ? "row" : isMobile ? "column" : "row",
+          gap: usesDrawerNav ? 12 : isMobile ? 10 : 0,
           position: "fixed",
           top: 0,
           left: 0,
@@ -3812,98 +3918,288 @@ export default function App() {
           boxShadow: headerVisible ? C.shellShadow : "none",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              background: "rgba(255,255,255,0.12)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: C.navText,
-              overflow: "hidden",
-              border: "1px solid rgba(255,255,255,0.1)",
-            }}
-          >
-            <img
-              src={LOGO_SRC}
-              alt="CareDrop logo"
-              style={{
-                width: "100%",
-                height: "100%",
-                display: "block",
-              }}
-            />
-          </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 18, color: C.navText }}>
-              Care<span style={{ color: "#8FF2B6" }}>Drop</span>
+        {usesDrawerNav ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(true)}
+                aria-label="Open navigation menu"
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 12,
+                  border: C.navPillBorder,
+                  background: C.navActionBg,
+                  color: C.navText,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                <Menu size={20} />
+              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    background: "rgba(255,255,255,0.12)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: C.navText,
+                    overflow: "hidden",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <img src={LOGO_SRC} alt="CareDrop logo" style={{ width: "100%", height: "100%", display: "block" }} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 17, color: C.navText, whiteSpace: "nowrap" }}>
+                    Care<span style={{ color: "#8FF2B6" }}>Drop</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.navSubtle, whiteSpace: "nowrap" }}>
+                    {isStudyMode ? "Focused study mode" : "Review dashboard"}
+                  </div>
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: C.navSubtle }}>
-              Review command center
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              {!isMobile ? (
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 999,
+                    background: C.navPillBg,
+                    border: C.navPillBorder,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: C.navText,
+                    maxWidth: 150,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {currentUser.name}
+                </div>
+              ) : null}
+              <ThemeToggle mode={themeMode} onToggle={toggleThemeMode} />
             </div>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end", width: isMobile ? "100%" : "auto" }}>
-          <div
-            style={{
-              padding: "8px 14px",
-              borderRadius: 999,
-              background: C.navPillBg,
-              border: C.navPillBorder,
-              fontSize: 12,
-              fontWeight: 700,
-              color: C.navPillText,
-            }}
-          >
-            {isOnline ? "Connected" : "Offline review"}
-          </div>
-          <div
-            style={{
-              padding: "8px 14px",
-              borderRadius: 999,
-              background: C.navPillBg,
-              border: C.navPillBorder,
-              fontSize: 12,
-              fontWeight: 700,
-              color: C.navPillText,
-            }}
-          >
-            {dashboardDateLabel}
-          </div>
-          <div
-            style={{
-              padding: "8px 14px",
-              borderRadius: 999,
-              background: C.navPillBg,
-              border: C.navPillBorder,
-              fontSize: 12,
-              fontWeight: 700,
-              color: C.navText,
-            }}
-          >
-            {currentUser.name}
-          </div>
-          <ThemeToggle mode={themeMode} onToggle={toggleThemeMode} />
-          <button
-            type="button"
-            onClick={handleSignOut}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 999,
-              border: C.navPillBorder,
-              background: C.navActionBg,
-              color: C.navText,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            Sign Out
-          </button>
-        </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,0.12)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: C.navText,
+                  overflow: "hidden",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                }}
+              >
+                <img
+                  src={LOGO_SRC}
+                  alt="CareDrop logo"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "block",
+                  }}
+                />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 18, color: C.navText }}>
+                  Care<span style={{ color: "#8FF2B6" }}>Drop</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.navSubtle }}>
+                  Review command center
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end", width: isMobile ? "100%" : "auto" }}>
+              <div
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  background: C.navPillBg,
+                  border: C.navPillBorder,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: C.navPillText,
+                }}
+              >
+                {isOnline ? "Connected" : "Offline review"}
+              </div>
+              <div
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  background: C.navPillBg,
+                  border: C.navPillBorder,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: C.navPillText,
+                }}
+              >
+                {dashboardDateLabel}
+              </div>
+              <div
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  background: C.navPillBg,
+                  border: C.navPillBorder,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: C.navText,
+                }}
+              >
+                {currentUser.name}
+              </div>
+              <ThemeToggle mode={themeMode} onToggle={toggleThemeMode} />
+              <button
+                type="button"
+                onClick={handleSignOut}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  border: C.navPillBorder,
+                  background: C.navActionBg,
+                  color: C.navText,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Sign Out
+              </button>
+            </div>
+          </>
+        )}
       </nav>
+
+      {usesDrawerNav ? (
+        <>
+          <div
+            role="presentation"
+            onClick={() => setMobileDrawerOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(5, 10, 8, 0.48)",
+              opacity: mobileDrawerOpen ? 1 : 0,
+              pointerEvents: mobileDrawerOpen ? "auto" : "none",
+              transition: "opacity 0.24s ease",
+              zIndex: 18,
+            }}
+          />
+          <aside
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: "min(320px, 84vw)",
+              background: "linear-gradient(180deg, #083B28 0%, #0A5135 100%)",
+              borderRight: "1px solid rgba(8,59,40,0.5)",
+              boxShadow: "0 18px 34px rgba(7, 38, 24, 0.28)",
+              padding: `${headerHeight + 12}px 16px 20px`,
+              transform: mobileDrawerOpen ? "translateX(0)" : "translateX(-104%)",
+              transition: "transform 0.26s ease",
+              zIndex: 19,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  Navigation
+                </div>
+                <div style={{ marginTop: 4, fontSize: 13, color: "rgba(231,244,237,0.78)", lineHeight: 1.6 }}>
+                  Move through CareDrop with one hand.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(false)}
+                aria-label="Close navigation menu"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "#F8FFF9",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              {primaryNavItems.map((item) => (
+                <SidebarNavButton
+                  key={item.key}
+                  active={item.active}
+                  label={item.label}
+                  hint={item.hint}
+                  badge={item.badge}
+                  onClick={item.onClick}
+                />
+              ))}
+            </div>
+
+            <div style={{ marginTop: "auto", display: "grid", gap: 10, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  color: "rgba(232,244,238,0.88)",
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                }}
+              >
+                Signed in as <strong style={{ color: "#FFFFFF" }}>{currentUser.name}</strong>
+              </div>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                style={{
+                  padding: "11px 14px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "#F0F8F3",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Sign Out
+              </button>
+            </div>
+          </aside>
+        </>
+      ) : null}
 
       <div
         style={{
@@ -4172,10 +4468,11 @@ export default function App() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: width < 960 ? "1fr" : "minmax(280px, 300px) minmax(0, 1fr)",
+            gridTemplateColumns: usesDrawerNav ? "1fr" : "minmax(280px, 300px) minmax(0, 1fr)",
             gap: 20,
           }}
         >
+          {!usesDrawerNav ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={{ ...panelStyle, padding: 18, background: "linear-gradient(180deg, #083B28 0%, #0A5135 100%)", border: "1px solid rgba(8,59,40,0.5)", boxShadow: "0 18px 30px rgba(7, 38, 24, 0.18)", position: "sticky", top: headerVisible ? (isMobile ? headerHeight + 12 : headerHeight + 18) : 18, transition: "top 0.28s ease" }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
@@ -4192,22 +4489,16 @@ export default function App() {
                   Workspace
                 </div>
                 <div style={{ display: "grid", gap: 8 }}>
-                  <SidebarNavButton active={mode === "dashboard"} label="Dashboard" hint="Overview and next steps" onClick={() => queueModeChange("dashboard")} />
-                  <SidebarNavButton active={mode === "flashcard"} label="Flashcards" hint="Focused card review" badge={flashcards.length || ""} onClick={() => queueModeChange("flashcard")} />
-                  <SidebarNavButton active={mode === "quiz"} label="Quiz" hint="Board-style drills" badge={quiz.length || ""} onClick={() => queueModeChange("quiz")} />
-                  <SidebarNavButton active={mode === "simulation"} label="Simulation Exam" hint="Mixed 50-500 item exam mode" badge={simulationQuestions.length || ""} onClick={openSimulationLauncher} />
-                  <SidebarNavButton active={mode === "planner"} label="Planner" hint="Goals, due dates, and next study targets" badge={plannerOpenItems.length || ""} onClick={() => queueModeChange("planner")} />
-                  <SidebarNavButton active={mode === "notes"} label="Notes & Upload" hint="Files, summaries, and AI" onClick={() => queueModeChange("notes")} />
-                  <SidebarNavButton active={mode === "history"} label="Review History" hint="Saved sessions and returns" badge={reviewSessions.length || ""} onClick={() => queueModeChange("history")} />
-                  {isAdminUser ? (
+                  {primaryNavItems.map((item) => (
                     <SidebarNavButton
-                      active={mode === "admin"}
-                      label="Admin"
-                      hint="Feedback, trends, and product signals"
-                      badge={requestHistory.length || ""}
-                      onClick={() => queueModeChange("admin")}
+                      key={item.key}
+                      active={item.active}
+                      label={item.label}
+                      hint={item.hint}
+                      badge={item.badge}
+                      onClick={item.onClick}
                     />
-                  ) : null}
+                  ))}
                 </div>
               </div>
 
@@ -4395,8 +4686,8 @@ export default function App() {
                 </>
               )}
             </div>
-
           </div>
+          ) : null}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             {mode === "dashboard" ? (
