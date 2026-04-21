@@ -3923,8 +3923,8 @@ export default function App() {
             <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
               <button
                 type="button"
-                onClick={() => setMobileDrawerOpen(true)}
-                aria-label="Open navigation menu"
+                onClick={() => setMobileDrawerOpen((open) => !open)}
+                aria-label={mobileDrawerOpen ? "Close navigation menu" : "Open navigation menu"}
                 style={{
                   width: 42,
                   height: 42,
@@ -3939,7 +3939,7 @@ export default function App() {
                   flexShrink: 0,
                 }}
               >
-                <Menu size={20} />
+                {mobileDrawerOpen ? <X size={20} /> : <Menu size={20} />}
               </button>
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                 <div
@@ -4110,7 +4110,7 @@ export default function App() {
               top: 0,
               left: 0,
               bottom: 0,
-              width: "min(320px, 84vw)",
+              width: "min(272px, 72vw)",
               background: "linear-gradient(180deg, #083B28 0%, #0A5135 100%)",
               borderRight: "1px solid rgba(8,59,40,0.5)",
               boxShadow: "0 18px 34px rgba(7, 38, 24, 0.28)",
