@@ -572,9 +572,9 @@ export function SubjectTab({ active, label, onClick }) {
       type="button"
       onClick={onClick}
       style={{
-        border: active ? "1px solid rgba(14, 107, 71, 0.18)" : "1px solid #DCE8E1",
-        background: active ? "linear-gradient(135deg, #0E6B47 0%, #145F46 100%)" : "#FFFFFF",
-        color: active ? "#FFFFFF" : "#3F514A",
+        border: active ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
+        background: active ? `linear-gradient(135deg, ${C.accent} 0%, ${C.accentMid} 100%)` : C.surface,
+        color: active ? "#FFFFFF" : C.text,
         borderRadius: 16,
         padding: "12px 16px",
         minWidth: 136,
@@ -595,13 +595,13 @@ export function HeroMetric({ label, value, helper, accent = "#9AD75B" }) {
         padding: "18px 18px 16px",
         borderRadius: 20,
         borderTop: `3px solid ${accent}`,
-        background: "#FFFFFF",
-        border: "1px solid #DCE8E1",
-        boxShadow: "0 10px 24px rgba(8, 35, 23, 0.05)",
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        boxShadow: C.mode === "dark" ? "none" : "0 10px 24px rgba(8, 35, 23, 0.05)",
       }}
     >
-      <div style={{ fontSize: 12, color: "#8A9A92", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 800 }}>{label}</div>
-      <div style={{ fontSize: 36, fontWeight: 900, color: "#13221A", letterSpacing: "-0.05em" }}>{value}</div>
+      <div style={{ fontSize: 12, color: C.faint, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 800 }}>{label}</div>
+      <div style={{ fontSize: 36, fontWeight: 900, color: C.text, letterSpacing: "-0.05em" }}>{value}</div>
       <div style={{ marginTop: 6, fontSize: 12, color: accent, fontWeight: 700 }}>{helper}</div>
     </div>
   );
@@ -619,11 +619,11 @@ export function ProgressRing({ value, label, caption, size = 190 }) {
         width: outerSize,
         height: outerSize,
         borderRadius: "50%",
-        background: `conic-gradient(#29B06E 0deg ${angle}deg, #D8E7DF ${angle}deg 360deg)`,
+        background: `conic-gradient(${C.accent} 0deg ${angle}deg, ${C.border} ${angle}deg 360deg)`,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: "inset 0 0 0 1px rgba(19, 34, 26, 0.04)",
+        boxShadow: C.mode === "dark" ? "none" : "inset 0 0 0 1px rgba(19, 34, 26, 0.04)",
       }}
     >
       <div
@@ -631,22 +631,22 @@ export function ProgressRing({ value, label, caption, size = 190 }) {
           width: innerSize,
           height: innerSize,
           borderRadius: "50%",
-          background: "linear-gradient(180deg, #FDFEFD 0%, #F2F8F5 100%)",
+          background: C.mode === "dark" ? `linear-gradient(180deg, ${C.bgElevated} 0%, ${C.surface} 100%)` : "linear-gradient(180deg, #FDFEFD 0%, #F2F8F5 100%)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          color: "#15251C",
+          color: C.text,
           textAlign: "center",
           padding: 16,
           boxSizing: "border-box",
         }}
       >
         <div style={{ fontSize: size < 170 ? 28 : 34, fontWeight: 800 }}>{normalized}%</div>
-        <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "#86968E" }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: C.faint }}>
           {label}
         </div>
-        <div style={{ marginTop: 8, fontSize: size < 170 ? 10 : 11, color: "#148354", fontWeight: 700 }}>{caption}</div>
+        <div style={{ marginTop: 8, fontSize: size < 170 ? 10 : 11, color: C.accent, fontWeight: 700 }}>{caption}</div>
       </div>
     </div>
   );
@@ -660,7 +660,7 @@ export function AnalyticsCard({ title, children, footer }) {
         border: `1px solid ${C.border}`,
         borderRadius: 22,
         padding: 22,
-        boxShadow: "0 14px 30px rgba(16, 30, 59, 0.05)",
+        boxShadow: C.mode === "dark" ? "none" : "0 14px 30px rgba(16, 30, 59, 0.05)",
         contentVisibility: "auto",
         containIntrinsicSize: "320px",
       }}

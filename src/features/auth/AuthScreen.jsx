@@ -61,7 +61,7 @@ export function AuthScreen(props) {
           <div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(255,255,255,0.12)", overflow: "hidden" }}>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: C.navPillBg, border: C.navPillBorder, overflow: "hidden" }}>
                 <img src={LOGO_SRC} alt="CareDrop logo" style={{ width: "100%", height: "100%", display: "block" }} />
               </div>
               <div style={{ fontWeight: 800, fontSize: 20 }}>Care<span style={{ color: "#8BE5AF" }}>Drop</span></div>

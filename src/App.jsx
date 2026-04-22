@@ -1857,10 +1857,10 @@ export default function App() {
     : cloudSyncState === "queued-sync"
       ? { bg: "#FFF7E8", border: C.amber, label: "Queued for sync" }
       : cloudSyncState === "syncing"
-        ? { bg: "#EEF4FB", border: "#C7D6E5", label: "Syncing" }
+    ? { bg: darkMode ? C.blueLight : "#EEF4FB", border: darkMode ? C.border : "#C7D6E5", label: "Syncing" }
         : cloudSyncState === "synced"
           ? { bg: "#F3FBF6", border: "#B9E3CA", label: "Synced to cloud" }
-          : { bg: "#F8F5EE", border: C.border, label: "Saved locally" };
+    : { bg: darkMode ? softSurface : "#F8F5EE", border: C.border, label: "Saved locally" };
   const adminFeedbackItems = useMemo(
     () => sortByDateDesc(requestHistory, "createdAt"),
     [requestHistory]
@@ -3704,6 +3704,18 @@ export default function App() {
   const studyBodySize = isMobile ? 14 : 15;
   const studyActionPadding = isMobile ? "10px 14px" : "10px 16px";
   const headerHeight = usesDrawerNav ? (isMobile ? 72 : 68) : isMobile ? 88 : 68;
+  const darkMode = C.mode === "dark";
+  const cardSurface = C.surface;
+  const softSurface = C.surfaceMuted;
+  const elevatedSurface = C.surfaceRaised;
+  const heroSurface = darkMode
+    ? `linear-gradient(180deg, ${C.bgElevated} 0%, ${C.surface} 100%)`
+    : "linear-gradient(180deg, #FDFEFD 0%, #F6FBF8 100%)";
+  const accentPanelSurface = darkMode
+    ? "linear-gradient(180deg, #0f3a30 0%, #134e43 100%)"
+    : "linear-gradient(180deg, #083B28 0%, #0A5135 100%)";
+  const infoPanelSurface = darkMode ? C.blueLight : "#EEF4FB";
+  const infoPanelBorder = darkMode ? C.border : "#C7D6E5";
   const primaryNavItems = [
     {
       key: "dashboard",
@@ -4111,7 +4123,7 @@ export default function App() {
               left: 0,
               bottom: 0,
               width: "min(236px, 64vw)",
-              background: "linear-gradient(180deg, #083B28 0%, #0A5135 100%)",
+              background: accentPanelSurface,
               borderRight: "1px solid rgba(8,59,40,0.5)",
               boxShadow: "0 18px 34px rgba(7, 38, 24, 0.28)",
               padding: `${headerHeight + 12}px 16px 20px`,
@@ -4172,14 +4184,14 @@ export default function App() {
                 style={{
                   padding: "10px 12px",
                   borderRadius: 12,
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: darkMode ? "rgba(15, 23, 42, 0.26)" : "rgba(255,255,255,0.05)",
+                  border: darkMode ? `1px solid ${C.border}` : "1px solid rgba(255,255,255,0.08)",
                   color: "rgba(232,244,238,0.88)",
                   fontSize: 12,
                   lineHeight: 1.6,
                 }}
               >
-                Signed in as <strong style={{ color: "#FFFFFF" }}>{currentUser.name}</strong>
+                Signed in as <strong style={{ color: C.text }}>{currentUser.name}</strong>
               </div>
               <button
                 type="button"
@@ -4187,8 +4199,8 @@ export default function App() {
                 style={{
                   padding: "11px 14px",
                   borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.04)",
+                  border: darkMode ? `1px solid ${C.border}` : "1px solid rgba(255,255,255,0.14)",
+                  background: darkMode ? "rgba(15, 23, 42, 0.22)" : "rgba(255,255,255,0.04)",
                   color: "#F0F8F3",
                   fontWeight: 700,
                   cursor: "pointer",
@@ -4239,11 +4251,11 @@ export default function App() {
             style={{
               ...panelStyle,
               padding: 16,
-              borderColor: "#C7D6E5",
-              background: "#EEF4FB",
+              borderColor: infoPanelBorder,
+              background: infoPanelSurface,
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#17355E" }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: darkMode ? C.blue : "#17355E" }}>
               Offline Review Mode
             </div>
             <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.7, color: C.text }}>
@@ -4299,12 +4311,12 @@ export default function App() {
             style={{
               ...panelStyle,
               padding: width < 900 ? 20 : 24,
-              background: "linear-gradient(180deg, #FDFEFD 0%, #F6FBF8 100%)",
+              background: heroSurface,
               color: C.text,
               overflow: "hidden",
               position: "relative",
-              border: "1px solid #DCE8E1",
-              boxShadow: "0 16px 32px rgba(11, 42, 27, 0.06)",
+              border: `1px solid ${C.border}`,
+              boxShadow: darkMode ? "none" : "0 16px 32px rgba(11, 42, 27, 0.06)",
             }}
           >
             <div
@@ -4334,14 +4346,14 @@ export default function App() {
                 <div style={{ marginTop: 10, fontSize: width < 880 ? 34 : 42, lineHeight: 1.08, fontWeight: 900, letterSpacing: "-0.06em", color: "#14231B" }}>
                   Dashboard Overview
                 </div>
-                <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, color: "#61736B" }}>
+                <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, color: darkMode ? C.muted : "#61736B" }}>
                   Keep your review flow organized across flashcards, quizzes, simulations, uploads, planning, and saved sessions without losing your place.
                 </div>
                 <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ padding: "10px 14px", borderRadius: 999, background: "#F0F8F3", border: "1px solid #D7EBDD", fontSize: 12, color: "#235B42", fontWeight: 700 }}>
+                  <div style={{ padding: "10px 14px", borderRadius: 999, background: darkMode ? C.accentLight : "#F0F8F3", border: `1px solid ${darkMode ? C.border : "#D7EBDD"}`, fontSize: 12, color: darkMode ? C.accentMid : "#235B42", fontWeight: 700 }}>
                     {studyStreak ? `${studyStreak}-day study streak` : "Start a streak with one session today"}
                   </div>
-                  <div style={{ padding: "10px 14px", borderRadius: 999, background: "#F7FAFD", border: "1px solid #DCE8F1", fontSize: 12, color: "#355E8A", fontWeight: 700 }}>
+                  <div style={{ padding: "10px 14px", borderRadius: 999, background: darkMode ? C.blueLight : "#F7FAFD", border: `1px solid ${darkMode ? C.border : "#DCE8F1"}`, fontSize: 12, color: darkMode ? C.blue : "#355E8A", fontWeight: 700 }}>
                     {mostRecentSession ? `Last studied ${mostRecentSession.subject}` : "Your first session will start the tracker"}
                   </div>
                 </div>
@@ -4388,8 +4400,8 @@ export default function App() {
               <div
                 style={{
                   borderRadius: 22,
-                  border: "1px solid #DCE8E1",
-                  background: "#FFFFFF",
+                  border: `1px solid ${darkMode ? C.border : "#DCE8E1"}`,
+                  background: cardSurface,
                   padding: 18,
                   display: "flex",
                   alignItems: "center",
@@ -4474,7 +4486,7 @@ export default function App() {
         >
           {!usesDrawerNav ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ ...panelStyle, padding: 18, background: "linear-gradient(180deg, #083B28 0%, #0A5135 100%)", border: "1px solid rgba(8,59,40,0.5)", boxShadow: "0 18px 30px rgba(7, 38, 24, 0.18)", position: "sticky", top: headerVisible ? (isMobile ? headerHeight + 12 : headerHeight + 18) : 18, transition: "top 0.28s ease" }}>
+            <div style={{ ...panelStyle, padding: 18, background: accentPanelSurface, border: darkMode ? `1px solid ${C.border}` : "1px solid rgba(8,59,40,0.5)", boxShadow: darkMode ? "none" : "0 18px 30px rgba(7, 38, 24, 0.18)", position: "sticky", top: headerVisible ? (isMobile ? headerHeight + 12 : headerHeight + 18) : 18, transition: "top 0.28s ease" }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
                 {isStudyMode ? "Study Controls" : "Study Command Center"}
               </div>
@@ -4544,7 +4556,7 @@ export default function App() {
                       style={{
                         padding: "12px 14px",
                         borderRadius: 12,
-                        background: "#F8F5EE",
+                        background: darkMode ? softSurface : "#F8F5EE",
                         border: `1px solid ${C.border}`,
                         fontSize: 13,
                         lineHeight: 1.7,
@@ -4746,14 +4758,14 @@ export default function App() {
                       style={{
                         borderRadius: 20,
                         padding: 20,
-                        border: "1px solid #D8E3EF",
-                        background: "linear-gradient(180deg, #F7FBFF 0%, #F1F6FB 100%)",
+                        border: `1px solid ${darkMode ? C.border : "#D8E3EF"}`,
+                        background: darkMode ? heroSurface : "linear-gradient(180deg, #F7FBFF 0%, #F1F6FB 100%)",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                         Next Best Step
                       </div>
-                      <div style={{ marginTop: 10, fontSize: 26, fontWeight: 900, letterSpacing: "-0.05em", color: "#17355E" }}>
+                      <div style={{ marginTop: 10, fontSize: 26, fontWeight: 900, letterSpacing: "-0.05em", color: darkMode ? C.text : "#17355E" }}>
                         {recommendedAction.title}
                       </div>
                       <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.8, color: C.text }}>
@@ -4776,7 +4788,7 @@ export default function App() {
                           {recommendedAction.cta}
                         </button>
                         {mostRecentSession ? (
-                          <div style={{ padding: "11px 14px", borderRadius: 12, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, color: C.muted }}>
+                          <div style={{ padding: "11px 14px", borderRadius: 12, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, color: C.muted }}>
                             Last session: {buildSessionLabel(mostRecentSession)}
                           </div>
                         ) : null}
@@ -4788,7 +4800,7 @@ export default function App() {
                         borderRadius: 20,
                         padding: 20,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -4800,7 +4812,7 @@ export default function App() {
                             <span>Daily goal progress</span>
                             <span>{todayAnsweredCount}/{dailyGoalTarget}</span>
                           </div>
-                          <div style={{ marginTop: 8, height: 10, borderRadius: 999, background: "#E8E4DC", overflow: "hidden" }}>
+                          <div style={{ marginTop: 8, height: 10, borderRadius: 999, background: darkMode ? C.border : "#E8E4DC", overflow: "hidden" }}>
                             <div style={{ width: `${dailyGoalProgress}%`, height: "100%", background: "linear-gradient(90deg, #3D7E64 0%, #7CCB9C 100%)" }} />
                           </div>
                         </div>
@@ -4810,13 +4822,13 @@ export default function App() {
                             : "No activity logged yet today. A short set is enough to restart your rhythm."}
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
-                          <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}` }}>
+                          <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}` }}>
                             <div style={{ fontSize: 11, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                               Study streak
                             </div>
                             <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{studyStreak || 0} day{studyStreak === 1 ? "" : "s"}</div>
                           </div>
-                          <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}` }}>
+                          <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}` }}>
                             <div style={{ fontSize: 11, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                               Recent activity
                             </div>
@@ -4878,8 +4890,8 @@ export default function App() {
                           style={{
                             borderRadius: 18,
                             padding: 18,
-                            border: `1px solid ${active ? "#BFD1E5" : C.border}`,
-                            background: active ? "#F2F7FB" : "#FCFBF8",
+                            border: `1px solid ${active ? (darkMode ? C.borderStrong : "#BFD1E5") : C.border}`,
+                            background: active ? (darkMode ? elevatedSurface : "#F2F7FB") : (darkMode ? softSurface : "#FCFBF8"),
                             textAlign: "left",
                             cursor: "pointer",
                           }}
@@ -4911,7 +4923,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -4932,7 +4944,7 @@ export default function App() {
                           marginTop: 12,
                           padding: "12px 14px",
                           borderRadius: 14,
-                          background: "#F5F9F6",
+                          background: darkMode ? elevatedSurface : "#F5F9F6",
                           border: `1px solid ${C.border}`,
                         }}
                       >
@@ -5002,7 +5014,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                         display: "grid",
                         gap: 12,
                       }}
@@ -5056,7 +5068,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -5081,7 +5093,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -5128,7 +5140,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -5186,7 +5198,7 @@ export default function App() {
                       borderRadius: 20,
                       padding: 18,
                       border: `1px solid ${C.border}`,
-                      background: "#FCFBF8",
+                      background: darkMode ? softSurface : "#FCFBF8",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -5206,8 +5218,9 @@ export default function App() {
                             padding: "9px 12px",
                             borderRadius: 10,
                             border: `1px solid ${C.border}`,
-                            background: "#FFFFFF",
+                            background: cardSurface,
                             fontWeight: 700,
+                            color: C.text,
                             cursor: "pointer",
                           }}
                         >
@@ -5223,8 +5236,9 @@ export default function App() {
                             padding: "9px 12px",
                             borderRadius: 10,
                             border: `1px solid ${C.border}`,
-                            background: "#FFFFFF",
+                            background: cardSurface,
                             fontWeight: 700,
+                            color: C.text,
                             cursor: "pointer",
                           }}
                         >
@@ -5237,8 +5251,9 @@ export default function App() {
                             padding: "9px 12px",
                             borderRadius: 10,
                             border: `1px solid ${C.border}`,
-                            background: "#FFFFFF",
+                            background: cardSurface,
                             fontWeight: 700,
+                            color: C.text,
                             cursor: "pointer",
                           }}
                         >
@@ -5259,7 +5274,7 @@ export default function App() {
                         style={{
                           borderRadius: 18,
                           border: `1px solid ${C.border}`,
-                          background: "#FFFFFF",
+                          background: cardSurface,
                           padding: 16,
                         }}
                       >
@@ -5298,8 +5313,8 @@ export default function App() {
                                 style={{
                                   minHeight: width < 640 ? 64 : 78,
                                   borderRadius: 14,
-                                  border: active ? `1px solid ${C.accent}` : today ? `1px solid #BFD1E5` : `1px solid ${C.border}`,
-                                  background: active ? C.accentLight : day.inMonth ? "#FFFFFF" : "#F4F1EB",
+                                  border: active ? `1px solid ${C.accent}` : today ? `1px solid ${darkMode ? C.borderStrong : "#BFD1E5"}` : `1px solid ${C.border}`,
+                                  background: active ? C.accentLight : day.inMonth ? cardSurface : (darkMode ? softSurface : "#F4F1EB"),
                                   color: day.inMonth ? C.text : C.faint,
                                   padding: 10,
                                   textAlign: "left",
@@ -5311,7 +5326,7 @@ export default function App() {
                                 }}
                               >
                                 <div style={{ fontSize: 12, fontWeight: 800 }}>{day.date.getDate()}</div>
-                                <div style={{ fontSize: 10, color: active ? C.accent : "#355E8A", fontWeight: 700 }}>
+                                <div style={{ fontSize: 10, color: active ? C.accent : darkMode ? C.blue : "#355E8A", fontWeight: 700 }}>
                                   {day.events.length ? `${day.events.length} item${day.events.length === 1 ? "" : "s"}` : ""}
                                 </div>
                               </button>
@@ -5325,7 +5340,7 @@ export default function App() {
                           style={{
                             borderRadius: 18,
                             border: `1px solid ${C.border}`,
-                            background: "#FFFFFF",
+                            background: cardSurface,
                             padding: 16,
                           }}
                         >
@@ -5391,7 +5406,7 @@ export default function App() {
                           style={{
                             borderRadius: 18,
                             border: `1px solid ${C.border}`,
-                            background: "#FFFFFF",
+                            background: cardSurface,
                             padding: 16,
                           }}
                         >
@@ -5406,7 +5421,7 @@ export default function App() {
                                   style={{
                                     padding: "12px 14px",
                                     borderRadius: 14,
-                                    background: "#FCFBF8",
+                                    background: darkMode ? softSurface : "#FCFBF8",
                                     border: `1px solid ${C.border}`,
                                   }}
                                 >
@@ -5471,7 +5486,7 @@ export default function App() {
                       borderRadius: 20,
                       padding: 18,
                       border: `1px solid ${C.border}`,
-                      background: "#FCFBF8",
+                      background: darkMode ? softSurface : "#FCFBF8",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -5493,7 +5508,7 @@ export default function App() {
                             padding: "10px 14px",
                             borderRadius: 12,
                             border: `1px solid ${C.border}`,
-                            background: "#FFFFFF",
+                            background: cardSurface,
                             color: C.text,
                             fontWeight: 700,
                             cursor: "pointer",
@@ -5515,7 +5530,7 @@ export default function App() {
                               borderRadius: 16,
                               padding: isMobile ? "12px 14px" : "13px 15px",
                               border: `1px solid ${C.border}`,
-                              background: "#FFFFFF",
+                            background: cardSurface,
                               display: "flex",
                               justifyContent: "space-between",
                               flexDirection: isMobile ? "column" : "row",
@@ -5572,7 +5587,7 @@ export default function App() {
                         padding: "10px 16px",
                         borderRadius: 12,
                         border: `1px solid ${C.red}`,
-                        background: "#FFFFFF",
+                            background: cardSurface,
                         color: C.red,
                         fontWeight: 800,
                         cursor: "pointer",
@@ -5605,7 +5620,7 @@ export default function App() {
                           padding: "10px 14px",
                           borderRadius: 12,
                           border: adminView === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
-                          background: adminView === value ? C.accentLight : "#FCFBF8",
+                          background: adminView === value ? C.accentLight : darkMode ? softSurface : "#FCFBF8",
                           color: adminView === value ? C.accent : C.text,
                           fontWeight: 800,
                           cursor: "pointer",
@@ -5660,7 +5675,7 @@ export default function App() {
                           borderRadius: 18,
                           padding: studySectionPadding,
                           border: `1px solid ${C.border}`,
-                          background: "#FCFBF8",
+                          background: darkMode ? softSurface : "#FCFBF8",
                         }}
                       >
                         <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -5688,7 +5703,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -5710,7 +5725,7 @@ export default function App() {
                                 <div style={{ fontSize: 14, fontWeight: 800 }}>{item.subject}</div>
                                 <Badge label={`${item.average}% avg`} color={item.average >= 75 ? "green" : item.average >= 60 ? "amber" : "red"} />
                               </div>
-                              <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#E8E4DC", overflow: "hidden" }}>
+                              <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: darkMode ? C.border : "#E8E4DC", overflow: "hidden" }}>
                                 <div
                                   style={{
                                     width: `${item.average}%`,
@@ -5737,7 +5752,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                         display: "grid",
                         gap: 14,
                       }}
@@ -5801,7 +5816,7 @@ export default function App() {
                       borderRadius: 18,
                       padding: 18,
                       border: `1px solid ${C.border}`,
-                      background: "#FCFBF8",
+                      background: darkMode ? softSurface : "#FCFBF8",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -5882,7 +5897,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -5898,7 +5913,7 @@ export default function App() {
                               gap: 12,
                               padding: "12px 14px",
                               borderRadius: 14,
-                              background: "#FFFFFF",
+                            background: cardSurface,
                               border: `1px solid ${C.border}`,
                               fontSize: 13,
                               color: C.text,
@@ -5922,20 +5937,20 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                         Planning Pressure Points
                       </div>
                       <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                        <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                           Upcoming calendar events: <strong>{upcomingEvents.length}</strong>
                         </div>
-                        <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                           Planner completion rate: <strong>{plannerCompletionRate}%</strong>
                         </div>
-                        <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                           Overdue planner items: <strong>{overduePlannerItems.length}</strong>
                         </div>
                       </div>
@@ -5946,7 +5961,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -5963,7 +5978,7 @@ export default function App() {
                                 gap: 12,
                                 padding: "12px 14px",
                                 borderRadius: 14,
-                                background: "#FFFFFF",
+                                background: cardSurface,
                                 border: `1px solid ${C.border}`,
                                 fontSize: 13,
                                 color: C.text,
@@ -5995,7 +6010,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -6009,7 +6024,7 @@ export default function App() {
                               style={{
                                 padding: "14px 16px",
                                 borderRadius: 14,
-                                background: "#FFFFFF",
+                                background: cardSurface,
                                 border: `1px solid ${C.border}`,
                               }}
                             >
@@ -6041,7 +6056,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                         display: "grid",
                         gap: 10,
                       }}
@@ -6049,16 +6064,16 @@ export default function App() {
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                         Retention Signals
                       </div>
-                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                         Current study streak: <strong>{studyStreak}</strong> day{studyStreak === 1 ? "" : "s"}
                       </div>
-                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                         Answered today: <strong>{todayAnsweredCount}</strong> / {dailyGoalTarget}
                       </div>
-                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                         Saved sessions waiting: <strong>{savedSessionCount}</strong>
                       </div>
-                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                         Readiness score snapshot: <strong>{readinessScore}%</strong>
                       </div>
                     </div>
@@ -6076,7 +6091,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -6104,7 +6119,7 @@ export default function App() {
                               style={{
                                 padding: "14px 16px",
                                 borderRadius: 14,
-                                background: "#FFFFFF",
+                                background: cardSurface,
                                 border: `1px solid ${C.border}`,
                               }}
                             >
@@ -6142,7 +6157,7 @@ export default function App() {
                         borderRadius: 18,
                         padding: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                         display: "grid",
                         gap: 10,
                       }}
@@ -6150,16 +6165,16 @@ export default function App() {
                       <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                         User Signals
                       </div>
-                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                         Most active learner: <strong>{adminMostActiveUser?.name || adminMostActiveUser?.email || "Not enough synced data yet"}</strong>
                       </div>
-                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                         Average learner score: <strong>{adminUserAverageScore}%</strong>
                       </div>
-                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                         Learner needing the most support: <strong>{adminWeakestUser?.name || adminWeakestUser?.email || "Not enough synced data yet"}</strong>{adminWeakestUser?.weakSubject ? ` in ${adminWeakestUser.weakSubject}` : ""}
                       </div>
-                      <div style={{ padding: "12px 14px", borderRadius: 14, background: "#FFFFFF", border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
+                        <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.7 }}>
                         Sync requirement: <strong>{adminUsersConfigured ? "Connected" : "Add SUPABASE_SERVICE_ROLE_KEY to the server environment"}</strong>
                       </div>
                     </div>
@@ -6267,7 +6282,7 @@ export default function App() {
                         marginTop: 16,
                         borderRadius: 18,
                         padding: studySectionPadding,
-                        background: "#FBFAF7",
+                        background: darkMode ? softSurface : "#FBFAF7",
                         border: `1.5px solid ${C.border}`,
                       }}
                     >
@@ -6827,7 +6842,7 @@ export default function App() {
                       border: `1px solid ${C.border}`,
                       borderRadius: 20,
                       padding: width < 720 ? 20 : 24,
-                      background: "#FBFAF7",
+                      background: darkMode ? softSurface : "#FBFAF7",
                     }}
                   >
                     <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.04em", color: C.text }}>
@@ -6867,7 +6882,7 @@ export default function App() {
                           marginTop: 16,
                           padding: "14px 16px",
                           borderRadius: 14,
-                          background: "#FFFFFF",
+                          background: cardSurface,
                           border: `1px solid ${C.border}`,
                         }}
                       >
@@ -6904,7 +6919,7 @@ export default function App() {
                       border: `1px dashed ${C.border}`,
                       borderRadius: 18,
                       padding: 24,
-                      background: "#FBFAF7",
+                      background: darkMode ? softSurface : "#FBFAF7",
                       color: C.muted,
                       lineHeight: 1.7,
                     }}
@@ -6914,7 +6929,7 @@ export default function App() {
                 ) : (
                   <>
                     <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ flex: 1, height: 6, borderRadius: 999, background: "#E8E4DC", overflow: "hidden" }}>
+                      <div style={{ flex: 1, height: 6, borderRadius: 999, background: darkMode ? C.border : "#E8E4DC", overflow: "hidden" }}>
                         <div
                           style={{
                             width: `${simulationProgressPercent}%`,
@@ -7321,7 +7336,7 @@ export default function App() {
                                   <div style={{ fontSize: 14, fontWeight: 800 }}>{item.subject}</div>
                                   <Badge label={`${item.percent}%`} color={item.percent >= 75 ? "green" : item.percent >= 60 ? "amber" : "red"} />
                                 </div>
-                                <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#E8E4DC", overflow: "hidden" }}>
+                                <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: darkMode ? C.border : "#E8E4DC", overflow: "hidden" }}>
                                   <div
                                     style={{
                                       width: `${item.percent}%`,
@@ -7450,7 +7465,7 @@ export default function App() {
                     borderRadius: 16,
                     padding: 22,
                     textAlign: "center",
-                    background: dragActive ? C.accentLight : "#FBFAF7",
+                    background: dragActive ? C.accentLight : darkMode ? softSurface : "#FBFAF7",
                   }}
                 >
                   <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: C.accent }}>DROPZONE</div>
@@ -7611,7 +7626,7 @@ export default function App() {
                 <div
                   style={{
                     marginTop: 18,
-                    background: "#FBFAF7",
+                    background: darkMode ? softSurface : "#FBFAF7",
                     borderRadius: 16,
                     border: `1px solid ${C.border}`,
                     padding: 18,
@@ -7628,7 +7643,7 @@ export default function App() {
                   <div
                     style={{
                       marginTop: 16,
-                      background: "#FBFAF7",
+                      background: darkMode ? softSurface : "#FBFAF7",
                       borderRadius: 16,
                       border: `1px solid ${C.border}`,
                       padding: 18,
@@ -7690,7 +7705,7 @@ export default function App() {
                     style={{
                       borderRadius: 18,
                       border: `1px solid ${C.border}`,
-                      background: "#FCFBF8",
+                            background: darkMode ? softSurface : "#FCFBF8",
                       padding: 18,
                     }}
                   >
@@ -7785,7 +7800,7 @@ export default function App() {
                             borderRadius: 16,
                             padding: 16,
                             border: `1px solid ${C.border}`,
-                            background: "#FCFBF8",
+                            background: darkMode ? softSurface : "#FCFBF8",
                           }}
                         >
                           <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -7801,7 +7816,7 @@ export default function App() {
                       style={{
                         borderRadius: 18,
                         border: `1px solid ${C.border}`,
-                        background: "#FCFBF8",
+                        background: darkMode ? softSurface : "#FCFBF8",
                         padding: 18,
                       }}
                     >
@@ -7816,7 +7831,7 @@ export default function App() {
                               style={{
                                 padding: "14px 16px",
                                 borderRadius: 14,
-                                background: "#FFFFFF",
+                                background: cardSurface,
                                 border: `1px solid ${item.completed ? "#BEE5C9" : item.dueDate && item.dueDate < formatDateKey(new Date()) ? "#F5B9C0" : C.border}`,
                               }}
                             >
