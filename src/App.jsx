@@ -990,6 +990,7 @@ export default function App() {
   const [topicInput, setTopicInput] = useState(safeString(persisted?.topicFilter));
   const [focusAction, setFocusAction] = useState("flashcard");
   const [mode, setMode] = useState(safeMode(persisted?.mode));
+  const [viewMode, setViewMode] = useState("setup");
   const [flashcards, setFlashcards] = useState([]);
   const [cardIdx, setCardIdx] = useState(0);
   const [cardSchedule, setCardSchedule] = useState(safeObject(persisted?.cardSchedule));
@@ -1250,6 +1251,16 @@ export default function App() {
   function navigateToMode(nextMode) {
     setMobileDrawerOpen(false);
     queueModeChange(nextMode);
+  }
+
+  function returnToReviewFilters() {
+    setViewMode("setup");
+    if (usesDrawerNav) {
+      setMobileDrawerOpen(true);
+    }
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
 
   function queueAdminViewChange(nextView) {
@@ -3592,6 +3603,10 @@ export default function App() {
     }
 
     setTopicFilter(nextTopic);
+    if (usesCompactStudyFlow) {
+      setViewMode("study");
+      setMobileDrawerOpen(false);
+    }
 
     if (focusAction === "quiz") {
       await generateQuiz(nextTopic);
@@ -3697,6 +3712,7 @@ export default function App() {
   const isMobile = width < 640;
   const isNarrowTablet = width < 820;
   const usesDrawerNav = width < 960;
+  const usesCompactStudyFlow = width < 960;
   const isStudyMode = mode === "flashcard" || mode === "quiz" || mode === "simulation";
   const studySectionPadding = isMobile ? 16 : 22;
   const studyMetaSize = 12;
@@ -3847,6 +3863,34 @@ export default function App() {
     setMode("dashboard");
     setMobileDrawerOpen(false);
   }, [currentUser?.id, usesDrawerNav]);
+
+  useEffect(() => {
+    if (!usesCompactStudyFlow || (mode !== "flashcard" && mode !== "quiz")) {
+      if (viewMode !== "setup") {
+        setViewMode("setup");
+      }
+      return;
+    }
+
+    if (viewMode === "setup" && ((mode === "flashcard" && flashcardSessionSubmitted) || (mode === "quiz" && quizSubmitted))) {
+      return;
+    }
+
+    if (mode === "flashcard") {
+      setViewMode(flashcards.length ? (flashcardSessionSubmitted ? "result" : "study") : "setup");
+      return;
+    }
+
+    setViewMode(quiz.length ? (quizSubmitted ? "result" : "study") : "setup");
+  }, [
+    flashcardSessionSubmitted,
+    flashcards.length,
+    mode,
+    quiz.length,
+    quizSubmitted,
+    usesCompactStudyFlow,
+    viewMode,
+  ]);
 
   if (!authReady) {
     return (
@@ -4571,92 +4615,94 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
-                      Review Filters
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Difficulty</label>
-                      <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} style={selectStyle}>
-                        {DIFFICULTIES.map((value) => (
-                          <option key={value} value={value}>
-                            {value}
-                          </option>
-                        ))}
-                      </select>
-
-                      <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Subject</label>
-                      <select value={subject} onChange={(event) => setSubject(event.target.value)} style={selectStyle}>
-                        <option value="">Select a subject</option>
-                        {SUBJECT_OPTIONS.map((value) => (
-                          <option key={value} value={value}>
-                            {value}
-                          </option>
-                        ))}
-                      </select>
-
-                      <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Topic Focus</label>
-                      <input
-                        value={topicInput}
-                        onChange={(event) => setTopicInput(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            submitReviewFocus();
-                          }
-                        }}
-                        placeholder="cardiac drugs, dengue, delegation..."
-                        style={{
-                          ...selectStyle,
-                          cursor: "text",
-                        }}
-                      />
-
-                      <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Preferred Action</label>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        {[
-                          ["flashcard", "Flashcards"],
-                          ["quiz", "Quiz"],
-                        ].map(([value, label]) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setFocusAction(value)}
-                            style={{
-                              padding: "11px 12px",
-                              borderRadius: 12,
-                              border: focusAction === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
-                              background: focusAction === value ? C.accentLight : C.surface,
-                              color: focusAction === value ? C.accent : C.text,
-                              fontWeight: 700,
-                              cursor: "pointer",
-                            }}
-                          >
-                            {label}
-                          </button>
-                        ))}
+                  {!usesCompactStudyFlow || !["flashcard", "quiz"].includes(mode) || viewMode !== "study" ? (
+                    <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                        Review Filters
                       </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Difficulty</label>
+                        <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} style={selectStyle}>
+                          {DIFFICULTIES.map((value) => (
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
+                          ))}
+                        </select>
 
-                      <button
-                        type="button"
-                        onClick={submitReviewFocus}
-                        disabled={apiLoading}
-                        style={{
-                          marginTop: 4,
-                          padding: "11px 14px",
-                          borderRadius: 12,
-                          border: "none",
-                          background: apiLoading ? C.border : C.accent,
-                          color: apiLoading ? C.muted : "#fff",
-                          fontWeight: 800,
-                          cursor: apiLoading ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        {apiLoading
-                          ? "Preparing..."
-                          : `Generate ${focusAction === "quiz" ? "Quiz" : "Flashcards"}`}
-                      </button>
+                        <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Subject</label>
+                        <select value={subject} onChange={(event) => setSubject(event.target.value)} style={selectStyle}>
+                          <option value="">Select a subject</option>
+                          {SUBJECT_OPTIONS.map((value) => (
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
+                          ))}
+                        </select>
+
+                        <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Topic Focus</label>
+                        <input
+                          value={topicInput}
+                          onChange={(event) => setTopicInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              submitReviewFocus();
+                            }
+                          }}
+                          placeholder="cardiac drugs, dengue, delegation..."
+                          style={{
+                            ...selectStyle,
+                            cursor: "text",
+                          }}
+                        />
+
+                        <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Preferred Action</label>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          {[
+                            ["flashcard", "Flashcards"],
+                            ["quiz", "Quiz"],
+                          ].map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => setFocusAction(value)}
+                              style={{
+                                padding: "11px 12px",
+                                borderRadius: 12,
+                                border: focusAction === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
+                                background: focusAction === value ? C.accentLight : C.surface,
+                                color: focusAction === value ? C.accent : C.text,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={submitReviewFocus}
+                          disabled={apiLoading}
+                          style={{
+                            marginTop: 4,
+                            padding: "11px 14px",
+                            borderRadius: 12,
+                            border: "none",
+                            background: apiLoading ? C.border : C.accent,
+                            color: apiLoading ? C.muted : "#fff",
+                            fontWeight: 800,
+                            cursor: apiLoading ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {apiLoading
+                            ? "Preparing..."
+                            : `Generate ${focusAction === "quiz" ? "Quiz" : "Flashcards"}`}
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
 
                   <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}`, display: "grid", gap: 10 }}>
                     <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
@@ -6268,7 +6314,41 @@ export default function App() {
                   </div>
                 </div>
 
-                {currentCard ? (
+                {usesCompactStudyFlow && viewMode === "setup" ? (
+                  <div
+                    style={{
+                      border: `1px dashed ${C.border}`,
+                      borderRadius: 20,
+                      padding: isMobile ? "28px 18px" : "34px 22px",
+                      textAlign: "center",
+                      color: C.muted,
+                      lineHeight: 1.7,
+                      display: "grid",
+                      gap: 14,
+                    }}
+                  >
+                    <div>
+                      Use Review Filters to choose a subject, topic, or difficulty, then generate your next flashcard set.
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={returnToReviewFilters}
+                        style={{
+                          padding: studyActionPadding,
+                          borderRadius: 10,
+                          border: `1px solid ${C.border}`,
+                          background: C.surface,
+                          color: C.text,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Open Filters
+                      </button>
+                    </div>
+                  </div>
+                ) : currentCard ? (
                   <>
                     <Flashcard
                       key={`${currentCard.id || "flashcard"}-${cardIdx}`}
@@ -6336,6 +6416,23 @@ export default function App() {
                             }}
                           >
                             Start Another Set
+                          </button>
+                        ) : null}
+                        {usesCompactStudyFlow && flashcardSessionSubmitted ? (
+                          <button
+                            type="button"
+                            onClick={returnToReviewFilters}
+                            style={{
+                              padding: studyActionPadding,
+                              borderRadius: 10,
+                              border: `1px solid ${C.border}`,
+                              background: C.surface,
+                              color: C.text,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Choose Another Topic
                           </button>
                         ) : null}
                       </div>
@@ -6418,7 +6515,41 @@ export default function App() {
                   </div>
                 </div>
 
-                {!quizItem ? (
+                {usesCompactStudyFlow && viewMode === "setup" ? (
+                  <div
+                    style={{
+                      border: `1px dashed ${C.border}`,
+                      borderRadius: 20,
+                      padding: isMobile ? "28px 18px" : "34px 22px",
+                      textAlign: "center",
+                      color: C.muted,
+                      lineHeight: 1.7,
+                      display: "grid",
+                      gap: 14,
+                    }}
+                  >
+                    <div>
+                      Use Review Filters to choose a subject, topic, or difficulty, then generate your next quiz set.
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={returnToReviewFilters}
+                        style={{
+                          padding: studyActionPadding,
+                          borderRadius: 10,
+                          border: `1px solid ${C.border}`,
+                          background: C.surface,
+                          color: C.text,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Open Filters
+                      </button>
+                    </div>
+                  </div>
+                ) : !quizItem ? (
                   <div
                     style={{
                       border: `1px dashed ${C.border}`,
@@ -6742,6 +6873,23 @@ export default function App() {
                           >
                             Generate Another Set
                           </button>
+                          {usesCompactStudyFlow ? (
+                            <button
+                              type="button"
+                              onClick={returnToReviewFilters}
+                              style={{
+                                padding: studyActionPadding,
+                                borderRadius: 10,
+                                border: `1px solid ${C.border}`,
+                                background: C.surface,
+                                color: C.text,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Choose Another Topic
+                            </button>
+                          ) : null}
                         </div>
                         <div style={{ marginTop: 12, fontSize: studyBodySize, lineHeight: 1.7 }}>
                           <div><strong>Your answer:</strong> {quizItem.userAnswer || "No answer saved"}</div>
