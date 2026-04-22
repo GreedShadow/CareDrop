@@ -1862,6 +1862,8 @@ export default function App() {
     { label: "Planner items", value: plannerItems.length },
     { label: "Calendar events", value: calendarEvents.length },
   ];
+  const darkMode = C.mode === "dark";
+  const softSurface = C.surfaceMuted;
   const adminModeActive = mode === "admin" && isAdminUser;
   const syncStatusTone = cloudSyncState === "sync-failed"
     ? { bg: "#FFF1F2", border: "#F4A8B4", label: "Sync failed" }
@@ -3720,9 +3722,7 @@ export default function App() {
   const studyBodySize = isMobile ? 14 : 15;
   const studyActionPadding = isMobile ? "10px 14px" : "10px 16px";
   const headerHeight = usesDrawerNav ? (isMobile ? 72 : 68) : isMobile ? 88 : 68;
-  const darkMode = C.mode === "dark";
   const cardSurface = C.surface;
-  const softSurface = C.surfaceMuted;
   const elevatedSurface = C.surfaceRaised;
   const heroSurface = darkMode
     ? `linear-gradient(180deg, ${C.bgElevated} 0%, ${C.surface} 100%)`
