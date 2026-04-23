@@ -4565,9 +4565,9 @@ export default function App() {
             style={{
               ...panelStyle,
               padding: isMobile ? 14 : 16,
-              background: "#FBFDFB",
-              borderColor: "#DDE9E1",
-              boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
+              background: darkMode ? elevatedSurface : "#FBFDFB",
+              borderColor: darkMode ? C.border : "#DDE9E1",
+              boxShadow: darkMode ? "none" : "0 8px 18px rgba(15, 23, 42, 0.04)",
             }}
           >
             <div
