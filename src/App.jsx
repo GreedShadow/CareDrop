@@ -1255,9 +1255,7 @@ export default function App() {
 
   function returnToReviewFilters() {
     setViewMode("setup");
-    if (usesDrawerNav) {
-      setMobileDrawerOpen(true);
-    }
+    setMobileDrawerOpen(false);
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -3715,6 +3713,9 @@ export default function App() {
   const isNarrowTablet = width < 820;
   const usesDrawerNav = width < 960;
   const usesCompactStudyFlow = width < 960;
+  const hideCompactReviewFilters = usesCompactStudyFlow && ["flashcard", "quiz"].includes(mode);
+  const showCompactFlashcardSetup = usesCompactStudyFlow && mode === "flashcard" && viewMode === "setup";
+  const showCompactQuizSetup = usesCompactStudyFlow && mode === "quiz" && viewMode === "setup";
   const isStudyMode = mode === "flashcard" || mode === "quiz" || mode === "simulation";
   const studySectionPadding = isMobile ? 16 : 22;
   const studyMetaSize = 12;
@@ -3799,6 +3800,90 @@ export default function App() {
       onClick: () => navigateToMode("admin"),
     });
   }
+
+  const renderReviewFiltersFields = ({ labelColor, background }) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <label style={{ fontSize: 12, color: labelColor, fontWeight: 700 }}>Difficulty</label>
+      <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} style={selectStyle}>
+        {DIFFICULTIES.map((value) => (
+          <option key={value} value={value}>
+            {value}
+          </option>
+        ))}
+      </select>
+
+      <label style={{ fontSize: 12, color: labelColor, fontWeight: 700 }}>Subject</label>
+      <select value={subject} onChange={(event) => setSubject(event.target.value)} style={selectStyle}>
+        <option value="">Select a subject</option>
+        {SUBJECT_OPTIONS.map((value) => (
+          <option key={value} value={value}>
+            {value}
+          </option>
+        ))}
+      </select>
+
+      <label style={{ fontSize: 12, color: labelColor, fontWeight: 700 }}>Topic Focus</label>
+      <input
+        value={topicInput}
+        onChange={(event) => setTopicInput(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            submitReviewFocus();
+          }
+        }}
+        placeholder="cardiac drugs, dengue, delegation..."
+        style={{
+          ...selectStyle,
+          cursor: "text",
+        }}
+      />
+
+      <label style={{ fontSize: 12, color: labelColor, fontWeight: 700 }}>Preferred Action</label>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {[
+          ["flashcard", "Flashcards"],
+          ["quiz", "Quiz"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setFocusAction(value)}
+            style={{
+              padding: "11px 12px",
+              borderRadius: 12,
+              border: focusAction === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
+              background: focusAction === value ? C.accentLight : background,
+              color: focusAction === value ? C.accent : C.text,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={submitReviewFocus}
+        disabled={apiLoading}
+        style={{
+          marginTop: 4,
+          padding: "11px 14px",
+          borderRadius: 12,
+          border: "none",
+          background: apiLoading ? C.border : C.accent,
+          color: apiLoading ? C.muted : "#fff",
+          fontWeight: 800,
+          cursor: apiLoading ? "not-allowed" : "pointer",
+        }}
+      >
+        {apiLoading
+          ? "Preparing..."
+          : `Generate ${focusAction === "quiz" ? "Quiz" : "Flashcards"}`}
+      </button>
+    </div>
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -4475,7 +4560,7 @@ export default function App() {
           </div>
         ) : null}
 
-        {isStudyMode ? (
+        {isStudyMode && (!usesCompactStudyFlow || mode === "simulation") ? (
           <div
             style={{
               ...panelStyle,
@@ -4615,92 +4700,12 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  {!usesCompactStudyFlow || !["flashcard", "quiz"].includes(mode) || viewMode !== "study" ? (
+                  {!hideCompactReviewFilters ? (
                     <div style={{ marginTop: 18, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
                       <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
                         Review Filters
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Difficulty</label>
-                        <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} style={selectStyle}>
-                          {DIFFICULTIES.map((value) => (
-                            <option key={value} value={value}>
-                              {value}
-                            </option>
-                          ))}
-                        </select>
-
-                        <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Subject</label>
-                        <select value={subject} onChange={(event) => setSubject(event.target.value)} style={selectStyle}>
-                          <option value="">Select a subject</option>
-                          {SUBJECT_OPTIONS.map((value) => (
-                            <option key={value} value={value}>
-                              {value}
-                            </option>
-                          ))}
-                        </select>
-
-                        <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Topic Focus</label>
-                        <input
-                          value={topicInput}
-                          onChange={(event) => setTopicInput(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              submitReviewFocus();
-                            }
-                          }}
-                          placeholder="cardiac drugs, dengue, delegation..."
-                          style={{
-                            ...selectStyle,
-                            cursor: "text",
-                          }}
-                        />
-
-                        <label style={{ fontSize: 12, color: "#D7ECE0", fontWeight: 700 }}>Preferred Action</label>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                          {[
-                            ["flashcard", "Flashcards"],
-                            ["quiz", "Quiz"],
-                          ].map(([value, label]) => (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() => setFocusAction(value)}
-                              style={{
-                                padding: "11px 12px",
-                                borderRadius: 12,
-                                border: focusAction === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
-                                background: focusAction === value ? C.accentLight : C.surface,
-                                color: focusAction === value ? C.accent : C.text,
-                                fontWeight: 700,
-                                cursor: "pointer",
-                              }}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={submitReviewFocus}
-                          disabled={apiLoading}
-                          style={{
-                            marginTop: 4,
-                            padding: "11px 14px",
-                            borderRadius: 12,
-                            border: "none",
-                            background: apiLoading ? C.border : C.accent,
-                            color: apiLoading ? C.muted : "#fff",
-                            fontWeight: 800,
-                            cursor: apiLoading ? "not-allowed" : "pointer",
-                          }}
-                        >
-                          {apiLoading
-                            ? "Preparing..."
-                            : `Generate ${focusAction === "quiz" ? "Quiz" : "Flashcards"}`}
-                        </button>
-                      </div>
+                      {renderReviewFiltersFields({ labelColor: "#D7ECE0", background: C.surface })}
                     </div>
                   ) : null}
 
@@ -6248,105 +6253,87 @@ export default function App() {
                       {subjectDisplay} | {difficulty === "All" ? "all difficulties" : difficulty} | {activeTopicFocus || "all topics"} | target {FLASHCARD_SET_SIZE} cards per set
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => setCardIdx((value) => Math.max(0, value - 1))}
-                      disabled={!flashcards.length || cardIdx === 0}
-                      style={{
-                        padding: studyActionPadding,
-                        borderRadius: 10,
-                        border: `1px solid ${C.border}`,
-                        background: C.surface,
-                        cursor: !flashcards.length || cardIdx === 0 ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      Prev
-                    </button>
-                    <button
-                      onClick={() => setCardIdx((value) => Math.min(flashcards.length - 1, value + 1))}
-                      disabled={!flashcards.length || cardIdx >= flashcards.length - 1}
-                      style={{
-                        padding: studyActionPadding,
-                        borderRadius: 10,
-                        border: `1px solid ${C.border}`,
-                        background: C.surface,
-                        cursor:
-                          !flashcards.length || cardIdx >= flashcards.length - 1
-                            ? "not-allowed"
-                            : "pointer",
-                      }}
-                    >
-                      Next
-                    </button>
-                    <button
-                      onClick={() => {
-                        void requestNextFlashcardSet(topicFilter);
-                      }}
-                      style={{
-                        padding: studyActionPadding,
-                        borderRadius: 10,
-                        border: `1px solid ${C.accentMid}`,
-                        background: C.accentLight,
-                        color: C.accent,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      New 10-Card Set
-                    </button>
-                    <button
-                      onClick={() => {
-                        void generateClaudeFlashcards(topicFilter);
-                      }}
-                      disabled={apiLoading}
-                      style={{
-                        padding: studyActionPadding,
-                        borderRadius: 10,
-                        border: "none",
-                        background: apiLoading ? C.border : C.accent,
-                        color: apiLoading ? C.muted : "#fff",
-                        fontWeight: 700,
-                        cursor: apiLoading ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      {apiLoading ? "Loading..." : topicFilter || hasCustomSource ? "Generate More with Gemini" : "Gemini Focus Set"}
-                    </button>
-                  </div>
-                </div>
-
-                {usesCompactStudyFlow && viewMode === "setup" ? (
-                  <div
-                    style={{
-                      border: `1px dashed ${C.border}`,
-                      borderRadius: 20,
-                      padding: isMobile ? "28px 18px" : "34px 22px",
-                      textAlign: "center",
-                      color: C.muted,
-                      lineHeight: 1.7,
-                      display: "grid",
-                      gap: 14,
-                    }}
-                  >
-                    <div>
-                      Use Review Filters to choose a subject, topic, or difficulty, then generate your next flashcard set.
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                  {!showCompactFlashcardSetup ? (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button
-                        type="button"
-                        onClick={returnToReviewFilters}
+                        onClick={() => setCardIdx((value) => Math.max(0, value - 1))}
+                        disabled={!flashcards.length || cardIdx === 0}
                         style={{
                           padding: studyActionPadding,
                           borderRadius: 10,
                           border: `1px solid ${C.border}`,
                           background: C.surface,
-                          color: C.text,
+                          cursor: !flashcards.length || cardIdx === 0 ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        Prev
+                      </button>
+                      <button
+                        onClick={() => setCardIdx((value) => Math.min(flashcards.length - 1, value + 1))}
+                        disabled={!flashcards.length || cardIdx >= flashcards.length - 1}
+                        style={{
+                          padding: studyActionPadding,
+                          borderRadius: 10,
+                          border: `1px solid ${C.border}`,
+                          background: C.surface,
+                          cursor:
+                            !flashcards.length || cardIdx >= flashcards.length - 1
+                              ? "not-allowed"
+                              : "pointer",
+                        }}
+                      >
+                        Next
+                      </button>
+                      <button
+                        onClick={() => {
+                          void requestNextFlashcardSet(topicFilter);
+                        }}
+                        style={{
+                          padding: studyActionPadding,
+                          borderRadius: 10,
+                          border: `1px solid ${C.accentMid}`,
+                          background: C.accentLight,
+                          color: C.accent,
                           fontWeight: 700,
                           cursor: "pointer",
                         }}
                       >
-                        Open Filters
+                        New 10-Card Set
+                      </button>
+                      <button
+                        onClick={() => {
+                          void generateClaudeFlashcards(topicFilter);
+                        }}
+                        disabled={apiLoading}
+                        style={{
+                          padding: studyActionPadding,
+                          borderRadius: 10,
+                          border: "none",
+                          background: apiLoading ? C.border : C.accent,
+                          color: apiLoading ? C.muted : "#fff",
+                          fontWeight: 700,
+                          cursor: apiLoading ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {apiLoading ? "Loading..." : topicFilter || hasCustomSource ? "Generate More with Gemini" : "Gemini Focus Set"}
                       </button>
                     </div>
+                  ) : null}
+                </div>
+
+                {showCompactFlashcardSetup ? (
+                  <div
+                    style={{
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 20,
+                      padding: isMobile ? "18px 16px" : "22px 18px",
+                      background: darkMode ? elevatedSurface : "#FBFAF7",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                      Review Filters
+                    </div>
+                    {renderReviewFiltersFields({ labelColor: C.muted, background: C.surface })}
                   </div>
                 ) : currentCard ? (
                   <>
@@ -6479,75 +6466,57 @@ export default function App() {
                         : `Target ${QUIZ_SET_SIZE} questions | strict difficulty filter | saved sessions supported`}
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => {
-                        void requestNextQuizSet(topicFilter);
-                      }}
-                      disabled={apiLoading}
-                      style={{
-                        padding: studyActionPadding,
-                        borderRadius: 10,
-                        border: "none",
-                        background: apiLoading ? C.border : C.accent,
-                        color: apiLoading ? C.muted : "#fff",
-                        fontWeight: 700,
-                        cursor: apiLoading ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      {apiLoading ? "Generating..." : topicFilter || hasCustomSource ? "Generate Another 10" : "Generate 10 Questions"}
-                    </button>
-                    <button
-                      onClick={saveCurrentQuiz}
-                      disabled={!quiz.length}
-                      style={{
-                        padding: studyActionPadding,
-                        borderRadius: 10,
-                        border: `1px solid ${C.border}`,
-                        background: quiz.length ? C.surface : C.border,
-                        color: quiz.length ? C.text : C.muted,
-                        fontWeight: 700,
-                        cursor: quiz.length ? "pointer" : "not-allowed",
-                      }}
-                    >
-                      Save Quiz
-                    </button>
-                  </div>
-                </div>
-
-                {usesCompactStudyFlow && viewMode === "setup" ? (
-                  <div
-                    style={{
-                      border: `1px dashed ${C.border}`,
-                      borderRadius: 20,
-                      padding: isMobile ? "28px 18px" : "34px 22px",
-                      textAlign: "center",
-                      color: C.muted,
-                      lineHeight: 1.7,
-                      display: "grid",
-                      gap: 14,
-                    }}
-                  >
-                    <div>
-                      Use Review Filters to choose a subject, topic, or difficulty, then generate your next quiz set.
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                  {!showCompactQuizSetup ? (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button
-                        type="button"
-                        onClick={returnToReviewFilters}
+                        onClick={() => {
+                          void requestNextQuizSet(topicFilter);
+                        }}
+                        disabled={apiLoading}
+                        style={{
+                          padding: studyActionPadding,
+                          borderRadius: 10,
+                          border: "none",
+                          background: apiLoading ? C.border : C.accent,
+                          color: apiLoading ? C.muted : "#fff",
+                          fontWeight: 700,
+                          cursor: apiLoading ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {apiLoading ? "Generating..." : topicFilter || hasCustomSource ? "Generate Another 10" : "Generate 10 Questions"}
+                      </button>
+                      <button
+                        onClick={saveCurrentQuiz}
+                        disabled={!quiz.length}
                         style={{
                           padding: studyActionPadding,
                           borderRadius: 10,
                           border: `1px solid ${C.border}`,
-                          background: C.surface,
-                          color: C.text,
+                          background: quiz.length ? C.surface : C.border,
+                          color: quiz.length ? C.text : C.muted,
                           fontWeight: 700,
-                          cursor: "pointer",
+                          cursor: quiz.length ? "pointer" : "not-allowed",
                         }}
                       >
-                        Open Filters
+                        Save Quiz
                       </button>
                     </div>
+                  ) : null}
+                </div>
+
+                {showCompactQuizSetup ? (
+                  <div
+                    style={{
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 20,
+                      padding: isMobile ? "18px 16px" : "22px 18px",
+                      background: darkMode ? elevatedSurface : "#FBFAF7",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                      Review Filters
+                    </div>
+                    {renderReviewFiltersFields({ labelColor: C.muted, background: C.surface })}
                   </div>
                 ) : !quizItem ? (
                   <div
