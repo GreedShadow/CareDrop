@@ -36,12 +36,17 @@ export default async function handler(req, res) {
         : `Every flashcard must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
 
     const systemInstruction =
-      `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt.`;
+      `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, clinically meaningful, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt. Each card must include: a front-side recall prompt, a correct answer, a short rationale explaining why the answer matters clinically, and a separate key takeaway for board review.`;
     const prompt = [
         "Build nursing study cards for a learner preparing for the Philippine PRC Nurse Licensure Examination.",
         difficultyInstruction,
         context,
         "Keep the cards practical, safety-focused, and framed for board-review recall in the Philippines.",
+        "Flashcard structure rules:",
+        "- Question side: recall-based prompt only",
+        "- Back side answer: one correct answer",
+        "- Rationale: explain briefly why the answer is clinically important or the priority cue",
+        "- Notes/key takeaway: one board-review takeaway or nursing priority reminder",
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the cards fresh and distinct.",

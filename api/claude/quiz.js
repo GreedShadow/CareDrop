@@ -37,17 +37,24 @@ export default async function handler(req, res) {
         ? "Use a balanced mix of easy, medium, and hard questions."
         : `Every question must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
     const examInstruction = examMode
-      ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form board review: broad subject coverage, clinically varied stems, strong prioritization language, and no repetitive wording.`
-      : "Make the set feel like a focused quiz batch.";
+      ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form board review: broad subject coverage, clinically varied stems, strong prioritization, assessment, intervention, and delegation language, and no repetitive wording. Keep exam mode difficult and PNLE-like.`
+      : "Make the set feel like a focused PNLE quiz batch with scenario-based stems whenever appropriate.";
 
     const systemInstruction =
-      "You generate PRC NLE-style nursing multiple-choice quizzes. Each question must have four distinct options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
+      "You generate PRC NLE-style nursing multiple-choice quizzes. Each question must have four distinct, believable options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
     const prompt = [
         `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
         difficultyInstruction,
         examInstruction,
         context,
         "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
+        "Question quality rules:",
+        "- Use 4 plausible answer choices",
+        "- One best answer only",
+        "- Avoid clue leakage from subject labels or obvious wording",
+        "- Distractors should be realistic but less appropriate than the correct answer",
+        "- Rationales must explain why the best answer is correct and why the other options are less appropriate",
+        "- Do not reveal hints inside the stem or choices",
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the questions fresh and not repetitive.",

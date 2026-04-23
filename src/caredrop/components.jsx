@@ -213,19 +213,55 @@ export function Flashcard({ card, idx, total, onRate }) {
                 borderColor: C.panelNeutralDark,
                 accentColor: C.muted,
                 extra: (
-                  <div
-                    style={{
-                      marginTop: 16,
-                      padding: 14,
-                      borderRadius: 14,
-                      background: C.surface,
-                      border: `1.5px solid ${C.panelNeutralDark}`,
-                      fontSize: 13,
-                      lineHeight: 1.65,
-                      color: C.muted,
-                    }}
-                  >
-                    {card.notes}
+                  <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+                    <div
+                      style={{
+                        padding: 14,
+                        borderRadius: 14,
+                        background: C.surface,
+                        border: `1.5px solid ${C.panelNeutralDark}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: C.faint,
+                          fontWeight: 700,
+                          letterSpacing: "0.07em",
+                          textTransform: "uppercase",
+                          marginBottom: 8,
+                        }}
+                      >
+                        Short rationale
+                      </div>
+                      <div style={{ fontSize: 13, lineHeight: 1.65, color: C.muted }}>
+                        {card.rationale}
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        padding: 14,
+                        borderRadius: 14,
+                        background: C.surface,
+                        border: `1.5px solid ${C.panelNeutralDark}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: C.faint,
+                          fontWeight: 700,
+                          letterSpacing: "0.07em",
+                          textTransform: "uppercase",
+                          marginBottom: 8,
+                        }}
+                      >
+                        Key takeaway
+                      </div>
+                      <div style={{ fontSize: 13, lineHeight: 1.65, color: C.muted }}>
+                        {card.notes}
+                      </div>
+                    </div>
                   </div>
                 ),
               },

@@ -524,16 +524,16 @@ function buildFallbackDistractors(prompt, correctAnswer) {
 
   if (scope === "specific") {
     return [
-      "Delay the intervention and reassess later.",
-      "Document the finding before taking action.",
-      "Delegate the decision to unlicensed staff.",
+      "Delay the priority action until more symptoms appear.",
+      "Choose the option that is useful but not the immediate priority.",
+      "Delegate the judgment call before completing the nursing assessment.",
     ].filter((option) => normalize(option) !== normalize(trimmedCorrect));
   }
 
   return [
-    "Choose the response that is convenient rather than the safest.",
-    "Wait for the condition to worsen before acting.",
-    "Focus on routine tasks instead of the main priority.",
+    "Choose the response that is reasonable but not the safest nursing priority.",
+    "Delay action and continue routine care first.",
+    "Select a partially correct action that misses the main clinical need.",
   ].filter((option) => normalize(option) !== normalize(trimmedCorrect));
 }
 
@@ -553,6 +553,7 @@ function isInstructionLikeOption(option) {
 
 function toFlashcard(entry, subject) {
   const alignedAnswer = alignTextToPrompt(entry.q, entry.a, 20, 30) || entry.a;
+  const rationale = buildFlashcardRationale(entry, alignedAnswer);
   return {
     id: `${subject}-${normalize(entry.q)}`,
     subject,
@@ -560,9 +561,26 @@ function toFlashcard(entry, subject) {
     topic: entry.topic || "general",
     question: entry.q,
     answer: alignedAnswer,
-    rationale: alignedAnswer,
-    notes: `Focus area: ${entry.topic || "general review"}.`,
+    rationale,
+    notes: buildFlashcardTakeaway(entry, alignedAnswer),
   };
+}
+
+function buildFlashcardRationale(entry, answer) {
+  const topic = entry.topic || "this nursing concept";
+  const subject = entry.subject || "PNLE review";
+  return `This is important because ${answer} is the key point that supports safe nursing judgment for ${topic} in ${subject}.`;
+}
+
+function buildFlashcardTakeaway(entry, answer) {
+  const topic = entry.topic || "general review";
+  return `Key takeaway: link ${topic} to the safest nursing priority, core assessment cue, or first-line intervention. Remember: ${answer}`;
+}
+
+function buildQuizRationale(entry, prompt, correctAnswer) {
+  const topic = entry.topic || "this concept";
+  const subject = entry.subject || "PNLE review";
+  return `The best answer is ${correctAnswer} because it matches the priority nursing judgment for ${topic} in ${subject}. The other choices may sound relevant, but they are less appropriate because they delay the priority action, miss the main assessment cue, or do not address the safest next step in the stem.`;
 }
 
 function getAllEntries() {
@@ -624,13 +642,13 @@ function buildFlashcardVariants(entry) {
   const baseId = `${subject}-${normalize(entry.q)}`;
   const topic = entry.topic || "general review";
   const answer = alignTextToPrompt(entry.q, entry.a, 20, 30) || entry.a;
-  const rationale = answer;
-  const notes = `Focus area: ${topic}.`;
+  const rationale = buildFlashcardRationale(entry, answer);
+  const notes = buildFlashcardTakeaway(entry, answer);
   const prompts = [
     entry.q,
     `In ${subject}, what should you remember about ${topic}?`,
     `Board recall: what is the safest nursing takeaway for ${topic}?`,
-    `What clue from ${subject} review points to ${topic}?`,
+    `Which nursing priority cue should you remember first for ${topic}?`,
   ];
 
   return uniqueBy(
@@ -650,19 +668,20 @@ function buildFlashcardVariants(entry) {
 
 function buildQuizVariants(entry) {
   const alignedAnswer = alignTextToPrompt(entry.q, entry.a, 18, 26) || entry.a;
+  const baseRationale = buildQuizRationale(entry, entry.q, alignedAnswer);
   return [
-    { prompt: entry.q, rationale: alignedAnswer },
+    { prompt: entry.q, rationale: baseRationale },
     {
-      prompt: `Which statement is most accurate about ${entry.topic} in ${entry.subject}?`,
-      rationale: alignedAnswer,
+      prompt: `A client is being reviewed for ${entry.topic}. Which response by the nurse is most appropriate?`,
+      rationale: buildQuizRationale(entry, `A client is being reviewed for ${entry.topic}. Which response by the nurse is most appropriate?`, alignedAnswer),
     },
     {
-      prompt: `A nursing student is reviewing ${entry.topic}. Which response is correct?`,
-      rationale: alignedAnswer,
+      prompt: `During PNLE review, which finding best supports the correct nursing action for ${entry.topic}?`,
+      rationale: buildQuizRationale(entry, `During PNLE review, which finding best supports the correct nursing action for ${entry.topic}?`, alignedAnswer),
     },
     {
-      prompt: `Which clue best supports the correct nursing action for ${entry.topic} in ${entry.subject}?`,
-      rationale: alignedAnswer,
+      prompt: `Which action should the nurse prioritize first when ${entry.topic} is the main concern?`,
+      rationale: buildQuizRationale(entry, `Which action should the nurse prioritize first when ${entry.topic} is the main concern?`, alignedAnswer),
     },
   ];
 }
@@ -759,7 +778,7 @@ function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count
           correctAnswer: alignTextToPrompt(variant.prompt, entry.a, 18, 26),
           options: buildDistractors({ ...entry, q: variant.prompt }, distractorPool),
           rationale: variant.rationale,
-          notes: `Topic focus: ${entry.topic}.`,
+          notes: `Key takeaway: focus on the best nursing priority for ${entry.topic}.`,
           userAnswer: null,
         });
 
@@ -797,8 +816,13 @@ function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRep
         topic: topic || card.topic || "ai review",
         question,
         answer,
-        rationale: alignTextToPrompt(question, card.rationale || answer || "Generated by Gemini.", 20, 30),
-        notes: String(card.notes || `Topic focus: ${topic || card.topic || "general review"}.`),
+        rationale: alignTextToPrompt(
+          question,
+          card.rationale || buildFlashcardRationale({ ...card, subject: nextSubject, topic: topic || card.topic }, answer),
+          24,
+          48
+        ),
+        notes: String(card.notes || buildFlashcardTakeaway({ ...card, subject: nextSubject, topic: topic || card.topic }, answer)),
       };
     }),
     (card) => card.id
@@ -856,8 +880,13 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
         prompt,
         correctAnswer,
         options,
-        rationale: alignTextToPrompt(prompt, item.rationale || correctAnswer || "", 20, 30),
-        notes: String(item.notes || `Topic focus: ${topic || "general review"}.`),
+        rationale: alignTextToPrompt(
+          prompt,
+          item.rationale || buildQuizRationale({ ...item, subject: item.subject || subject || "Mixed Review", topic: topic || item.topic || "ai review" }, prompt, correctAnswer),
+          30,
+          70
+        ),
+        notes: String(item.notes || `Key takeaway: choose the best nursing answer, not just a possible answer, for ${topic || item.topic || "the topic"}.`),
         userAnswer: item.userAnswer ?? null,
       };
     }),

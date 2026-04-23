@@ -76,6 +76,18 @@ function hasCategoryLeak(text) {
   return SUBJECT_HINTS.some((hint) => normalized.includes(hint));
 }
 
+function rationaleHasTeachingValue(text) {
+  const normalized = normalizeText(text).toLowerCase();
+  return (
+    normalized.includes("because") &&
+    (normalized.includes("other") ||
+      normalized.includes("less appropriate") ||
+      normalized.includes("less correct") ||
+      normalized.includes("priority") ||
+      normalized.includes("safest"))
+  );
+}
+
 function buildValidationPrompt(basePrompt, attempt, issues) {
   if (!issues.length || attempt === 0) {
     return basePrompt;
@@ -101,8 +113,11 @@ function validateCard(card, index, requestedDifficulty) {
   if (!question || question.length < 12) issues.push(`card ${index + 1}: question is too short`);
   if (!answer || answer.length < 6) issues.push(`card ${index + 1}: answer is too short`);
   if (!rationale || rationale.length < 12) issues.push(`card ${index + 1}: rationale is too short`);
-  if (!notes) issues.push(`card ${index + 1}: notes are missing`);
+  if (!notes || notes.length < 12) issues.push(`card ${index + 1}: key takeaway is too short`);
   if (!topic) issues.push(`card ${index + 1}: topic is missing`);
+  if (!rationaleHasTeachingValue(rationale)) {
+    issues.push(`card ${index + 1}: rationale should explain why the answer matters`);
+  }
   if (requestedDifficulty !== "mixed" && difficulty !== requestedDifficulty) {
     issues.push(`card ${index + 1}: difficulty must stay ${requestedDifficulty}`);
   }
@@ -132,8 +147,14 @@ function validateQuestion(question, index, requestedDifficulty) {
   if (options.some(hasCategoryLeak)) {
     issues.push(`question ${index + 1}: options leak subject/category hints`);
   }
+  if (hasCategoryLeak(correctAnswer)) {
+    issues.push(`question ${index + 1}: correct answer leaks subject/category hints`);
+  }
   if (!rationale || rationale.length < 12) {
     issues.push(`question ${index + 1}: rationale is too short`);
+  }
+  if (!rationaleHasTeachingValue(rationale)) {
+    issues.push(`question ${index + 1}: rationale must explain why the best answer is correct and why the others are weaker`);
   }
   if (requestedDifficulty !== "mixed" && difficulty !== requestedDifficulty) {
     issues.push(`question ${index + 1}: difficulty must stay ${requestedDifficulty}`);
