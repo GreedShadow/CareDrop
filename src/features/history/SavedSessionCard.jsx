@@ -10,7 +10,7 @@ export function SavedSessionCard({ session, onOpen, onDelete, buildSessionLabel 
         border: `1px solid ${C.border}`,
         borderRadius: 14,
         padding: 14,
-        background: "#FBFAF7",
+        background: C.surfaceMuted,
         display: "flex",
         flexDirection: "column",
         gap: 10,

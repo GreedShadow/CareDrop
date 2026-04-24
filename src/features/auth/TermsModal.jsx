@@ -42,6 +42,7 @@ export function TermsModal({ open, onClose }) {
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close terms modal"
             style={{
               width: 36,
               height: 36,
@@ -51,6 +52,8 @@ export function TermsModal({ open, onClose }) {
               color: C.muted,
               cursor: "pointer",
               fontWeight: 800,
+              fontSize: 18,
+              lineHeight: 1,
             }}
           >
             ×
@@ -83,7 +86,7 @@ export function TermsModal({ open, onClose }) {
             <strong>7. Respectful use.</strong> Do not use CareDrop to submit abusive content, misuse feedback/reporting tools, interfere with the service, or attempt to access information that is not yours.
           </div>
           <div>
-            <strong>8. Platform updates.</strong> Features, content, and integrations may improve over time. Continued use of CareDrop means you accept those changes as part of the platform’s evolution.
+            <strong>8. Platform updates.</strong> Features, content, and integrations may improve over time. Continued use of CareDrop means you accept those changes as part of the platform's evolution.
           </div>
         </div>
 

@@ -1947,14 +1947,22 @@ export default function App() {
   const darkMode = C.mode === "dark";
   const softSurface = C.surfaceMuted;
   const adminModeActive = mode === "admin" && isAdminUser;
+  const successSurface = darkMode ? C.accentLight : "#F3FBF6";
+  const successBorder = darkMode ? C.accentMid : "#B9E3CA";
+  const errorSurface = darkMode ? C.redLight : "#FFF1F2";
+  const errorBorder = darkMode ? C.red : "#F4A8B4";
+  const warningSurface = darkMode ? C.amberLight : "#FFF7E8";
+  const warningBorder = C.amber;
+  const infoSurface = darkMode ? C.blueLight : "#EEF4FB";
+  const infoBorder = darkMode ? C.border : "#C7D6E5";
   const syncStatusTone = cloudSyncState === "sync-failed"
-    ? { bg: "#FFF1F2", border: "#F4A8B4", label: "Sync failed" }
+    ? { bg: errorSurface, border: errorBorder, label: "Sync failed" }
     : cloudSyncState === "queued-sync"
-      ? { bg: "#FFF7E8", border: C.amber, label: "Queued for sync" }
+      ? { bg: warningSurface, border: warningBorder, label: "Queued for sync" }
       : cloudSyncState === "syncing"
-    ? { bg: darkMode ? C.blueLight : "#EEF4FB", border: darkMode ? C.border : "#C7D6E5", label: "Syncing" }
+    ? { bg: infoSurface, border: infoBorder, label: "Syncing" }
         : cloudSyncState === "synced"
-          ? { bg: "#F3FBF6", border: "#B9E3CA", label: "Synced to cloud" }
+          ? { bg: successSurface, border: successBorder, label: "Synced to cloud" }
     : { bg: darkMode ? softSurface : "#F8F5EE", border: C.border, label: "Saved locally" };
   const adminFeedbackItems = useMemo(
     () => sortByDateDesc(requestHistory, "createdAt"),
@@ -6746,14 +6754,14 @@ export default function App() {
                         const selected = getSelectedOptionIds(quizItem).includes(option.id);
                         const correct = getCorrectOptionIds(quizItem).includes(option.id);
                         const background = quizSubmitted && correct
-                          ? "#ECFDF5"
+                          ? successSurface
                           : quizSubmitted && selected && !correct
-                            ? "#FFF1F2"
+                            ? errorSurface
                             : C.panelNeutralAlt;
                         const borderColor = quizSubmitted && correct
-                          ? "#10B981"
+                          ? successBorder
                           : quizSubmitted && selected && !correct
-                            ? "#F43F5E"
+                            ? errorBorder
                             : C.panelNeutralDark;
 
                         return (
@@ -6809,8 +6817,8 @@ export default function App() {
                               marginTop: 10,
                               padding: "10px 12px",
                               borderRadius: 12,
-                              background: "#FFF7E8",
-                              border: `1px solid ${C.amber}`,
+                              background: warningSurface,
+                              border: `1px solid ${warningBorder}`,
                               fontSize: 13,
                               lineHeight: 1.7,
                               color: C.text,
@@ -7303,14 +7311,14 @@ export default function App() {
                           const selected = getSelectedOptionIds(simulationItem).includes(option.id);
                           const correct = getCorrectOptionIds(simulationItem).includes(option.id);
                           const background = simulationSubmitted && correct
-                            ? "#ECFDF5"
+                            ? successSurface
                             : simulationSubmitted && selected && !correct
-                              ? "#FFF1F2"
+                              ? errorSurface
                               : C.panelNeutralAlt;
                           const borderColor = simulationSubmitted && correct
-                            ? "#10B981"
+                            ? successBorder
                             : simulationSubmitted && selected && !correct
-                              ? "#F43F5E"
+                              ? errorBorder
                               : C.panelNeutralDark;
 
                           return (
@@ -7460,15 +7468,15 @@ export default function App() {
                           </div>
                           {unansweredSimulationNumbers.length && simulationIdx === simulationQuestions.length - 1 ? (
                             <div
-                              style={{
-                                marginTop: 10,
-                                padding: "10px 12px",
-                                borderRadius: 12,
-                                background: "#FFF7E8",
-                                border: `1px solid ${C.amber}`,
-                                fontSize: 13,
-                                lineHeight: 1.7,
-                                color: C.text,
+                            style={{
+                              marginTop: 10,
+                              padding: "10px 12px",
+                              borderRadius: 12,
+                              background: warningSurface,
+                              border: `1px solid ${warningBorder}`,
+                              fontSize: 13,
+                              lineHeight: 1.7,
+                              color: C.text,
                               }}
                             >
                               You still need to answer question{unansweredSimulationNumbers.length === 1 ? "" : "s"} {unansweredSimulationNumbers.join(", ")} before you can submit this simulation.
@@ -8334,8 +8342,8 @@ export default function App() {
             zIndex: 89,
             padding: "8px 12px",
             borderRadius: 999,
-            background: "#FFF9EC",
-            border: `1px solid ${C.amber}`,
+            background: warningSurface,
+            border: `1px solid ${warningBorder}`,
             color: C.amber,
             fontSize: 12,
             fontWeight: 700,

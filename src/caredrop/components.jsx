@@ -553,11 +553,11 @@ export function ThemeToggle({ mode = "light", onToggle, showLabel = false }) {
         minWidth: showLabel ? 110 : 72,
         height: 42,
         borderRadius: 999,
-        border: `1px solid ${dark ? "#FFFFFF" : C.border}`,
-        background: dark ? "#050505" : C.surface,
-        color: dark ? "#FFFFFF" : C.text,
+        border: `1px solid ${dark ? C.borderStrong : C.border}`,
+        background: dark ? C.bgElevated : C.surface,
+        color: C.text,
         cursor: "pointer",
-        boxShadow: dark ? "0 10px 20px rgba(0,0,0,0.22)" : "0 8px 18px rgba(15, 23, 42, 0.08)",
+        boxShadow: dark ? C.shellShadow : "0 8px 18px rgba(15, 23, 42, 0.08)",
         transition: "background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease",
       }}
     >
@@ -566,7 +566,7 @@ export function ThemeToggle({ mode = "light", onToggle, showLabel = false }) {
           width: 34,
           height: 34,
           borderRadius: "50%",
-          background: dark ? "#FFFFFF" : "#0F1110",
+          background: dark ? C.text : "#0F1110",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
@@ -574,7 +574,7 @@ export function ThemeToggle({ mode = "light", onToggle, showLabel = false }) {
           overflow: "hidden",
           transition: "transform 0.22s ease, background 0.22s ease",
           transform: dark ? "translateX(0)" : "translateX(0)",
-          boxShadow: dark ? "0 0 0 1px rgba(0,0,0,0.04)" : "0 0 0 1px rgba(255,255,255,0.06)",
+          boxShadow: dark ? "0 0 0 1px rgba(15, 23, 42, 0.08)" : "0 0 0 1px rgba(255,255,255,0.06)",
         }}
       >
         {dark ? (
