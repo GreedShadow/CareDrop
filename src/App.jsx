@@ -1070,6 +1070,9 @@ export default function App() {
   const [topicInput, setTopicInput] = useState(safeString(persisted?.topicFilter));
   const [focusAction, setFocusAction] = useState("flashcard");
   const [mode, setMode] = useState(safeMode(persisted?.mode));
+  const [studyMode, setStudyMode] = useState(
+    safeMode(persisted?.mode) === "quiz" ? "quiz" : "flashcard"
+  );
   const [viewMode, setViewMode] = useState("setup");
   const [flashcards, setFlashcards] = useState([]);
   const [cardIdx, setCardIdx] = useState(0);
@@ -1324,6 +1327,9 @@ export default function App() {
 
   function queueModeChange(nextMode) {
     window.requestAnimationFrame(() => {
+      if (nextMode === "flashcard" || nextMode === "quiz") {
+        setStudyMode(nextMode);
+      }
       setMode(nextMode);
     });
   }
@@ -3686,7 +3692,10 @@ export default function App() {
     clearMessages();
 
     const nextTopic = getActiveTopicFocus(topicInput);
-    if (!ensureReviewTargetSelected(`open ${focusAction === "quiz" ? "a quiz" : "flashcards"}`, nextTopic)) {
+    const activeStudyMode =
+      usesCompactStudyFlow && (mode === "flashcard" || mode === "quiz") ? studyMode : focusAction;
+
+    if (!ensureReviewTargetSelected(`open ${activeStudyMode === "quiz" ? "a quiz" : "flashcards"}`, nextTopic)) {
       return;
     }
 
@@ -3696,7 +3705,7 @@ export default function App() {
       setMobileDrawerOpen(false);
     }
 
-    if (focusAction === "quiz") {
+    if (activeStudyMode === "quiz") {
       await generateQuiz(nextTopic);
       return;
     }
@@ -3889,8 +3898,43 @@ export default function App() {
     });
   }
 
-  const renderReviewFiltersFields = ({ labelColor, background }) => (
+  const renderReviewFiltersFields = ({ labelColor, background, lockedMode = null }) => {
+    const activeMode = lockedMode || focusAction;
+    const showModeSwitch = Boolean(lockedMode);
+
+    return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {showModeSwitch ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            marginBottom: 2,
+          }}
+        >
+          <div style={{ fontSize: 12, color: labelColor, fontWeight: 700 }}>
+            {activeMode === "quiz" ? "Quiz setup" : "Flashcard setup"}
+          </div>
+          <button
+            type="button"
+            onClick={() => navigateToMode(activeMode === "quiz" ? "flashcard" : "quiz")}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 999,
+              border: `1px solid ${C.border}`,
+              background,
+              color: C.text,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Switch Mode
+          </button>
+        </div>
+      ) : null}
       <label style={{ fontSize: 12, color: labelColor, fontWeight: 700 }}>Difficulty</label>
       <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} style={selectStyle}>
         {DIFFICULTIES.map((value) => (
@@ -3926,30 +3970,34 @@ export default function App() {
         }}
       />
 
-      <label style={{ fontSize: 12, color: labelColor, fontWeight: 700 }}>Preferred Action</label>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        {[
-          ["flashcard", "Flashcards"],
-          ["quiz", "Quiz"],
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setFocusAction(value)}
-            style={{
-              padding: "11px 12px",
-              borderRadius: 12,
-              border: focusAction === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
-              background: focusAction === value ? C.accentLight : background,
-              color: focusAction === value ? C.accent : C.text,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {!lockedMode ? (
+        <>
+          <label style={{ fontSize: 12, color: labelColor, fontWeight: 700 }}>Preferred Action</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {[
+              ["flashcard", "Flashcards"],
+              ["quiz", "Quiz"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFocusAction(value)}
+                style={{
+                  padding: "11px 12px",
+                  borderRadius: 12,
+                  border: focusAction === value ? `1px solid ${C.accentMid}` : `1px solid ${C.border}`,
+                  background: focusAction === value ? C.accentLight : background,
+                  color: focusAction === value ? C.accent : C.text,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       <button
         type="button"
@@ -3968,10 +4016,11 @@ export default function App() {
       >
         {apiLoading
           ? "Preparing..."
-          : `Generate ${focusAction === "quiz" ? "Quiz" : "Flashcards"}`}
+          : `Generate ${activeMode === "quiz" ? "Quiz" : "Flashcards"}`}
       </button>
     </div>
-  );
+    );
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -6421,7 +6470,11 @@ export default function App() {
                     <div style={{ fontSize: 11, fontWeight: 800, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
                       Review Filters
                     </div>
-                    {renderReviewFiltersFields({ labelColor: C.muted, background: C.surface })}
+                    {renderReviewFiltersFields({
+                      labelColor: C.muted,
+                      background: C.surface,
+                      lockedMode: "flashcard",
+                    })}
                   </div>
                 ) : currentCard ? (
                   <>
@@ -6604,7 +6657,11 @@ export default function App() {
                     <div style={{ fontSize: 11, fontWeight: 800, color: C.faint, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
                       Review Filters
                     </div>
-                    {renderReviewFiltersFields({ labelColor: C.muted, background: C.surface })}
+                    {renderReviewFiltersFields({
+                      labelColor: C.muted,
+                      background: C.surface,
+                      lockedMode: "quiz",
+                    })}
                   </div>
                 ) : !quizItem ? (
                   <div
