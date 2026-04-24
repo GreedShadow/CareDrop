@@ -1,4 +1,5 @@
 import { normalize } from "../caredrop/helpers";
+import { scoreQuestion } from "./questionTypes";
 
 export function getTopicSearchTerms(topic) {
   const base = normalize(topic);
@@ -40,8 +41,8 @@ export function collectIncorrectQuestions(sessions = []) {
       .filter(
         (item) =>
           item &&
-          item.userAnswer &&
-          normalize(item.userAnswer) !== normalize(item.correctAnswer)
+          ((item.options && scoreQuestion(item) === 0) ||
+            (!item.options && item.userAnswer && normalize(item.userAnswer) !== normalize(item.correctAnswer)))
       )
       .map((item) => ({
         subject: item.subject || session.subject || "Mixed Review",

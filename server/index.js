@@ -276,7 +276,7 @@ app.post("/api/claude/quiz", async (req, res) => {
       : "Make the set feel like a focused PNLE quiz batch with scenario-based stems whenever appropriate.";
 
     const systemInstruction =
-      "You generate PRC NLE-style nursing multiple-choice quizzes. Each question must have four distinct, believable options, one clearly best answer, and a board-style rationale. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
+      "You generate PRC NLE-style nursing quiz questions. Every item must have four distinct, believable options and a board-style rationale. Most items should be single_choice with one clearly best answer. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
     const prompt = [
       `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
       difficultyInstruction,
@@ -285,7 +285,12 @@ app.post("/api/claude/quiz", async (req, res) => {
       "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
       "Question quality rules:",
       "- Use 4 plausible answer choices",
-      "- One best answer only",
+      examMode
+        ? "- Use mostly single_choice items, but you may include a limited number of multiple_response SATA items when clinically appropriate"
+        : "- One best answer only",
+      examMode
+        ? "- For multiple_response items, set type=multiple_response and provide correctOptionIds for every correct choice while still keeping exactly 4 options"
+        : "- Keep these as single_choice items only",
       "- Avoid clue leakage from subject labels or obvious wording",
       "- Distractors should be realistic but less appropriate than the correct answer",
       "- Rationales must explain why the best answer is correct and why the other options are less appropriate",

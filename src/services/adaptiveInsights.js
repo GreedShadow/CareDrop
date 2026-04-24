@@ -1,3 +1,5 @@
+import { isQuestionAnswered, scoreQuestion } from "./questionTypes";
+
 function average(values) {
   if (!values?.length) {
     return 0;
@@ -110,34 +112,44 @@ export function summarizePerformanceBuckets(reviewSessions) {
           ? item.correct
           : rating
             ? rating === "easy"
-            : selected !== undefined && correctOption !== undefined
-              ? selected === correctOption
-              : false;
+            : item.options
+              ? scoreQuestion(item) === 1
+              : selected !== undefined && correctOption !== undefined
+                ? selected === correctOption
+                : false;
+      const answered =
+        typeof item.correct === "boolean"
+          ? true
+          : item.options
+            ? isQuestionAnswered(item)
+            : selected !== undefined && selected !== null && selected !== "";
       const unsure = rating === "hard" || rating === "again";
 
-      recordPerformanceAttempt(topicBuckets, {
-        subject: sessionSubject,
-        topic,
-        correct,
-        unsure,
-        responseTime,
-        module: session.mode || "review",
-        score: sessionScore,
-        remediationScore: session.mode === "remediation" ? sessionScore : null,
-        previousScore: session.mode === "remediation" ? Number(session.previousScore || 0) : null,
-      });
+      if (rating || answered || typeof item.correct === "boolean") {
+        recordPerformanceAttempt(topicBuckets, {
+          subject: sessionSubject,
+          topic,
+          correct,
+          unsure,
+          responseTime,
+          module: session.mode || "review",
+          score: sessionScore,
+          remediationScore: session.mode === "remediation" ? sessionScore : null,
+          previousScore: session.mode === "remediation" ? Number(session.previousScore || 0) : null,
+        });
 
-      recordPerformanceAttempt(subjectBuckets, {
-        subject: sessionSubject,
-        topic: "",
-        correct,
-        unsure,
-        responseTime,
-        module: session.mode || "review",
-        score: sessionScore,
-        remediationScore: session.mode === "remediation" ? sessionScore : null,
-        previousScore: session.mode === "remediation" ? Number(session.previousScore || 0) : null,
-      });
+        recordPerformanceAttempt(subjectBuckets, {
+          subject: sessionSubject,
+          topic: "",
+          correct,
+          unsure,
+          responseTime,
+          module: session.mode || "review",
+          score: sessionScore,
+          remediationScore: session.mode === "remediation" ? sessionScore : null,
+          previousScore: session.mode === "remediation" ? Number(session.previousScore || 0) : null,
+        });
+      }
     });
 
     if (!items.length) {

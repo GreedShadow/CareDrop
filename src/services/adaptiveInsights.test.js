@@ -80,4 +80,53 @@ describe("summarizePerformanceBuckets", () => {
     expect(result.primaryFocus?.subject).toBe("Fundamentals");
     expect(result.primaryFocus?.topic).toBe("infection control");
   });
+
+  it("counts SATA misses toward weak topic tracking", () => {
+    const sessions = [
+      {
+        id: "sim-sata-1",
+        mode: "simulation",
+        subject: "Medical-Surgical",
+        score: 25,
+        topic: "respiratory",
+        responseTimes: { sata1: 38000, sata2: 34000 },
+        questions: [
+          {
+            id: "sata1",
+            type: "multiple_response",
+            topic: "respiratory",
+            subject: "Medical-Surgical",
+            correctOptionIds: ["a", "c"],
+            userAnswer: ["a", "d"],
+            options: [
+              { id: "a", text: "Assess respiratory status" },
+              { id: "b", text: "Delay reassessment" },
+              { id: "c", text: "Prepare oxygen support" },
+              { id: "d", text: "Ambulate immediately" },
+            ],
+          },
+          {
+            id: "sata2",
+            type: "multiple_response",
+            topic: "respiratory",
+            subject: "Medical-Surgical",
+            correctOptionIds: ["b", "c"],
+            userAnswer: ["b", "d"],
+            options: [
+              { id: "a", text: "Delay intervention until rounds" },
+              { id: "b", text: "Monitor oxygen saturation" },
+              { id: "c", text: "Position for easier breathing" },
+              { id: "d", text: "Give unrestricted oral intake" },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const result = summarizePerformanceBuckets(sessions);
+
+    expect(result.primaryFocus?.subject).toBe("Medical-Surgical");
+    expect(result.primaryFocus?.topic).toBe("respiratory");
+    expect(result.recommendationReasons.length).toBeGreaterThan(0);
+  });
 });

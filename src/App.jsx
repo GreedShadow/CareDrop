@@ -84,6 +84,16 @@ import {
   updateCardSchedule,
 } from "./services/spacedRepetition";
 import {
+  buildQuestionReview,
+  getCorrectOptionIds,
+  getQuestionOptions,
+  getQuestionType,
+  getSelectedOptionIds,
+  isQuestionAnswered,
+  QUESTION_TYPES,
+  scoreQuestion,
+} from "./services/questionTypes";
+import {
   ANSWER_REMINDERS,
   BANK_ITEMS_PER_BUCKET,
   BUCKET_DIFFICULTIES,
@@ -583,6 +593,13 @@ function buildQuizRationale(entry, prompt, correctAnswer) {
   return `The best answer is ${correctAnswer} because it matches the priority nursing judgment for ${topic} in ${subject}. The other choices may sound relevant, but they are less appropriate because they delay the priority action, miss the main assessment cue, or do not address the safest next step in the stem.`;
 }
 
+function sanitizeQuestionType(type, allowMultipleResponse = false) {
+  if (allowMultipleResponse && type === QUESTION_TYPES.MULTIPLE_RESPONSE) {
+    return QUESTION_TYPES.MULTIPLE_RESPONSE;
+  }
+  return QUESTION_TYPES.SINGLE_CHOICE;
+}
+
 function getAllEntries() {
   return ALL_BANK_ENTRIES;
 }
@@ -774,6 +791,7 @@ function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count
           subject: entry.subject,
           difficulty: entry.difficulty,
           topic: entry.topic,
+          type: QUESTION_TYPES.SINGLE_CHOICE,
           prompt: variant.prompt,
           correctAnswer: alignTextToPrompt(variant.prompt, entry.a, 18, 26),
           options: buildDistractors({ ...entry, q: variant.prompt }, distractorPool),
@@ -848,38 +866,66 @@ function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRep
   );
 }
 
-function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompts, allowRepeat) {
+function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompts, allowRepeat, allowMultipleResponse = false) {
   return uniqueBy(
     (Array.isArray(questions) ? questions : []).map((item) => {
       const prompt = cleanQuizPrompt(item.prompt || item.question || "");
       const rawOptions = uniqueBy(
         (Array.isArray(item.options) ? item.options : [])
-          .map((option) => cleanQuizOption(option))
-          .filter((option) => option && !isInstructionLikeOption(option)),
-        (option) => normalize(option)
+          .map((option, index) => {
+            if (typeof option === "string") {
+              return {
+                id: `option-${index + 1}`,
+                text: cleanQuizOption(option),
+                rationale: "",
+              };
+            }
+
+            return {
+              id: String(option?.id || `option-${index + 1}`),
+              text: cleanQuizOption(option?.text || option?.label || option?.value || ""),
+              rationale: String(option?.rationale || ""),
+            };
+          })
+          .filter((option) => option.text && !isInstructionLikeOption(option.text)),
+        (option) => normalize(option.text)
       );
       const correctAnswer = alignTextToPrompt(prompt, item.correctAnswer || "", 18, 26);
-      const options = finalizeQuizOptions(
-        prompt,
-        correctAnswer,
-        rawOptions,
-        item.subject || subject || "Mixed Review",
-        ["easy", "medium", "hard"].includes(item.difficulty)
-          ? item.difficulty
-          : ["easy", "medium", "hard"].includes(difficulty)
-            ? difficulty
-            : "All",
-        topic || item.topic || "ai review"
-      );
+      const sanitizedType = sanitizeQuestionType(item.type, allowMultipleResponse);
+      const options = sanitizedType === QUESTION_TYPES.MULTIPLE_RESPONSE
+        ? rawOptions.slice(0, 4)
+        : finalizeQuizOptions(
+            prompt,
+            correctAnswer,
+            rawOptions.map((option) => option.text),
+            item.subject || subject || "Mixed Review",
+            ["easy", "medium", "hard"].includes(item.difficulty)
+              ? item.difficulty
+              : ["easy", "medium", "hard"].includes(difficulty)
+                ? difficulty
+                : "All",
+            topic || item.topic || "ai review"
+          ).map((option, index) => ({
+            id: rawOptions.find((candidate) => normalize(candidate.text) === normalize(option))?.id || `option-${index + 1}`,
+            text: option,
+            rationale: rawOptions.find((candidate) => normalize(candidate.text) === normalize(option))?.rationale || "",
+          }));
+      const correctOptionIds = sanitizedType === QUESTION_TYPES.MULTIPLE_RESPONSE
+        ? (Array.isArray(item.correctOptionIds) ? item.correctOptionIds : [])
+            .map((value) => String(value))
+            .filter((value) => options.some((option) => option.id === value))
+        : [];
 
       return {
         id: item.id || uid(),
         subject: item.subject || subject || "Mixed Review",
         difficulty: ["easy", "medium", "hard"].includes(item.difficulty) ? item.difficulty : "medium",
         topic: topic || item.topic || "ai review",
+        type: sanitizedType,
         prompt,
         correctAnswer,
         options,
+        correctOptionIds: sanitizedType === QUESTION_TYPES.MULTIPLE_RESPONSE ? correctOptionIds : [],
         rationale: alignTextToPrompt(
           prompt,
           item.rationale || buildQuizRationale({ ...item, subject: item.subject || subject || "Mixed Review", topic: topic || item.topic || "ai review" }, prompt, correctAnswer),
@@ -887,7 +933,10 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
           70
         ),
         notes: String(item.notes || `Key takeaway: choose the best nursing answer, not just a possible answer, for ${topic || item.topic || "the topic"}.`),
-        userAnswer: item.userAnswer ?? null,
+        userAnswer:
+          sanitizedType === QUESTION_TYPES.MULTIPLE_RESPONSE
+            ? (Array.isArray(item.userAnswer) ? item.userAnswer.map((value) => String(value)) : [])
+            : item.userAnswer ?? null,
       };
     }),
     (item) => normalize(item.prompt)
@@ -895,11 +944,13 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
     const valid =
       item.prompt &&
       item.prompt.length > 18 &&
-      item.correctAnswer &&
+      (item.correctAnswer || item.correctOptionIds.length) &&
       item.options.length >= 4 &&
-      !hasScopeMismatch(item.prompt, item.correctAnswer);
+      !hasScopeMismatch(item.prompt, item.correctAnswer || item.options.find((option) => item.correctOptionIds.includes(option.id))?.text || "");
     const notUsed = allowRepeat ? true : !usedPrompts.includes(normalize(item.prompt));
-    const includesCorrect = item.options.some((option) => normalize(option) === normalize(item.correctAnswer));
+    const includesCorrect = item.type === QUESTION_TYPES.MULTIPLE_RESPONSE
+      ? item.correctOptionIds.length >= 2
+      : item.options.some((option) => normalize(option.text) === normalize(item.correctAnswer));
     return (
       valid &&
       notUsed &&
@@ -910,7 +961,7 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
           difficulty: item.difficulty,
           topic: item.topic,
           prompt: item.prompt,
-          answer: item.correctAnswer,
+          answer: item.correctAnswer || item.options.find((option) => item.correctOptionIds.includes(option.id))?.text || "",
           rationale: item.rationale,
         },
         subject,
@@ -1625,25 +1676,23 @@ export default function App() {
   const totalCards = getAllEntries().length;
   const currentCard = flashcards[clamp(cardIdx, 0, Math.max(flashcards.length - 1, 0))];
   const quizItem = quiz[quizIdx];
-  const answeredCount = quiz.filter((item) => item.userAnswer !== null).length;
+  const answeredCount = quiz.filter((item) => isQuestionAnswered(item)).length;
   const unansweredQuizNumbers = quiz
-    .map((item, index) => (item.userAnswer === null ? index + 1 : null))
+    .map((item, index) => (!isQuestionAnswered(item) ? index + 1 : null))
     .filter(Boolean);
   const correctCount = quiz.filter(
-    (item) => item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer)
+    (item) => scoreQuestion(item) === 1
   ).length;
   const simulationItem = simulationQuestions[simulationIdx];
-  const simulationAnsweredCount = simulationQuestions.filter((item) => item.userAnswer !== null).length;
+  const simulationAnsweredCount = simulationQuestions.filter((item) => isQuestionAnswered(item)).length;
   const unansweredSimulationNumbers = simulationQuestions
-    .map((item, index) => (item.userAnswer === null ? index + 1 : null))
+    .map((item, index) => (!isQuestionAnswered(item) ? index + 1 : null))
     .filter(Boolean);
-  const simulationCorrectCount = simulationQuestions.filter(
-    (item) => item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer)
-  ).length;
+  const simulationCorrectCount = simulationQuestions.filter((item) => scoreQuestion(item) === 1).length;
   const simulationCurrentCorrect =
     !!simulationItem &&
-    simulationItem.userAnswer !== null &&
-    normalize(simulationItem.userAnswer) === normalize(simulationItem.correctAnswer);
+    isQuestionAnswered(simulationItem) &&
+    scoreQuestion(simulationItem) === 1;
   const simulationProgressPercent = simulationQuestions.length
     ? Math.round((simulationAnsweredCount / simulationQuestions.length) * 100)
     : 0;
@@ -1661,7 +1710,7 @@ export default function App() {
           }
 
           accumulator[key].total += 1;
-          if (item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer)) {
+          if (scoreQuestion(item) === 1) {
             accumulator[key].correct += 1;
           }
 
@@ -1682,8 +1731,8 @@ export default function App() {
     .slice(0, 3);
   const currentCorrect =
     !!quizItem &&
-    quizItem.userAnswer !== null &&
-    normalize(quizItem.userAnswer) === normalize(quizItem.correctAnswer);
+    isQuestionAnswered(quizItem) &&
+    scoreQuestion(quizItem) === 1;
   const progressPercent = quiz.length ? Math.round((answeredCount / quiz.length) * 100) : 0;
   const flashcardCompletedCount = flashcards.filter((card) => flashcardSessionRatings[card.id]).length;
   const flashcardStrongCount = flashcards.filter((card) => flashcardSessionRatings[card.id] === "easy").length;
@@ -2670,7 +2719,8 @@ export default function App() {
       difficultyOverride === "mixed" ? "All" : difficultyOverride,
       topicOverride,
       [],
-      true
+      true,
+      examMode
     );
   }
 
@@ -3183,13 +3233,22 @@ export default function App() {
     }
 
     const elapsed = Math.max(Date.now() - simulationShownAtRef.current, 0);
+    const optionId = String(option);
 
     setSimulationQuestions((prev) =>
       prev.map((item, index) =>
         index === simulationIdx
           ? {
               ...item,
-              userAnswer: option,
+              userAnswer:
+                getQuestionType(item) === QUESTION_TYPES.MULTIPLE_RESPONSE
+                  ? (() => {
+                      const selections = Array.isArray(item.userAnswer) ? [...item.userAnswer] : [];
+                      return selections.includes(optionId)
+                        ? selections.filter((value) => value !== optionId)
+                        : [...selections, optionId];
+                    })()
+                  : optionId,
             }
           : item
       )
@@ -3334,7 +3393,7 @@ export default function App() {
 
     const incorrectItems = baseSession?.questions
       ? baseSession.questions
-          .filter((item) => item.userAnswer && normalize(item.userAnswer) !== normalize(item.correctAnswer))
+          .filter((item) => scoreQuestion(item) === 0)
           .map((item) => ({
             subject: item.subject || baseSession.subject || "",
             topic: item.topic || baseSession.topic || "",
@@ -6626,9 +6685,9 @@ export default function App() {
                     </div>
 
                     <div key={`${quizItem.id || "quiz"}-${quizIdx}-options`} style={{ marginTop: 14, display: "grid", gap: 8, animation: "caredropFadeSlide 0.24s ease" }}>
-                      {quizItem.options.map((option, optionIndex) => {
-                        const selected = quizItem.userAnswer === option;
-                        const correct = normalize(option) === normalize(quizItem.correctAnswer);
+                      {getQuestionOptions(quizItem).map((option, optionIndex) => {
+                        const selected = getSelectedOptionIds(quizItem).includes(option.id);
+                        const correct = getCorrectOptionIds(quizItem).includes(option.id);
                         const background = quizSubmitted && correct
                           ? "#ECFDF5"
                           : quizSubmitted && selected && !correct
@@ -6642,7 +6701,7 @@ export default function App() {
 
                         return (
                           <label
-                            key={`${quizItem.id || "quiz"}-${quizIdx}-${optionIndex}`}
+                            key={`${quizItem.id || "quiz"}-${quizIdx}-${option.id}-${optionIndex}`}
                             style={{
                               textAlign: "left",
                               padding: "14px 16px",
@@ -6663,10 +6722,10 @@ export default function App() {
                               name={`quiz-${quizItem.id}`}
                               checked={selected}
                               disabled={quizSubmitted}
-                              onChange={() => handleQuizAnswer(option)}
+                              onChange={() => handleQuizAnswer(option.text)}
                               style={{ marginTop: 4 }}
                             />
-                            <span>{option}</span>
+                            <span>{option.text}</span>
                           </label>
                         );
                       })}
@@ -6890,7 +6949,7 @@ export default function App() {
                           ) : null}
                         </div>
                         <div style={{ marginTop: 12, fontSize: studyBodySize, lineHeight: 1.7 }}>
-                          <div><strong>Your answer:</strong> {quizItem.userAnswer || "No answer saved"}</div>
+                          <div><strong>Your answer:</strong> {getQuestionOptions(quizItem).find((option) => getSelectedOptionIds(quizItem).includes(option.id))?.text || "No answer saved"}</div>
                           <div><strong>Correct answer:</strong> {quizItem.correctAnswer}</div>
                           <div><strong>Rationale:</strong> {quizItem.rationale}</div>
                           <div><strong>Memory tip:</strong> {quizItem.notes}</div>
@@ -6898,7 +6957,7 @@ export default function App() {
                         {quizAnswerSheetOpen ? (
                           <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
                             {quiz.map((item, index) => {
-                              const isCorrect = !!item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer);
+                              const isCorrect = scoreQuestion(item) === 1;
                               return (
                                 <div
                                   key={`${item.id || "quiz-sheet"}-${index}`}
@@ -6917,7 +6976,7 @@ export default function App() {
                                   <div style={{ fontSize: studyBodySize, fontWeight: 700, lineHeight: 1.55 }}>{item.prompt}</div>
                                   <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
                                     <div style={{ fontSize: studyMetaSize, color: C.muted }}>
-                                      Your answer: <strong style={{ color: C.text }}>{item.userAnswer || "No answer saved"}</strong>
+                                      Your answer: <strong style={{ color: C.text }}>{getQuestionOptions(item).find((option) => getSelectedOptionIds(item).includes(option.id))?.text || "No answer saved"}</strong>
                                     </div>
                                     <div style={{ fontSize: studyMetaSize, color: C.muted }}>
                                       Correct answer: <strong style={{ color: C.text }}>{item.correctAnswer}</strong>
@@ -7176,11 +7235,16 @@ export default function App() {
                       <div style={{ fontSize: studyQuestionSize, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.45 }}>
                         {simulationItem.prompt}
                       </div>
+                      {getQuestionType(simulationItem) === QUESTION_TYPES.MULTIPLE_RESPONSE ? (
+                        <div style={{ marginTop: 10, fontSize: studyMetaSize, color: C.amber, fontWeight: 700 }}>
+                          Select all that apply
+                        </div>
+                      ) : null}
 
                       <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
-                        {simulationItem.options.map((option, optionIndex) => {
-                          const selected = simulationItem.userAnswer === option;
-                          const correct = normalize(option) === normalize(simulationItem.correctAnswer);
+                        {getQuestionOptions(simulationItem).map((option, optionIndex) => {
+                          const selected = getSelectedOptionIds(simulationItem).includes(option.id);
+                          const correct = getCorrectOptionIds(simulationItem).includes(option.id);
                           const background = simulationSubmitted && correct
                             ? "#ECFDF5"
                             : simulationSubmitted && selected && !correct
@@ -7194,7 +7258,7 @@ export default function App() {
 
                           return (
                             <label
-                              key={`${simulationItem.id || "simulation"}-${simulationIdx}-${optionIndex}`}
+                              key={`${simulationItem.id || "simulation"}-${simulationIdx}-${option.id}-${optionIndex}`}
                               style={{
                                 display: "flex",
                                 alignItems: "flex-start",
@@ -7209,14 +7273,14 @@ export default function App() {
                               }}
                             >
                               <input
-                                type="radio"
+                                type={getQuestionType(simulationItem) === QUESTION_TYPES.MULTIPLE_RESPONSE ? "checkbox" : "radio"}
                                 name={`simulation-${simulationItem.id}`}
                                 checked={selected}
                                 disabled={simulationSubmitted}
-                                onChange={() => handleSimulationAnswer(option)}
+                                onChange={() => handleSimulationAnswer(option.id)}
                                 style={{ marginTop: 4 }}
                               />
-                              <span>{option}</span>
+                              <span>{option.text}</span>
                             </label>
                           );
                         })}
@@ -7235,7 +7299,7 @@ export default function App() {
                             lineHeight: 1.7,
                           }}
                         >
-                          {simulationItem.userAnswer
+                          {isQuestionAnswered(simulationItem)
                             ? "Answer saved. You can still move back and change it before the final submission."
                             : "Choose an answer, move to the next question, and review any item before the final submission."}
                         </div>
@@ -7368,9 +7432,9 @@ export default function App() {
                             <div>
                               <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Simulation Results</div>
                               <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, maxWidth: 760 }}>
-                                {simulationUsedAi
-                                  ? "This mixed simulation combined the CareDrop bank with Gemini-generated expansion to make the exam feel broader and closer to a real board-style review."
-                                  : "This mixed simulation came from the CareDrop bank and is now saved in Review History for later review."}
+                              {simulationUsedAi
+                                ? "This mixed simulation combined the CareDrop bank with Gemini-generated expansion to make the exam feel broader and closer to a real board-style review."
+                                : "This mixed simulation came from the CareDrop bank and is now saved in Review History for later review."}
                               </div>
                             </div>
                             <button
@@ -7547,7 +7611,8 @@ export default function App() {
                           {simulationAnswerSheetOpen ? (
                             <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
                               {simulationQuestions.map((item, index) => {
-                                const isCorrect = !!item.userAnswer && normalize(item.userAnswer) === normalize(item.correctAnswer);
+                                const review = buildQuestionReview(item);
+                                const isCorrect = review.isCorrect;
                                 return (
                                   <div
                                     key={`${item.id || "simulation-sheet"}-${index}`}
@@ -7569,16 +7634,42 @@ export default function App() {
                                       />
                                     </div>
                                     <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.45 }}>{item.prompt}</div>
+                                    {review.type === QUESTION_TYPES.MULTIPLE_RESPONSE ? (
+                                      <div style={{ marginTop: 8, fontSize: 12, color: C.amber, fontWeight: 700 }}>
+                                        Select all that apply
+                                      </div>
+                                    ) : null}
                                     <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
                                       <div style={{ fontSize: 13, color: C.muted }}>
-                                        Your answer: <strong style={{ color: C.text }}>{item.userAnswer || "No answer saved"}</strong>
+                                        Your answer: <strong style={{ color: C.text }}>{review.selectedOptions.length ? review.selectedOptions.map((option) => option.text).join(", ") : "No answer saved"}</strong>
                                       </div>
                                       <div style={{ fontSize: 13, color: C.muted }}>
-                                        Correct answer: <strong style={{ color: C.text }}>{item.correctAnswer}</strong>
+                                        Correct answer: <strong style={{ color: C.text }}>{review.correctOptions.map((option) => option.text).join(", ") || item.correctAnswer}</strong>
                                       </div>
+                                      {review.missedCorrectOptions.length ? (
+                                        <div style={{ fontSize: 13, color: C.muted }}>
+                                          Missed correct options: <strong style={{ color: C.text }}>{review.missedCorrectOptions.map((option) => option.text).join(", ")}</strong>
+                                        </div>
+                                      ) : null}
+                                      {review.incorrectSelectedOptions.length ? (
+                                        <div style={{ fontSize: 13, color: C.muted }}>
+                                          Incorrectly selected: <strong style={{ color: C.text }}>{review.incorrectSelectedOptions.map((option) => option.text).join(", ")}</strong>
+                                        </div>
+                                      ) : null}
                                       <div style={{ fontSize: 13, color: C.text, lineHeight: 1.7 }}>
                                         <strong>Rationale:</strong> {item.rationale}
                                       </div>
+                                      {review.options.some((option) => option.rationale) ? (
+                                        <div style={{ display: "grid", gap: 6 }}>
+                                          {review.options
+                                            .filter((option) => option.rationale)
+                                            .map((option) => (
+                                              <div key={`${item.id || "simulation-rationale"}-${option.id}`} style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
+                                                <strong style={{ color: C.text }}>{option.text}:</strong> {option.rationale}
+                                              </div>
+                                            ))}
+                                        </div>
+                                      ) : null}
                                     </div>
                                   </div>
                                 );

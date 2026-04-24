@@ -1,8 +1,13 @@
 import { clamp } from "../caredrop/helpers";
+import { isQuestionAnswered, scoreQuestion } from "./questionTypes";
 
 export function calculateChoiceScore(item) {
   if (!item) {
     return 0;
+  }
+
+  if (item.options) {
+    return scoreQuestion(item);
   }
 
   if (typeof item.correct === "boolean") {
@@ -13,7 +18,12 @@ export function calculateChoiceScore(item) {
 }
 
 export function summarizeAnswerSet(items = []) {
-  const answered = items.filter((item) => item.selected !== undefined || typeof item.correct === "boolean");
+  const answered = items.filter((item) => {
+    if (item?.options) {
+      return isQuestionAnswered(item) || typeof item.correct === "boolean";
+    }
+    return item.selected !== undefined || typeof item.correct === "boolean";
+  });
   const correctCount = answered.filter((item) => calculateChoiceScore(item) === 1).length;
   const total = items.length || 0;
 

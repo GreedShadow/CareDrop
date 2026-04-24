@@ -31,4 +31,39 @@ describe("session scoring", () => {
       ])
     );
   });
+
+  it("scores multiple_response questions as all-or-nothing", () => {
+    const result = summarizeAnswerSet([
+      {
+        type: "multiple_response",
+        correctOptionIds: ["a", "c"],
+        userAnswer: ["a", "c"],
+        options: [
+          { id: "a", text: "Assess breath sounds" },
+          { id: "b", text: "Delay reassessment" },
+          { id: "c", text: "Prepare oxygen support" },
+          { id: "d", text: "Encourage immediate ambulation" },
+        ],
+      },
+      {
+        type: "multiple_response",
+        correctOptionIds: ["a", "b"],
+        userAnswer: ["a"],
+        options: [
+          { id: "a", text: "Raise side rails" },
+          { id: "b", text: "Pad seizure rails" },
+          { id: "c", text: "Insert tongue blade" },
+          { id: "d", text: "Restrain the client" },
+        ],
+      },
+    ]);
+
+    expect(result).toMatchObject({
+      total: 2,
+      answeredCount: 2,
+      correctCount: 1,
+      incorrectCount: 1,
+      score: 50,
+    });
+  });
 });

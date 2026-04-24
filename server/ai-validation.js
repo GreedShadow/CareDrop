@@ -47,13 +47,31 @@ export const quizSchema = {
           subject: { type: "string" },
           difficulty: { type: "string", enum: ["easy", "medium", "hard"] },
           topic: { type: "string" },
+          type: { type: "string", enum: ["single_choice", "multiple_response"] },
           prompt: { type: "string" },
           correctAnswer: { type: "string" },
           options: {
             type: "array",
-            items: { type: "string" },
+            items: {
+              anyOf: [
+                { type: "string" },
+                {
+                  type: "object",
+                  properties: {
+                    id: { type: "string" },
+                    text: { type: "string" },
+                    rationale: { type: "string" },
+                  },
+                  required: ["id", "text"],
+                },
+              ],
+            },
             minItems: 4,
             maxItems: 4,
+          },
+          correctOptionIds: {
+            type: "array",
+            items: { type: "string" },
           },
           rationale: { type: "string" },
           notes: { type: "string" },
@@ -130,15 +148,31 @@ function validateQuestion(question, index, requestedDifficulty) {
   const prompt = normalizeText(question?.prompt);
   const correctAnswer = normalizeText(question?.correctAnswer);
   const rationale = normalizeText(question?.rationale);
-  const options = Array.isArray(question?.options) ? question.options.map(normalizeText) : [];
+  const type = normalizeText(question?.type || "single_choice");
+  const rawOptions = Array.isArray(question?.options) ? question.options : [];
+  const options = rawOptions.map((option) => normalizeText(typeof option === "string" ? option : option?.text));
   const difficulty = normalizeText(question?.difficulty).toLowerCase();
+  const correctOptionIds = Array.isArray(question?.correctOptionIds) ? question.correctOptionIds.map(normalizeText) : [];
+  const optionIds = rawOptions.map((option, optionIndex) =>
+    normalizeText(typeof option === "string" ? `option-${optionIndex + 1}` : option?.id || `option-${optionIndex + 1}`)
+  );
 
   if (!prompt || prompt.length < 12) issues.push(`question ${index + 1}: prompt is too short`);
   if (options.length !== 4) issues.push(`question ${index + 1}: must have exactly 4 options`);
   if (new Set(options.map((option) => option.toLowerCase())).size !== 4) {
     issues.push(`question ${index + 1}: options must be distinct`);
   }
-  if (!options.includes(correctAnswer)) {
+  if (type === "multiple_response") {
+    if (correctOptionIds.length < 2) {
+      issues.push(`question ${index + 1}: SATA items need at least two correctOptionIds`);
+    }
+    if (new Set(correctOptionIds).size !== correctOptionIds.length) {
+      issues.push(`question ${index + 1}: SATA correctOptionIds must be distinct`);
+    }
+    if (!correctOptionIds.every((id) => optionIds.includes(id))) {
+      issues.push(`question ${index + 1}: SATA correctOptionIds must match real option ids`);
+    }
+  } else if (!options.includes(correctAnswer)) {
     issues.push(`question ${index + 1}: correct answer must appear inside options`);
   }
   if (options.some((option) => option.length < 2)) {
