@@ -1,8 +1,6 @@
-const DAY_MS = 1000 * 60 * 60 * 24;
+import { clamp } from "../caredrop/helpers";
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
+const DAY_MS = 1000 * 60 * 60 * 24;
 
 export function normalizeSchedule(schedule) {
   return schedule && typeof schedule === "object" && !Array.isArray(schedule) ? schedule : {};

@@ -1,19 +1,10 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { generateMultipartText, requireClient } from "./ai-utils.js";
+import { generateMultipartText, requireClient, withTimeout } from "./ai-utils.js";
 
 export const SUPPORTED_EXTENSIONS = new Set([".doc", ".docx", ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt"]);
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
-
-export function withTimeout(promise, timeoutMs, message) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(message)), timeoutMs);
-    }),
-  ]);
-}
 
 export function normalizeExtractedText(text) {
   return String(text || "")

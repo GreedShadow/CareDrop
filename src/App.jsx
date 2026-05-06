@@ -77,7 +77,7 @@ import {
   persistLocalSnapshot,
   saveRemoteSnapshot,
 } from "./services/progressRepository";
-import { buildRemediationEntries, collectIncorrectQuestions } from "./services/remediation";
+import { buildRemediationEntries, collectIncorrectQuestions, getTopicSearchTerms } from "./services/remediation";
 import {
   buildDueFlashcardPool,
   getDueTodayCount,
@@ -371,43 +371,6 @@ function matchesStudyFilter(entry, subject, difficulty, topic) {
   const matchesTopic = topic ? matchesTopicFocus(entry, topic) : true;
 
   return matchesSubject && matchesDifficulty && matchesTopic;
-}
-
-function getTopicSearchTerms(topic) {
-  const base = normalize(topic);
-  if (!base) {
-    return [];
-  }
-
-  const aliases = [];
-  const aliasMap = {
-    cardio: ["cardio", "cardiac", "cardiovascular", "heart", "coronary", "myocardial", "angina", "arrhythmia"],
-    cardiac: ["cardio", "cardiac", "cardiovascular", "heart", "coronary", "myocardial", "angina", "arrhythmia"],
-    cardiovascular: ["cardio", "cardiac", "cardiovascular", "heart", "coronary", "myocardial", "angina", "arrhythmia"],
-    heart: ["cardio", "cardiac", "cardiovascular", "heart", "coronary", "myocardial", "angina", "arrhythmia", "heart failure"],
-    pulm: ["pulmonary", "respiratory", "airway", "asthma", "copd", "oxygenation"],
-    resp: ["pulmonary", "respiratory", "airway", "asthma", "copd", "oxygenation"],
-    renal: ["renal", "kidney", "aki", "urine", "oliguria", "anuria"],
-    neuro: ["neuro", "neurologic", "neurological", "stroke", "seizure", "icp", "brain"],
-    gi: ["gi", "gastro", "gastrointestinal", "bowel", "appendicitis", "pancreatitis", "cirrhosis"],
-    endo: ["endo", "endocrine", "diabetes", "thyroid", "dka", "glucose"],
-    ob: ["maternal", "newborn", "ob", "postpartum", "labor", "fetal", "pregnancy"],
-    pedia: ["pediatric", "pediatrics", "child", "infant", "newborn"],
-    psych: ["psych", "psychiatric", "mental health", "hallucination", "suicidal", "bipolar"],
-    chn: ["community health", "community", "barangay", "dengue", "tb", "dots", "public health"],
-    pharma: ["pharma", "pharmacology", "drug", "medication", "anticoagulant", "insulin"],
-  };
-
-  Object.entries(aliasMap).forEach(([key, values]) => {
-    if (base.includes(key) || values.some((value) => base.includes(normalize(value)))) {
-      aliases.push(...values);
-    }
-  });
-
-  return uniqueBy(
-    [base, ...base.split(" "), ...aliases.map((value) => normalize(value))].filter(Boolean),
-    (value) => value
-  );
 }
 
 function matchesTopicFocus(entry, topic) {
@@ -2174,15 +2137,6 @@ export default function App() {
     setUploadError("");
   }
 
-  function ensureSubjectSelected(actionLabel = "continue") {
-    if (subject) {
-      return true;
-    }
-
-    setApiError(`Select a subject first before you ${actionLabel}.`);
-    return false;
-  }
-
   function ensureReviewTargetSelected(actionLabel, activeTopic = "") {
     if (subject || String(activeTopic || "").trim()) {
       return true;
@@ -3816,64 +3770,6 @@ export default function App() {
 
     loadLocalFlashcardSet("Your next flashcard set is prepared.", nextTopic);
   }
-
-  const bentoItems = [
-    {
-      title: String(totalCards),
-      description: "Total Cards",
-      icon: "POOL",
-      status: "local high-yield bank",
-      hoverText: `${flashcards.length} cards currently loaded in this session`,
-      actionLabel: "Open flashcards",
-      onClick: () => queueModeChange("flashcard"),
-      tags: ["Study"],
-      colSpan: 1,
-    },
-    {
-      title: `${accuracy}%`,
-      description: "Accuracy",
-      icon: "AC",
-      status: Object.keys(ratings).length ? `${Object.keys(ratings).length} cards rated` : "start reviewing",
-      hoverText: `${Object.values(ratings).filter((value) => value === "easy").length} strong, ${weakCardIds.length} weak`,
-      actionLabel: metricHover === "accuracy" ? "Tap again to close detail" : "Tap for rating detail",
-      onClick: () => setMetricHover(metricHover === "accuracy" ? "" : "accuracy"),
-      tags: ["Progress"],
-      colSpan: 1,
-    },
-    {
-      title: String(weakCardIds.length),
-      description: "Weak Areas",
-      icon: "WK",
-      status: weakCardIds.length ? "ready for remediation" : "looking good",
-      hoverText: weakCardIds.length ? "Click to build a remediation set from recent misses" : "No weak cards right now",
-      actionLabel: weakCardIds.length ? "Open remediation" : "",
-      onClick: () => startRemediationMode(),
-      tags: ["Review"],
-      colSpan: 1,
-    },
-    {
-      title: String(reviewSessions.length),
-      description: "Review Sessions",
-      icon: "SAVE",
-      status: reviewSessions.length ? `${reviewSessionAverage}% average score` : "nothing reviewed yet",
-      hoverText: reviewSessions.length
-        ? `${reviewSessions[0].subject} latest review | ${reviewSessions[0].score || 0}%`
-        : "Submit a session to start tracking progress",
-      actionLabel: reviewSessions.length ? "Open review history" : "",
-      onClick: () => setMetricHover(metricHover === "sessions" ? "" : "sessions"),
-      tags: ["Sessions"],
-      colSpan: 1,
-    },
-    {
-      title: "Daily Boost",
-      description: gentlePush,
-      icon: "GO",
-      status: hasCustomSource ? "focused source mode" : "standard subject mode",
-      tags: ["Encouragement"],
-      colSpan: 2,
-      interactive: false,
-    },
-  ];
 
   const selectStyle = {
     padding: "10px 12px",
