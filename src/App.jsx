@@ -1135,6 +1135,7 @@ export default function App() {
   );
   const [filterWeakOnly, setFilterWeakOnly] = useState(persisted?.filterWeakOnly || false);
   const [metricHover, setMetricHover] = useState("");
+  const [subjectGridExpanded, setSubjectGridExpanded] = useState(false);
   const [requestModalOpen, setRequestModalOpen] = useState(false);
   const [requestType, setRequestType] = useState("Bug Report");
   const [requestName, setRequestName] = useState("");
@@ -3975,14 +3976,6 @@ export default function App() {
       hint: "Files, summaries, and AI",
       onClick: () => navigateToMode("notes"),
     },
-    {
-      key: "history",
-      active: mode === "history",
-      label: "Review History",
-      hint: "Saved sessions and returns",
-      badge: reviewSessions.length || "",
-      onClick: () => navigateToMode("history"),
-    },
   ];
 
   if (isAdminUser) {
@@ -4183,6 +4176,12 @@ export default function App() {
     setMode("dashboard");
     setMobileDrawerOpen(false);
   }, [currentUser?.id, usesDrawerNav]);
+
+  useEffect(() => {
+    if (mode === "history") {
+      setMode("dashboard");
+    }
+  }, [mode]);
 
   useEffect(() => {
     if (!usesCompactStudyFlow || (mode !== "flashcard" && mode !== "quiz")) {
@@ -5108,13 +5107,13 @@ export default function App() {
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: darkMode ? C.text : "#FFFFFF" }}>Your Subjects</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: darkMode ? C.text : "#FFFFFF" }}>Choose Your Subject</div>
                       <button
                         type="button"
-                        onClick={() => queueModeChange("history")}
+                        onClick={() => setSubjectGridExpanded((current) => !current)}
                         style={{ border: "none", background: "transparent", color: C.accentMid, fontWeight: 700, cursor: "pointer" }}
                       >
-                        View All
+                        {subjectGridExpanded ? "Show Less" : "View All"}
                       </button>
                     </div>
                     <div
@@ -5125,14 +5124,23 @@ export default function App() {
                         gap: 14,
                       }}
                     >
-                      {dashboardSubjectCards.slice(0, 6).map((item) => (
-                        <div
+                      {(subjectGridExpanded ? dashboardSubjectCards : dashboardSubjectCards.slice(0, 6)).map((item) => (
+                        <button
                           key={item.subject}
+                          type="button"
+                          onClick={() => {
+                            setSubject(item.subject === "Mixed Review" ? "Mixed Review" : item.subject);
+                            setTopicFilter("");
+                            setTopicInput("");
+                            setStatusMessage(`${item.subject} is selected and ready for your next session.`);
+                          }}
                           style={{
                             borderRadius: 20,
                             padding: 20,
                             border: `1px solid ${darkMode ? C.border : "#34435C"}`,
                             background: darkMode ? softSurface : "#27334A",
+                            textAlign: "left",
+                            cursor: "pointer",
                           }}
                         >
                           <div style={{ fontSize: 26 }}>{item.icon}</div>
@@ -5150,8 +5158,41 @@ export default function App() {
                           <div style={{ marginTop: 16, height: 8, borderRadius: 999, background: darkMode ? C.border : "#1A2436", overflow: "hidden" }}>
                             <div style={{ width: `${Math.max(item.score, item.score ? 10 : 0)}%`, height: "100%", background: item.color }} />
                           </div>
-                        </div>
+                        </button>
                       ))}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 22,
+                      padding: isMobile ? 18 : 22,
+                      border: `1px solid ${C.border}`,
+                      background: darkMode ? elevatedSurface : "#243047",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: darkMode ? C.text : "#FFFFFF" }}>Review History</div>
+                      <div style={{ fontSize: 13, color: darkMode ? C.muted : "#B7C7DA" }}>
+                        {reviewSessions.length ? `${reviewSessions.length} tracked session${reviewSessions.length === 1 ? "" : "s"}` : "No completed sessions yet"}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+                      {reviewSessions.length ? (
+                        reviewSessions.slice(0, 4).map((session) => (
+                          <SavedSessionCard
+                            key={session.id}
+                            session={session}
+                            onOpen={openSavedQuiz}
+                            onDelete={deleteSavedQuiz}
+                            buildSessionLabel={buildSessionLabel}
+                          />
+                        ))
+                      ) : (
+                        <div style={{ fontSize: 13, color: darkMode ? C.muted : "#C7D4E3", lineHeight: 1.7 }}>
+                          Submit a flashcard, quiz, or simulation session and it will appear here for quick return later.
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -5808,21 +5849,9 @@ export default function App() {
                         </div>
                       </div>
                       {reviewSessions.length ? (
-                        <button
-                          type="button"
-                          onClick={() => queueModeChange("history")}
-                          style={{
-                            padding: "10px 14px",
-                            borderRadius: 12,
-                            border: `1px solid ${C.border}`,
-                            background: cardSurface,
-                            color: C.text,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Open history
-                        </button>
+                        <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>
+                          Latest sessions are shown below
+                        </div>
                       ) : null}
                     </div>
                     {reviewSessions.length ? (
