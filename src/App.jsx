@@ -187,6 +187,17 @@ const ENCOURAGEMENTS = [
   "Slow progress is still real progress.",
 ];
 
+const SUBJECT_VISUALS = {
+  Fundamentals: { icon: "📚", color: "linear-gradient(90deg, #3B82F6 0%, #22D3EE 100%)" },
+  Pharmacology: { icon: "💊", color: "linear-gradient(90deg, #A855F7 0%, #EC4899 100%)" },
+  "Medical-Surgical": { icon: "🏥", color: "linear-gradient(90deg, #10B981 0%, #2DD4BF 100%)" },
+  "Maternal & Newborn": { icon: "👶", color: "linear-gradient(90deg, #F472B6 0%, #FF3D9A 100%)" },
+  Pediatrics: { icon: "🧸", color: "linear-gradient(90deg, #F59E0B 0%, #F97316 100%)" },
+  "Psychiatric Nursing": { icon: "🧠", color: "linear-gradient(90deg, #8B5CF6 0%, #A78BFA 100%)" },
+  "Community Health": { icon: "🌍", color: "linear-gradient(90deg, #14B8A6 0%, #34D399 100%)" },
+  "Leadership & Management": { icon: "🧭", color: "linear-gradient(90deg, #60A5FA 0%, #22C55E 100%)" },
+};
+
 function buildLocalSummary(text) {
   const cleaned = String(text || "").replace(/\r/g, " ").trim();
   if (!cleaned) {
@@ -2071,6 +2082,85 @@ export default function App() {
       },
     };
   })();
+
+  const dashboardStatCards = [
+    {
+      key: "answered",
+      icon: "📈",
+      value: overallAnsweredCount || 0,
+      label: "Questions",
+      helper: `${reviewSessions.length || 0} sessions tracked`,
+      accent: C.accentMid,
+    },
+    {
+      key: "accuracy",
+      icon: "🏅",
+      value: `${accuracy}%`,
+      label: "Accuracy",
+      helper: quizSessionCount ? `${quizSessionCount} quiz runs measured` : "Build your first quiz trend",
+      accent: "#FACC15",
+    },
+    {
+      key: "cards",
+      icon: "⭐",
+      value: `${(totalCards / 1000).toFixed(1)}k`,
+      label: "Cards",
+      helper: `${dueTodayCount} due today`,
+      accent: "#C084FC",
+    },
+  ];
+
+  const dashboardSubjectCards = useMemo(() => {
+    return SUBJECT_OPTIONS.filter((name) => name !== "Mixed Review").map((name) => {
+      const summary = subjectPerformanceSummary.find((item) => item.subject === name);
+      const score = summary ? Math.round(summary.accuracy * 100) : 0;
+      const tone = score >= 80 ? "Strong" : score >= 65 ? "Good" : score >= 1 ? "Needs focus" : "Build";
+      const toneIcon = score >= 80 ? "🔥" : score >= 65 ? "📈" : score >= 1 ? "🩺" : "✨";
+      return {
+        subject: name,
+        score,
+        tone,
+        toneIcon,
+        icon: SUBJECT_VISUALS[name]?.icon || "📘",
+        color: SUBJECT_VISUALS[name]?.color || "linear-gradient(90deg, #34D399 0%, #60A5FA 100%)",
+      };
+    });
+  }, [subjectPerformanceSummary]);
+
+  const weeklyActivityData = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - 6);
+
+    const buckets = Array.from({ length: 7 }, (_, index) => {
+      const day = new Date(start);
+      day.setDate(start.getDate() + index);
+      const key = getDateKey(day.toISOString());
+      const count = reviewSessions
+        .filter((session) => getDateKey(session.createdAt) === key)
+        .reduce((total, session) => total + Number(session.answeredCount || 0), 0);
+      return {
+        label: formatter.format(day),
+        count,
+      };
+    });
+
+    return buckets;
+  }, [reviewSessions]);
+
+  const weeklyActivityTotal = weeklyActivityData.reduce((total, item) => total + item.count, 0);
+  const weeklyActivityMax = Math.max(...weeklyActivityData.map((item) => item.count), 1);
+  const previousWeeklyTotal = reviewSessions
+    .filter((session) => {
+      const sessionDate = new Date(session.createdAt || Date.now());
+      const diffDays = Math.floor((Date.now() - sessionDate.getTime()) / 86400000);
+      return diffDays >= 7 && diffDays <= 13;
+    })
+    .reduce((total, session) => total + Number(session.answeredCount || 0), 0);
+  const weeklyGrowth = previousWeeklyTotal
+    ? Math.round(((weeklyActivityTotal - previousWeeklyTotal) / Math.max(previousWeeklyTotal, 1)) * 100)
+    : 0;
 
   useEffect(() => {
     setAiResponse("");
@@ -4902,210 +4992,230 @@ export default function App() {
             {mode === "dashboard" ? (
               <ErrorBoundary label="Dashboard overview" onReset={() => queueModeChange("dashboard")}>
               <AnalyticsCard
-                title="Dashboard Overview"
-                footer={
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      onClick={() => queueModeChange("flashcard")}
-                      style={{
-                        padding: "10px 16px",
-                        borderRadius: 12,
-                        border: "none",
-                        background: C.accent,
-                        color: "#fff",
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Open Flashcards
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        queueModeChange("quiz");
-                        if (!quiz.length) {
-                          generateQuiz();
-                        }
-                      }}
-                      style={{
-                        padding: "10px 16px",
-                        borderRadius: 12,
-                        border: `1px solid ${C.border}`,
-                        background: C.surface,
-                        color: C.text,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Start Quiz
-                    </button>
-                  </div>
-                }
+                title=""
               >
                 <div style={{ display: "grid", gap: 16 }}>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: width < 980 ? "1fr" : "minmax(0, 1.15fr) minmax(280px, 0.85fr)",
-                      gap: 14,
-                    }}
-                  >
-                    <div
-                      style={{
-                        borderRadius: 20,
-                        padding: 20,
-                        border: `1px solid ${darkMode ? C.border : "#D8E3EF"}`,
-                        background: darkMode ? heroSurface : "linear-gradient(180deg, #F7FBFF 0%, #F1F6FB 100%)",
-                      }}
-                    >
-                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                        Next Best Step
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: isMobile ? 22 : 24, fontWeight: 900, letterSpacing: "-0.05em", color: C.text }}>
+                        Welcome back! 👋
                       </div>
-                      <div style={{ marginTop: 10, fontSize: 26, fontWeight: 900, letterSpacing: "-0.05em", color: darkMode ? C.text : "#17355E" }}>
-                        {recommendedAction.title}
-                      </div>
-                      <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.8, color: C.text }}>
-                        {recommendedAction.body}
-                      </div>
-                      <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          onClick={recommendedAction.onClick}
-                          style={{
-                            padding: "11px 16px",
-                            borderRadius: 12,
-                            border: "none",
-                            background: C.accent,
-                            color: "#fff",
-                            fontWeight: 800,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {recommendedAction.cta}
-                        </button>
-                        {mostRecentSession ? (
-                          <div style={{ padding: "11px 14px", borderRadius: 12, background: cardSurface, border: `1px solid ${C.border}`, fontSize: 13, color: C.muted }}>
-                            Last session: {buildSessionLabel(mostRecentSession)}
-                          </div>
-                        ) : null}
+                      <div style={{ marginTop: 6, fontSize: 14, color: C.muted }}>
+                        {isFirstVisit ? "Let's start your first strong review session today." : "Let's crush your study goals today."}
                       </div>
                     </div>
 
                     <div
                       style={{
-                        borderRadius: 20,
-                        padding: 20,
-                        border: `1px solid ${C.border}`,
-                        background: darkMode ? softSurface : "#FCFBF8",
+                        borderRadius: 22,
+                        padding: isMobile ? 18 : 22,
+                        border: `1px solid ${darkMode ? "#155E52" : "#1CA370"}`,
+                        background: darkMode
+                          ? "linear-gradient(90deg, #123B45 0%, #102B42 100%)"
+                          : "linear-gradient(90deg, #0F5C5F 0%, #173A55 100%)",
                       }}
                     >
-                      <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                        Today&apos;s Rhythm
+                      <div style={{ fontSize: 13, color: "#A7F3D0", fontWeight: 700 }}>Study Streak</div>
+                      <div style={{ marginTop: 12, fontSize: isMobile ? 34 : 44, fontWeight: 500, color: "#FFFFFF", letterSpacing: "-0.04em" }}>
+                        {studyStreak || 0} Day{studyStreak === 1 ? "" : "s"} {studyStreak ? "🔥" : ""}
                       </div>
-                      <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13, color: C.text, fontWeight: 700 }}>
-                            <span>Daily goal progress</span>
-                            <span>{todayAnsweredCount}/{dailyGoalTarget}</span>
-                          </div>
-                          <div style={{ marginTop: 8, height: 10, borderRadius: 999, background: darkMode ? C.border : "#E8E4DC", overflow: "hidden" }}>
-                            <div style={{ width: `${dailyGoalProgress}%`, height: "100%", background: "linear-gradient(90deg, #3D7E64 0%, #7CCB9C 100%)" }} />
-                          </div>
-                        </div>
-                        <div style={{ fontSize: 14, lineHeight: 1.8, color: C.text }}>
-                          {todayAnsweredCount
-                            ? `You already answered ${todayAnsweredCount} items today. ${todayAnsweredCount >= dailyGoalTarget ? "Goal reached — anything extra is bonus review." : "One more short session will move the bar forward."}`
-                            : "No activity logged yet today. A short set is enough to restart your rhythm."}
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
-                          <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}` }}>
-                            <div style={{ fontSize: 11, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Study streak
-                            </div>
-                            <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{studyStreak || 0} day{studyStreak === 1 ? "" : "s"}</div>
-                          </div>
-                          <div style={{ padding: "12px 14px", borderRadius: 14, background: cardSurface, border: `1px solid ${C.border}` }}>
-                            <div style={{ fontSize: 11, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Recent activity
-                            </div>
-                            <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.6, fontWeight: 700 }}>
-                              {mostRecentSession ? getLocalDateLabel(mostRecentSession.createdAt) : "No recent activity yet"}
-                            </div>
-                          </div>
-                        </div>
+                      <div style={{ marginTop: 14, height: 10, borderRadius: 999, background: "rgba(15, 23, 42, 0.48)", overflow: "hidden" }}>
+                        <div style={{ width: `${Math.max(12, Math.min(100, ((studyStreak || 0) / 14) * 100))}%`, height: "100%", background: "#14D39A" }} />
                       </div>
+                      <div style={{ marginTop: 10, fontSize: 13, color: "#A7F3D0", textAlign: "right" }}>
+                        {studyStreak >= 14 ? "2-week rhythm locked in" : `${Math.max(0, 14 - (studyStreak || 0))} days to goal!`}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: width < 980 ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                        gap: 14,
+                      }}
+                    >
+                      {dashboardStatCards.map((item) => (
+                        <div
+                          key={item.key}
+                          style={{
+                            borderRadius: 18,
+                            padding: 20,
+                            border: `1px solid ${C.border}`,
+                            background: darkMode ? elevatedSurface : "#243047",
+                            color: darkMode ? C.text : "#F8FAFC",
+                          }}
+                        >
+                          <div style={{ fontSize: 18, color: item.accent }}>{item.icon}</div>
+                          <div style={{ marginTop: 18, fontSize: 20, fontWeight: 500 }}>{item.value}</div>
+                          <div style={{ marginTop: 4, fontSize: 14, color: darkMode ? C.muted : "#C4D2E4" }}>{item.label}</div>
+                          <div style={{ marginTop: 8, fontSize: 12, color: darkMode ? C.faint : "#95A7BF" }}>{item.helper}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 22,
+                        padding: isMobile ? 18 : 22,
+                        border: "1px solid rgba(168, 85, 247, 0.32)",
+                        background: darkMode
+                          ? "linear-gradient(90deg, #2A1F45 0%, #31203E 100%)"
+                          : "linear-gradient(90deg, #2E2450 0%, #3E2240 100%)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 20 }}>⚡</span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: "#FDE68A", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          AI Recommended
+                        </span>
+                      </div>
+                      <div style={{ marginTop: 18, fontSize: isMobile ? 28 : 34, fontWeight: 800, color: "#FFFFFF", letterSpacing: "-0.05em" }}>
+                        {recommendedFocus?.subject || recommendedAction.title}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 18, color: "#C4B5FD", fontWeight: 500 }}>
+                        {recommendedFocus?.topic ? formatTopicHeading(recommendedFocus.topic) : "Recommended review area"}
+                      </div>
+                      <div style={{ marginTop: 18, fontSize: 15, lineHeight: 1.8, color: "rgba(237, 233, 254, 0.88)" }}>
+                        {recommendedFocusReason}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={recommendedAction.onClick}
+                        style={{
+                          marginTop: 18,
+                          width: "100%",
+                          padding: "14px 18px",
+                          borderRadius: 18,
+                          border: "none",
+                          background: "#16D19B",
+                          color: "#042B23",
+                          fontWeight: 800,
+                          fontSize: 15,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {recommendedAction.cta}
+                      </button>
                     </div>
                   </div>
 
                   <div
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: width < 980 ? "1fr" : "repeat(4, minmax(0, 1fr))",
-                      gap: 14,
+                      borderRadius: 22,
+                      padding: isMobile ? 18 : 22,
+                      border: `1px solid ${C.border}`,
+                      background: darkMode ? elevatedSurface : "#243047",
                     }}
                   >
-                    {[
-                      {
-                        key: "accuracy",
-                        title: "Accuracy",
-                        value: `${accuracy}%`,
-                        helper: Object.keys(ratings).length ? `${Object.keys(ratings).length} cards rated so far` : "Complete a set to start tracking",
-                        body: Object.keys(ratings).length
-                          ? `${Object.values(ratings).filter((value) => value === "easy").length} strong responses are already sticking.`
-                          : "Your flashcard confidence and quick wins will start appearing here after your first session.",
-                      },
-                      {
-                        key: "weak",
-                        title: "Weak Area Insight",
-                        value: weakCardIds.length,
-                        helper: weakCardIds.length
-                          ? weakestSubject
-                            ? `${weakestSubject} needs the most support right now`
-                            : "A few concepts still need another pass"
-                          : "No weak-card backlog at the moment",
-                        body: weakCardIds.length
-                          ? "Use remediation mode to turn recent weak cards into a fresh recovery set without rebuilding your whole review."
-                          : "Once you start rating cards, CareDrop will surface the topics that deserve another pass.",
-                      },
-                      {
-                        key: "history",
-                        title: "Review History",
-                        value: reviewSessions.length,
-                        helper: mostRecentSession ? `${mostRecentSession.subject} was your latest subject` : "Your completed sessions will live here",
-                        body: mostRecentSession
-                          ? `Latest result: ${mostRecentSession.score || 0}% in ${buildSessionLabel(mostRecentSession)}.`
-                          : "Submit a flashcard or quiz session once, and CareDrop will start building your review trail.",
-                      },
-                    ].map((item) => {
-                      const active = metricHover === item.key;
-                      return (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={() => setMetricHover(active ? "" : item.key)}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: darkMode ? C.text : "#FFFFFF" }}>Your Subjects</div>
+                      <button
+                        type="button"
+                        onClick={() => queueModeChange("history")}
+                        style={{ border: "none", background: "transparent", color: C.accentMid, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        View All
+                      </button>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 16,
+                        display: "grid",
+                        gridTemplateColumns: width < 980 ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                        gap: 14,
+                      }}
+                    >
+                      {dashboardSubjectCards.slice(0, 6).map((item) => (
+                        <div
+                          key={item.subject}
                           style={{
-                            borderRadius: 18,
-                            padding: 18,
-                            border: `1px solid ${active ? (darkMode ? C.borderStrong : "#BFD1E5") : C.border}`,
-                            background: active ? (darkMode ? elevatedSurface : "#F2F7FB") : (darkMode ? softSurface : "#FCFBF8"),
-                            textAlign: "left",
-                            cursor: "pointer",
+                            borderRadius: 20,
+                            padding: 20,
+                            border: `1px solid ${darkMode ? C.border : "#34435C"}`,
+                            background: darkMode ? softSurface : "#27334A",
                           }}
                         >
-                          <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                            {item.title}
-                          </div>
-                          <div style={{ marginTop: 10, fontSize: 34, fontWeight: 900, letterSpacing: "-0.05em" }}>{item.value}</div>
-                          <div style={{ marginTop: 6, fontSize: 13, color: C.muted }}>{item.helper}</div>
-                          {active ? (
-                            <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.7, color: C.text }}>
-                              {item.body}
+                          <div style={{ fontSize: 26 }}>{item.icon}</div>
+                          <div style={{ marginTop: 18, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                            <div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: darkMode ? C.text : "#FFFFFF" }}>{item.subject}</div>
+                              <div style={{ marginTop: 12, fontSize: 13, color: darkMode ? C.muted : "#B7C7DA" }}>
+                                {item.toneIcon} {item.tone}
+                              </div>
                             </div>
-                          ) : null}
-                        </button>
-                      );
-                    })}
+                            <div style={{ fontSize: 18, fontWeight: 700, color: "#19D39B" }}>
+                              {item.score ? `${item.score}%` : "--"}
+                            </div>
+                          </div>
+                          <div style={{ marginTop: 16, height: 8, borderRadius: 999, background: darkMode ? C.border : "#1A2436", overflow: "hidden" }}>
+                            <div style={{ width: `${Math.max(item.score, item.score ? 10 : 0)}%`, height: "100%", background: item.color }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 22,
+                      padding: isMobile ? 18 : 22,
+                      border: `1px solid ${C.border}`,
+                      background: darkMode ? elevatedSurface : "#243047",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: darkMode ? C.text : "#FFFFFF" }}>Weekly Activity</div>
+                      <div
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: 999,
+                          background: darkMode ? C.accentLight : "rgba(20, 209, 155, 0.12)",
+                          color: C.accentMid,
+                          fontSize: 13,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {weeklyGrowth > 0 ? `+${weeklyGrowth}% vs last week` : weeklyGrowth < 0 ? `${weeklyGrowth}% vs last week` : "Building your weekly baseline"}
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 18,
+                        display: "grid",
+                        gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                        gap: 10,
+                        alignItems: "end",
+                        minHeight: 170,
+                      }}
+                    >
+                      {weeklyActivityData.map((item) => (
+                        <div key={item.label} style={{ display: "grid", gap: 10, alignItems: "end" }}>
+                          <div
+                            style={{
+                              height: 124,
+                              borderRadius: 18,
+                              background: darkMode ? C.bgElevated : "#172133",
+                              padding: 10,
+                              display: "flex",
+                              alignItems: "flex-end",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: "100%",
+                                height: `${Math.max(20, (item.count / weeklyActivityMax) * 100)}%`,
+                                borderRadius: 14,
+                                background: "#14D39A",
+                              }}
+                            />
+                          </div>
+                          <div style={{ textAlign: "center", fontSize: 13, color: darkMode ? C.muted : "#B6C8DD" }}>{item.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 16, textAlign: "center", fontSize: 15, color: darkMode ? C.text : "#E2E8F0" }}>
+                      <strong>{weeklyActivityTotal}</strong> questions answered this week
+                    </div>
                   </div>
 
                   <div

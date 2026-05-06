@@ -712,19 +712,21 @@ export function AnalyticsCard({ title, children, footer }) {
         containIntrinsicSize: "320px",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        <span
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 999,
-            background: C.accent,
-            boxShadow: `0 0 0 6px ${C.mode === "dark" ? C.pill : "#E7F5EE"}`,
-            flexShrink: 0,
-          }}
-        />
-        <div style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>
-      </div>
+      {title ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 999,
+              background: C.accent,
+              boxShadow: `0 0 0 6px ${C.mode === "dark" ? C.pill : "#E7F5EE"}`,
+              flexShrink: 0,
+            }}
+          />
+          <div style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>
+        </div>
+      ) : null}
       {children}
       {footer ? <div style={{ marginTop: 16 }}>{footer}</div> : null}
     </div>
