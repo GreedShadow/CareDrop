@@ -3800,7 +3800,7 @@ export default function App() {
   const panelStyle = {
     background: C.surface,
     border: `1px solid ${C.border}`,
-    borderRadius: 20,
+    borderRadius: 22,
     padding: width < 640 ? 18 : 24,
     boxShadow: C.shellShadow,
     contentVisibility: "auto",
@@ -3832,10 +3832,10 @@ export default function App() {
   const elevatedSurface = C.surfaceRaised;
   const heroSurface = darkMode
     ? `linear-gradient(180deg, ${C.bgElevated} 0%, ${C.surface} 100%)`
-    : "linear-gradient(180deg, #FDFEFD 0%, #F6FBF8 100%)";
+    : "linear-gradient(180deg, #FFFFFF 0%, #F6FBF8 100%)";
   const accentPanelSurface = darkMode
-    ? "linear-gradient(180deg, #0f3a30 0%, #134e43 100%)"
-    : "linear-gradient(180deg, #083B28 0%, #0A5135 100%)";
+    ? "linear-gradient(180deg, #0d4e38 0%, #0f172a 100%)"
+    : "linear-gradient(180deg, #0C6C42 0%, #0B5936 100%)";
   const infoPanelSurface = darkMode ? C.blueLight : "#EEF4FB";
   const infoPanelBorder = darkMode ? C.border : "#C7D6E5";
   const primaryNavItems = [
@@ -4187,8 +4187,8 @@ export default function App() {
         style={{
           background: C.navGradient,
           borderBottom: C.navPillBorder,
-          padding: isMobile ? "12px 14px" : "12px 24px",
-          minHeight: isMobile ? 88 : 68,
+          padding: isMobile ? "12px 14px" : "12px 22px",
+          minHeight: isMobile ? 84 : 66,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -4202,6 +4202,7 @@ export default function App() {
           transform: headerVisible ? "translateY(0)" : "translateY(-100%)",
           transition: "transform 0.28s ease",
           boxShadow: headerVisible ? C.shellShadow : "none",
+          backdropFilter: "blur(14px)",
         }}
       >
         {usesDrawerNav ? (
@@ -4232,7 +4233,7 @@ export default function App() {
                   style={{
                     width: 38,
                     height: 38,
-                    borderRadius: 12,
+                    borderRadius: 10,
                     background: "rgba(255,255,255,0.12)",
                     display: "flex",
                     alignItems: "center",
@@ -4282,11 +4283,11 @@ export default function App() {
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  background: "rgba(255,255,255,0.12)",
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    background: "rgba(255,255,255,0.12)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -4383,7 +4384,7 @@ export default function App() {
             style={{
               position: "fixed",
               inset: 0,
-              background: "rgba(5, 10, 8, 0.48)",
+              background: darkMode ? "rgba(2, 6, 23, 0.62)" : "rgba(5, 10, 8, 0.28)",
               opacity: mobileDrawerOpen ? 1 : 0,
               pointerEvents: mobileDrawerOpen ? "auto" : "none",
               transition: "opacity 0.24s ease",
@@ -4396,10 +4397,10 @@ export default function App() {
               top: 0,
               left: 0,
               bottom: 0,
-              width: "min(236px, 64vw)",
+              width: "min(248px, 62vw)",
               background: accentPanelSurface,
               borderRight: "1px solid rgba(8,59,40,0.5)",
-              boxShadow: "0 18px 34px rgba(7, 38, 24, 0.28)",
+              boxShadow: darkMode ? "0 18px 34px rgba(2, 6, 23, 0.35)" : "0 18px 34px rgba(7, 38, 24, 0.2)",
               padding: `${headerHeight + 12}px 16px 20px`,
               transform: mobileDrawerOpen ? "translateX(0)" : "translateX(-104%)",
               transition: "transform 0.26s ease",
@@ -4489,12 +4490,12 @@ export default function App() {
 
       <div
         style={{
-          maxWidth: 1400,
+          maxWidth: 1440,
           margin: "0 auto",
-          padding: isMobile ? `${headerHeight + 12}px 12px 28px` : `${headerHeight + 16}px 20px 36px`,
+          padding: isMobile ? `${headerHeight + 12}px 12px 28px` : `${headerHeight + 18}px 22px 38px`,
           display: "flex",
           flexDirection: "column",
-          gap: 20,
+          gap: 18,
         }}
       >
         {apiError ? (
@@ -4590,7 +4591,7 @@ export default function App() {
               overflow: "hidden",
               position: "relative",
               border: `1px solid ${C.border}`,
-              boxShadow: darkMode ? "none" : "0 16px 32px rgba(11, 42, 27, 0.06)",
+              boxShadow: darkMode ? "none" : "0 18px 34px rgba(15, 23, 42, 0.05)",
             }}
           >
             <div
@@ -4614,10 +4615,10 @@ export default function App() {
               }}
             >
               <div style={{ maxWidth: 560 }}>
-                <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "#6B8F7E", fontWeight: 800 }}>
+                <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: darkMode ? C.accentMid : "#5D8D77", fontWeight: 800 }}>
                   {dashboardGreeting}
                 </div>
-                <div style={{ marginTop: 10, fontSize: width < 880 ? 34 : 42, lineHeight: 1.08, fontWeight: 900, letterSpacing: "-0.06em", color: "#14231B" }}>
+                <div style={{ marginTop: 10, fontSize: width < 880 ? 34 : 42, lineHeight: 1.08, fontWeight: 900, letterSpacing: "-0.06em", color: C.text }}>
                   Dashboard Overview
                 </div>
                 <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.8, color: darkMode ? C.muted : "#61736B" }}>
@@ -4637,12 +4638,12 @@ export default function App() {
                   borderRadius: 24,
                   padding: "18px 18px 16px",
                   background: "linear-gradient(180deg, #0D5A3B 0%, #0E6B47 100%)",
-                  border: "1px solid rgba(14, 107, 71, 0.12)",
+                  border: darkMode ? `1px solid ${C.border}` : "1px solid rgba(14, 107, 71, 0.12)",
                   display: "flex",
                   flexDirection: "column",
                   justifyContent: "space-between",
                   minHeight: 170,
-                  boxShadow: "0 16px 30px rgba(14, 107, 71, 0.18)",
+                  boxShadow: darkMode ? "none" : "0 16px 30px rgba(14, 107, 71, 0.18)",
                 }}
               >
                 <div>
@@ -4760,7 +4761,7 @@ export default function App() {
         >
           {!usesDrawerNav ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ ...panelStyle, padding: 18, background: accentPanelSurface, border: darkMode ? `1px solid ${C.border}` : "1px solid rgba(8,59,40,0.5)", boxShadow: darkMode ? "none" : "0 18px 30px rgba(7, 38, 24, 0.18)", position: "sticky", top: headerVisible ? (isMobile ? headerHeight + 12 : headerHeight + 18) : 18, transition: "top 0.28s ease" }}>
+              <div style={{ ...panelStyle, padding: 18, background: accentPanelSurface, border: darkMode ? `1px solid ${C.border}` : "1px solid rgba(8,59,40,0.22)", boxShadow: darkMode ? "none" : "0 18px 30px rgba(7, 38, 24, 0.15)", position: "sticky", top: headerVisible ? (isMobile ? headerHeight + 12 : headerHeight + 18) : 18, transition: "top 0.28s ease" }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
                 {isStudyMode ? "Study Controls" : "Study Command Center"}
               </div>

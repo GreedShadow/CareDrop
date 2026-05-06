@@ -55,8 +55,8 @@ export function AuthScreen(props) {
 
   return (
     <div style={{ minHeight: "100vh", background: C.appGradient, padding: width < 640 ? 16 : 24, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }}>
-      <div style={{ width: "min(1100px, 100%)", display: "grid", gridTemplateColumns: stacked ? "1fr" : "minmax(0, 1.1fr) minmax(340px, 440px)", gap: 20, alignItems: "stretch" }}>
-        <div style={{ background: C.navGradient, borderRadius: 28, padding: stacked ? 24 : 34, color: C.navText, minHeight: stacked ? 420 : 560, display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: C.shellShadow, position: "relative", overflow: "hidden" }}>
+      <div style={{ width: "min(1180px, 100%)", display: "grid", gridTemplateColumns: stacked ? "1fr" : "minmax(0, 1.15fr) minmax(360px, 440px)", gap: 18, alignItems: "stretch" }}>
+        <div style={{ background: C.navGradient, borderRadius: 24, padding: stacked ? 24 : 34, color: C.navText, minHeight: stacked ? 420 : 560, display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: C.shellShadow, position: "relative", overflow: "hidden", border: C.mode === "dark" ? `1px solid ${C.border}` : "1px solid rgba(255,255,255,0.08)" }}>
           <div style={{ position: "absolute", inset: "auto -60px -70px auto", width: 220, height: 220, borderRadius: "50%", background: "radial-gradient(circle, rgba(139,229,175,0.25) 0%, rgba(139,229,175,0.02) 65%, transparent 70%)" }} />
           <div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -68,7 +68,7 @@ export function AuthScreen(props) {
               </div>
               <ThemeToggle mode={themeMode} onToggle={onToggleTheme} showLabel />
             </div>
-            <div style={{ marginTop: 28, fontSize: stacked ? 34 : 46, lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.05em", maxWidth: 520 }}>Study smarter. Learn from mistakes. Build confidence.</div>
+            <div style={{ marginTop: 28, fontSize: stacked ? 34 : 46, lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.05em", maxWidth: 560 }}>Study smarter. Learn from mistakes. Build confidence.</div>
             <div style={{ marginTop: 18, fontSize: 15, lineHeight: 1.85, color: C.navSubtle, maxWidth: 560 }}>Continue your flashcards, quizzes, uploads, weak-area review, and saved sessions in one supportive workspace built for real learners preparing for demanding exams.</div>
           </div>
           <div style={{ fontSize: 13, color: C.navSubtle, lineHeight: 1.7, maxWidth: 520 }}>
@@ -76,7 +76,7 @@ export function AuthScreen(props) {
           </div>
         </div>
 
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 28, padding: 28, boxShadow: C.shellShadow, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 24, padding: 28, boxShadow: C.shellShadow, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
             {[["login", "Sign In"], ["register", "Register"]].map(([value, label]) => (
               <button key={value} type="button" onClick={() => setAuthMode(value)} style={{ flex: 1, padding: "12px 14px", borderRadius: 14, border: authMode === value ? `1px solid ${C.borderStrong}` : `1px solid ${C.border}`, background: authMode === value ? C.navGradient : C.surfaceMuted, color: authMode === value ? "#fff" : C.text, fontWeight: 800, cursor: "pointer" }}>{label}</button>

@@ -483,13 +483,13 @@ export function SidebarNavButton({ active, label, hint, onClick, badge }) {
         justifyContent: "space-between",
         gap: 12,
         padding: "12px 14px",
-        borderRadius: 14,
-        border: active ? "1px solid rgba(133, 244, 187, 0.22)" : "1px solid rgba(255,255,255,0.06)",
-        background: active ? "linear-gradient(135deg, rgba(19,122,78,0.95) 0%, rgba(10,89,56,0.95) 100%)" : "rgba(255,255,255,0.03)",
+        borderRadius: 12,
+        border: active ? "1px solid rgba(143, 242, 182, 0.28)" : "1px solid rgba(255,255,255,0.07)",
+        background: active ? "linear-gradient(135deg, rgba(22,140,88,0.96) 0%, rgba(13,97,59,0.96) 100%)" : "rgba(255,255,255,0.035)",
         color: active ? "#F8FFF9" : "rgba(232, 244, 238, 0.88)",
         cursor: "pointer",
         textAlign: "left",
-        transition: "background 0.2s ease, color 0.2s ease, border-color 0.2s ease",
+        transition: "background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease",
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
@@ -501,7 +501,7 @@ export function SidebarNavButton({ active, label, hint, onClick, badge }) {
             borderRadius: 999,
             flexShrink: 0,
             background: active ? "#8AF0B2" : "rgba(255,255,255,0.3)",
-            boxShadow: active ? "0 0 0 4px rgba(138,240,178,0.12)" : "none",
+            boxShadow: active ? "0 0 0 5px rgba(138,240,178,0.12)" : "none",
           }}
         />
         <div>
@@ -557,7 +557,7 @@ export function ThemeToggle({ mode = "light", onToggle, showLabel = false }) {
         background: dark ? C.bgElevated : C.surface,
         color: C.text,
         cursor: "pointer",
-        boxShadow: dark ? C.shellShadow : "0 8px 18px rgba(15, 23, 42, 0.08)",
+        boxShadow: dark ? "none" : "0 10px 18px rgba(15, 23, 42, 0.08)",
         transition: "background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease",
       }}
     >
@@ -629,14 +629,25 @@ export function HeroMetric({ label, value, helper, accent = "#9AD75B" }) {
     <div
       style={{
         padding: "18px 18px 16px",
-        borderRadius: 20,
-        borderTop: `3px solid ${accent}`,
+        borderRadius: 18,
         background: C.surface,
         border: `1px solid ${C.border}`,
-        boxShadow: C.mode === "dark" ? "none" : "0 10px 24px rgba(8, 35, 23, 0.05)",
+        boxShadow: C.mode === "dark" ? "none" : "0 12px 24px rgba(15, 23, 42, 0.05)",
       }}
     >
-      <div style={{ fontSize: 12, color: C.faint, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 800 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+        <div style={{ fontSize: 12, color: C.faint, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 800 }}>{label}</div>
+        <span
+          style={{
+            width: 12,
+            height: 12,
+            borderRadius: 999,
+            background: accent,
+            boxShadow: `0 0 0 6px ${C.mode === "dark" ? C.pill : `${accent}1F`}`,
+            flexShrink: 0,
+          }}
+        />
+      </div>
       <div style={{ fontSize: 36, fontWeight: 900, color: C.text, letterSpacing: "-0.05em" }}>{value}</div>
       <div style={{ marginTop: 6, fontSize: 12, color: accent, fontWeight: 700 }}>{helper}</div>
     </div>
@@ -694,14 +705,26 @@ export function AnalyticsCard({ title, children, footer }) {
       style={{
         background: C.surface,
         border: `1px solid ${C.border}`,
-        borderRadius: 22,
+        borderRadius: 20,
         padding: 22,
-        boxShadow: C.mode === "dark" ? "none" : "0 14px 30px rgba(16, 30, 59, 0.05)",
+        boxShadow: C.mode === "dark" ? "none" : "0 16px 30px rgba(15, 23, 42, 0.05)",
         contentVisibility: "auto",
         containIntrinsicSize: "320px",
       }}
     >
-      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{title}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <span
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: 999,
+            background: C.accent,
+            boxShadow: `0 0 0 6px ${C.mode === "dark" ? C.pill : "#E7F5EE"}`,
+            flexShrink: 0,
+          }}
+        />
+        <div style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>
+      </div>
       {children}
       {footer ? <div style={{ marginTop: 16 }}>{footer}</div> : null}
     </div>
