@@ -393,6 +393,18 @@ function matchesTopicFocus(entry, topic) {
   return getTopicSearchTerms(topic).some((term) => haystack.includes(term));
 }
 
+function matchesPrimaryTopicFocus(entry, topic) {
+  const terms = getTopicSearchTerms(topic);
+  if (!terms.length) {
+    return true;
+  }
+
+  const haystack = normalize(
+    `${entry.topic || ""} ${entry.q || entry.prompt || entry.question || ""} ${entry.subject || ""}`
+  );
+  return terms.some((term) => haystack.includes(term));
+}
+
 function matchesGeneratedTopicContent(item, topic) {
   const terms = getTopicSearchTerms(topic);
   if (!terms.length) {
@@ -403,7 +415,7 @@ function matchesGeneratedTopicContent(item, topic) {
     ? item.options.map((option) => (typeof option === "string" ? option : option?.text || "")).join(" ")
     : "";
   const haystack = normalize(
-    `${item.q || item.prompt || item.question || ""} ${item.a || item.answer || item.correctAnswer || ""} ${optionsText} ${item.rationale || ""} ${item.notes || ""}`
+    `${item.q || item.prompt || item.question || ""} ${item.a || item.answer || item.correctAnswer || ""} ${optionsText}`
   );
   return terms.some((term) => haystack.includes(term));
 }
@@ -421,7 +433,9 @@ function cleanQuizOption(option) {
     .replace(/^\s*[A-D][.)]\s*/i, "")
     .replace(/^\s*-\s*/, "")
     .replace(/\b(correct answer|answer|instruction|directions)\b\s*:?.*$/i, "")
+    .replace(/\b(review note|board focus|exam cue|careDrop focus|remember)\s*:.*$/i, "")
     .replace(/\s+/g, " ")
+    .replace(/\s+[,;:.!?-]+$/g, "")
     .trim();
 }
 
@@ -616,10 +630,10 @@ function getTopicAlignedEntries(sourceEntries, subject, difficulty, topic) {
   }
 
   const tiers = [
-    getExactEntries(sourceEntries, subject, difficulty, topic),
-    getExactEntries(sourceEntries, subject, "All", topic),
-    getExactEntries(sourceEntries, "", difficulty, topic),
-    getExactEntries(sourceEntries, "", "All", topic),
+    sourceEntries.filter((entry) => matchesStudyFilter(entry, subject, difficulty, "") && matchesPrimaryTopicFocus(entry, topic)),
+    sourceEntries.filter((entry) => matchesStudyFilter(entry, subject, "All", "") && matchesPrimaryTopicFocus(entry, topic)),
+    sourceEntries.filter((entry) => matchesStudyFilter(entry, "", difficulty, "") && matchesPrimaryTopicFocus(entry, topic)),
+    sourceEntries.filter((entry) => matchesStudyFilter(entry, "", "All", "") && matchesPrimaryTopicFocus(entry, topic)),
   ];
 
   return uniqueBy(tiers.flat(), (entry) =>
@@ -2097,7 +2111,10 @@ export default function App() {
       cta: subject ? "Open flashcards" : "Go to filters",
       onClick: () => {
         if (!subject) {
-          setStatusMessage("Open Flashcards or Quiz, then choose a subject or topic in the setup area.");
+          setFlashcardViewMode("setup");
+          setViewMode("setup");
+          queueModeChange("flashcard");
+          setStatusMessage("Choose a subject or topic, then generate your first focused flashcard set.");
           return;
         }
 

@@ -135,10 +135,11 @@ export function Flashcard({ card, idx, total, onRate }) {
         activeTag === "INPUT" ||
         activeTag === "TEXTAREA" ||
         activeTag === "SELECT";
+      const isCardButtonFocused = activeElement === cardButtonRef.current;
       const isAnotherButtonFocused =
         activeTag === "BUTTON" && activeElement !== cardButtonRef.current;
 
-      if (isTypingField || isAnotherButtonFocused) {
+      if (isTypingField || isCardButtonFocused || isAnotherButtonFocused) {
         return;
       }
 
@@ -185,6 +186,7 @@ export function Flashcard({ card, idx, total, onRate }) {
           onKeyDown={(event) => {
             if (event.key === " " || event.code === "Space") {
               event.preventDefault();
+              event.stopPropagation();
               handleFlip();
             }
           }}
