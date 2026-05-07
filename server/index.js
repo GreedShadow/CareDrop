@@ -7,7 +7,7 @@ import express from "express";
 import multer from "multer";
 import { listAdminUsers } from "./admin-analytics.js";
 import { buildStudyContext, generateJson, generateText, model, requireClient } from "./ai-utils.js";
-import { generateValidatedCards, generateValidatedQuestions } from "./ai-validation.js";
+import { generateValidatedCards, generateValidatedQuestions, generateValidatedSummary } from "./ai-validation.js";
 import { extractFileText, SUPPORTED_EXTENSIONS } from "./extract-utils.js";
 import { createFeedbackRequest, listFeedbackRequests } from "./feedback-utils.js";
 
@@ -143,33 +143,33 @@ app.post("/api/claude/summary", async (req, res) => {
       return jsonError(res, 400, "Notes are required.");
     }
 
-    const summary = await generateText(client, {
+    const summary = await generateValidatedSummary({
+      client,
+      generateText,
       systemInstruction:
-        "You create highly detailed PRC NLE nursing reviewer summaries from uploaded files. Return plain text only and do not use markdown symbols like #, ##, ###, *, or **. If the material contains multiple topics or subtopics, break them down into separate topic sections instead of flattening them into one short summary. Use clear section labels, keep each paragraph or bullet focused on one idea, lead with the main point, and preserve original constraints, conditions, warnings, contraindications, and limitations from the source. Do not add outside facts that are not supported by the uploaded material. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules, laws, or doses.",
+        "You create detailed PRC NLE nursing reviewer summaries from uploaded files. Return plain text only. Use the required section headings exactly and bullet points under every heading. If the material contains multiple topics or subtopics, break them down inside the section bullets instead of flattening them into one short summary. Preserve original constraints, conditions, warnings, contraindications, and limitations from the source. Do not add outside facts that are not supported by the uploaded material. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules, laws, or doses.",
       prompt: `Turn these uploaded nursing notes into a detailed reviewer summary for a Philippine nursing board-review learner.
 
 Requirements:
 - audience: nursing student preparing for exams
 - goal: understand the attached material clearly, not just shorten it
 - approach: abstractive summary, but preserve key technical terms, constraints, conditions, warnings, and limitations from the source
-- format: plain text with headings
+- format: plain text headings with bullet points
 - length: substantial reviewer, not a short recap
 
-If the source contains multiple topics, create a separate detailed section for each topic.
-Each topic section should include:
-- overview
-- key review details
-- what to assess or monitor
-- what to do or prioritize
-- conditions, cautions, or limits
-- board-style takeaway
+Use these exact section headings:
+Key Concepts
+Important Terms
+Signs and Symptoms
+Nursing Interventions
+Patient Teaching
+Safety Considerations
+Exam Traps
+High-Yield PNLE Points
 
-Use this structure:
-1. Main point
-2. Likely subject
-3. Topics found
-4. Topic-by-topic reviewer sections
-5. Final review note
+Under each heading, use bullet points only.
+If the source contains multiple topics, include topic labels inside the bullets so each topic is clearly separated.
+Prioritize clinical reasoning, nursing assessment, intervention, safety, teaching, and board-style traps.
 
 Verification rules:
 - do not hallucinate
@@ -178,7 +178,8 @@ Verification rules:
 
 Notes to summarize:
 ${notes}`,
-      maxOutputTokens: 2200,
+      maxOutputTokens: 2600,
+      logger: console,
     });
 
     return res.json({ success: true, summary });
@@ -213,7 +214,7 @@ app.post("/api/claude/cards", async (req, res) => {
         : `Every flashcard must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
 
     const systemInstruction =
-      `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, clinically meaningful, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt. Each card must include: a front-side recall prompt, a correct answer, a short rationale explaining why the answer matters clinically, and a separate key takeaway for board review.`;
+      `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, clinically meaningful, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt. Each card must include: a front-side recall prompt only, a correct answer, a short rationale explaining why the answer matters clinically, and a separate key takeaway for board review.`;
     const prompt = [
         "Build nursing study cards for a learner preparing for the Philippine PRC Nurse Licensure Examination.",
         difficultyInstruction,
@@ -221,8 +222,9 @@ app.post("/api/claude/cards", async (req, res) => {
         "Keep the cards practical, safety-focused, and framed for board-review recall in the Philippines.",
         "Flashcard structure rules:",
         "- Question side: recall-based prompt only",
+        "- Do not leak the answer through the question or topic phrasing",
         "- Back side answer: one correct answer",
-        "- Rationale: explain briefly why the answer is clinically important or the priority cue",
+        "- Rationale: include Correct Answer Explanation and why the answer matters clinically",
         "- Notes/key takeaway: one board-review takeaway or nursing priority reminder",
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
@@ -276,7 +278,7 @@ app.post("/api/claude/quiz", async (req, res) => {
       : "Make the set feel like a focused PNLE quiz batch with scenario-based stems whenever appropriate.";
 
     const systemInstruction =
-      "You generate PRC NLE-style nursing quiz questions. Every item must have four distinct, believable options and a board-style rationale. Most items should be single_choice with one clearly best answer. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
+      "You generate PRC NLE-style nursing quiz questions. Every item must be clinically accurate, PNLE-relevant, and structured as JSON only. Use scenario-based nursing stems whenever possible, with prioritization, assessment-vs-intervention, safety, delegation, or patient-teaching reasoning. Each item must have 4-5 distinct plausible options, one best answer for single_choice, and strong rationales. Most items should be single_choice. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
     const prompt = [
       `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
       difficultyInstruction,
@@ -284,16 +286,19 @@ app.post("/api/claude/quiz", async (req, res) => {
       context,
       "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
       "Question quality rules:",
-      "- Use 4 plausible answer choices",
+      "- Use 4 plausible answer choices, or 5 only when a SATA item needs it",
       examMode
         ? "- Use mostly single_choice items, but you may include a limited number of multiple_response SATA items when clinically appropriate"
         : "- One best answer only",
       examMode
-        ? "- For multiple_response items, set type=multiple_response and provide correctOptionIds for every correct choice while still keeping exactly 4 options"
+        ? "- For multiple_response items, set type=multiple_response and provide correctOptionIds for every correct choice. SATA must have at least 2 correct choices and cannot have every option correct"
         : "- Keep these as single_choice items only",
+      "- Use option objects when possible: { id, text, rationale }",
       "- Avoid clue leakage from subject labels or obvious wording",
+      "- Do not use All of the above, None of the above, always, never, joke, unrelated, or pattern-giveaway options",
       "- Distractors should be realistic but less appropriate than the correct answer",
-      "- Rationales must explain why the best answer is correct and why the other options are less appropriate",
+      "- Rationales must use this exact structure: Correct Answer Explanation: ... Incorrect Options Explanation: ... Key Takeaway: ...",
+      "- Incorrect Options Explanation must be specific to each wrong choice, not generic",
       "- Do not reveal hints inside the stem or choices",
       excludeQuestions.length
         ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`

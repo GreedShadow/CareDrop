@@ -41,7 +41,7 @@ export default async function handler(req, res) {
       : "Make the set feel like a focused PNLE quiz batch with scenario-based stems whenever appropriate.";
 
     const systemInstruction =
-      "You generate PRC NLE-style nursing quiz questions. Every item must have four distinct, believable options and a board-style rationale. Most items should be single_choice with one clearly best answer. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
+      "You generate PRC NLE-style nursing quiz questions. Every item must be clinically accurate, PNLE-relevant, and structured as JSON only. Use scenario-based nursing stems whenever possible, with prioritization, assessment-vs-intervention, safety, delegation, or patient-teaching reasoning. Each item must have 4-5 distinct plausible options, one best answer for single_choice, and strong rationales. Most items should be single_choice. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
     const prompt = [
         `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
         difficultyInstruction,
@@ -49,16 +49,19 @@ export default async function handler(req, res) {
         context,
         "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
         "Question quality rules:",
-        "- Use 4 plausible answer choices",
+        "- Use 4 plausible answer choices, or 5 only when a SATA item needs it",
         examMode
           ? "- Use mostly single_choice items, but you may include a limited number of multiple_response SATA items when clinically appropriate"
           : "- One best answer only",
         examMode
-          ? "- For multiple_response items, set type=multiple_response and provide correctOptionIds for every correct choice while still keeping exactly 4 options"
+          ? "- For multiple_response items, set type=multiple_response and provide correctOptionIds for every correct choice. SATA must have at least 2 correct choices and cannot have every option correct"
           : "- Keep these as single_choice items only.",
+        "- Use option objects when possible: { id, text, rationale }",
         "- Avoid clue leakage from subject labels or obvious wording",
+        "- Do not use All of the above, None of the above, always, never, joke, unrelated, or pattern-giveaway options",
         "- Distractors should be realistic but less appropriate than the correct answer",
-        "- Rationales must explain why the best answer is correct and why the other options are less appropriate",
+        "- Rationales must use this exact structure: Correct Answer Explanation: ... Incorrect Options Explanation: ... Key Takeaway: ...",
+        "- Incorrect Options Explanation must be specific to each wrong choice, not generic",
         "- Do not reveal hints inside the stem or choices",
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`

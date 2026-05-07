@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { generateValidatedQuestions } from "./ai-validation.js";
+import { generateValidatedQuestions, validateQuestion, validateSummary } from "./ai-validation.js";
 
 describe("ai-validation", () => {
   it("retries malformed MCQs until they become valid", async () => {
@@ -38,7 +38,8 @@ describe("ai-validation", () => {
               "Administer the dose early to avoid a missed level.",
               "Increase the next dose if the pulse stays low.",
             ],
-            rationale: "A low pulse can signal increased risk, so holding and reassessing is the safest next nursing action.",
+            rationale:
+              "Correct Answer Explanation: A low pulse can signal digoxin-related risk, so holding and reassessing is the safest next nursing action. Incorrect Options Explanation: Giving with food does not address bradycardia; giving early increases risk; increasing the dose is unsafe. Key Takeaway: Check apical pulse and safety cues before giving cardiac medications.",
             notes: "Focus on the safest nursing priority.",
           },
         ],
@@ -58,5 +59,56 @@ describe("ai-validation", () => {
     expect(attempt).toBe(2);
     expect(questions).toHaveLength(1);
     expect(questions[0].options).toHaveLength(4);
+  });
+
+  it("rejects SATA items with only one correct answer or every option correct", () => {
+    const base = {
+      subject: "Medical-Surgical Nursing",
+      difficulty: "hard",
+      topic: "respiratory priority",
+      type: "multiple_response",
+      prompt: "The nurse cares for a client with worsening dyspnea and low oxygen saturation. Which actions are appropriate? Select all that apply.",
+      correctAnswer: "",
+      options: [
+        { id: "a", text: "Assess respiratory effort", rationale: "Assessment confirms severity." },
+        { id: "b", text: "Apply oxygen as prescribed", rationale: "Oxygen supports gas exchange." },
+        { id: "c", text: "Delay reassessment until the next shift", rationale: "This delays needed care." },
+        { id: "d", text: "Place the client flat in bed", rationale: "This can worsen breathing." },
+      ],
+      rationale:
+        "Correct Answer Explanation: Respiratory assessment and oxygen support address immediate breathing needs. Incorrect Options Explanation: Delaying reassessment and lying flat are less appropriate because they can worsen instability. Key Takeaway: Prioritize breathing and rapid reassessment when oxygenation declines.",
+      notes: "Prioritize breathing and oxygenation.",
+    };
+
+    expect(validateQuestion({ ...base, correctOptionIds: ["a"] }, 0, "hard")).toContain(
+      "question 1: SATA items need at least two correctOptionIds"
+    );
+    expect(validateQuestion({ ...base, correctOptionIds: ["a", "b", "c", "d"] }, 0, "hard")).toContain(
+      "question 1: SATA items cannot have every option marked correct"
+    );
+  });
+
+  it("requires structured reviewer summaries", () => {
+    const summary = `
+Key Concepts
+- Shock reduces tissue perfusion and requires prompt nursing assessment.
+Important Terms
+- Perfusion: delivery of oxygenated blood to tissues.
+Signs and Symptoms
+- Monitor hypotension, tachycardia, altered mental status, and cool clammy skin.
+Nursing Interventions
+- Prioritize airway, breathing, circulation, oxygen, IV access, and provider notification.
+Patient Teaching
+- Teach early reporting of dizziness, bleeding, fever, or worsening shortness of breath.
+Safety Considerations
+- Watch for rapid deterioration and contraindications before giving fluids or medications.
+Exam Traps
+- Do not delay assessment to complete nonurgent documentation.
+High-Yield PNLE Points
+- The safest first action usually addresses circulation, oxygenation, and rapid reassessment.
+`;
+
+    expect(validateSummary(summary)).toEqual([]);
+    expect(validateSummary("Short recap only.")).toContain("summary is too short to be useful as a reviewer");
   });
 });

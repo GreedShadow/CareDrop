@@ -227,17 +227,18 @@ function buildLocalSummary(text) {
     .slice(0, 5);
 
   const lines = [
-    `DETAILED REVIEWER SUMMARY`,
-    `Likely focus: ${inferredSubject}`,
-    `Topics found: ${groupedTopics.map(([topic]) => formatTopicHeading(topic)).join(", ")}`,
+    "Key Concepts",
+    `- Likely focus: ${inferredSubject}.`,
+    `- Main point: ${parts[0]}`,
+    `- Topics found: ${groupedTopics.map(([topic]) => formatTopicHeading(topic)).join(", ") || "General nursing review"}.`,
     "",
-    `MAIN POINT`,
-    parts[0],
+    "Important Terms",
+    ...(keywordLines.length
+      ? keywordLines.map((keyword) => `- ${keyword}`)
+      : ["- Key terms will become clearer after more detailed notes are added."]),
+    "",
+    "Signs and Symptoms",
   ];
-
-  if (keywordLines.length) {
-    lines.push("", "KEYWORDS", keywordLines.join(", "));
-  }
 
   groupedTopics.forEach(([topic, topicLines], index) => {
     const overview = topicLines[0];
@@ -255,31 +256,43 @@ function buildLocalSummary(text) {
         /(priority|first|unsafe|critical|warning|monitor|withhold|notify|emergency|contraindicat|risk|avoid|do not|unless|only if)/i.test(line)
       ) || "";
 
-    lines.push(
-      "",
-      `TOPIC ${index + 1}: ${formatTopicHeading(topic)}`,
-      `Overview: ${overview}`,
-      `Key review details:`
-    );
-
-    detailPoints.forEach((line, detailIndex) => {
-      lines.push(`${detailIndex + 1}) ${line}`);
+    lines.push(`- ${formatTopicHeading(topic)}: ${overview}`);
+    detailPoints.slice(1, 3).forEach((line) => {
+      lines.push(`- ${formatTopicHeading(topic)} cue: ${line}`);
     });
-
-    lines.push(`Assessment focus: ${assessmentCue}`);
-    lines.push(`Intervention focus: ${interventionCue}`);
-
+    lines.push(`- ${formatTopicHeading(topic)} assessment cue: ${assessmentCue}`);
+    lines.push(`- ${formatTopicHeading(topic)} intervention cue: ${interventionCue}`);
     if (cautionCue) {
-      lines.push(`Condition or caution: ${cautionCue}`);
+      lines.push(`- ${formatTopicHeading(topic)} safety limit: ${cautionCue}`);
     }
-
-    lines.push(`Board takeaway: Focus on the nursing priority, clue words, and what must be assessed or acted on first for ${formatTopicHeading(topic)}.`);
   });
 
   lines.push(
     "",
-    "FINAL REVIEW NOTE",
-    "Use each topic block as a separate review target. After reading this summary, convert the same file into flashcards or quiz questions so the learner can practice each topic one by one."
+    "Nursing Interventions",
+    ...groupedTopics.map(([topic, topicLines]) => {
+      const cue =
+        topicLines.find((line) =>
+          /(intervention|administer|position|teach|educate|withhold|notify|support|oxygen|fluids|medication|manage)/i.test(line)
+        ) || topicLines[0];
+      return `- ${formatTopicHeading(topic)}: prioritize the safest nursing action supported by the notes. ${cue}`;
+    }),
+    "",
+    "Patient Teaching",
+    "- Explain warning signs, medication precautions, follow-up needs, and when to seek help using the learner's source material.",
+    "- Keep teaching concrete: what to report, what to avoid, and what the client should do next.",
+    "",
+    "Safety Considerations",
+    "- Preserve any source warnings, contraindications, limits, or only-if conditions before choosing an intervention.",
+    "- In PNLE-style items, assess instability and safety risks before routine care.",
+    "",
+    "Exam Traps",
+    "- Do not choose an intervention before assessment when the stem asks for the first nursing action.",
+    "- Watch for answers that are possible but not the safest, most immediate, or most patient-centered.",
+    "",
+    "High-Yield PNLE Points",
+    "- Use each topic as a separate review target, then convert the same material into flashcards or quiz questions.",
+    "- Focus on clue words such as first, best, priority, most important, monitor, and teach."
   );
 
   return lines.join("\n");
@@ -553,7 +566,7 @@ function toFlashcard(entry, subject) {
 function buildFlashcardRationale(entry, answer) {
   const topic = entry.topic || "this nursing concept";
   const subject = entry.subject || "PNLE review";
-  return `This is important because ${answer} is the key point that supports safe nursing judgment for ${topic} in ${subject}.`;
+  return `Correct Answer Explanation: ${answer} is the key point because it supports safe nursing judgment for ${topic} in ${subject}. Key Takeaway: connect the concept to the safest assessment cue, priority intervention, or patient-teaching point.`;
 }
 
 function buildFlashcardTakeaway(entry, answer) {
@@ -564,7 +577,7 @@ function buildFlashcardTakeaway(entry, answer) {
 function buildQuizRationale(entry, prompt, correctAnswer) {
   const topic = entry.topic || "this concept";
   const subject = entry.subject || "PNLE review";
-  return `The best answer is ${correctAnswer} because it matches the priority nursing judgment for ${topic} in ${subject}. The other choices may sound relevant, but they are less appropriate because they delay the priority action, miss the main assessment cue, or do not address the safest next step in the stem.`;
+  return `Correct Answer Explanation: ${correctAnswer} is best because it matches the priority nursing judgment for ${topic} in ${subject}. Incorrect Options Explanation: Other choices may sound relevant, but they are less appropriate when they delay the priority action, miss the main assessment cue, or fail to address the safest next step in the stem. Key Takeaway: choose the answer that best protects safety and follows assessment-before-intervention logic.`;
 }
 
 function sanitizeQuestionType(type, allowMultipleResponse = false) {
@@ -867,7 +880,7 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
       const correctAnswer = alignTextToPrompt(prompt, item.correctAnswer || "", 18, 26);
       const sanitizedType = sanitizeQuestionType(item.type, allowMultipleResponse);
       const options = sanitizedType === QUESTION_TYPES.MULTIPLE_RESPONSE
-        ? rawOptions.slice(0, 4)
+        ? rawOptions.slice(0, 5)
         : finalizeQuizOptions(
             prompt,
             correctAnswer,
@@ -920,10 +933,11 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
       item.prompt.length > 18 &&
       (item.correctAnswer || item.correctOptionIds.length) &&
       item.options.length >= 4 &&
+      item.options.length <= 5 &&
       !hasScopeMismatch(item.prompt, item.correctAnswer || item.options.find((option) => item.correctOptionIds.includes(option.id))?.text || "");
     const notUsed = allowRepeat ? true : !usedPrompts.includes(normalize(item.prompt));
     const includesCorrect = item.type === QUESTION_TYPES.MULTIPLE_RESPONSE
-      ? item.correctOptionIds.length >= 2
+      ? item.correctOptionIds.length >= 2 && item.correctOptionIds.length < item.options.length
       : item.options.some((option) => normalize(option.text) === normalize(item.correctAnswer));
     return (
       valid &&
@@ -4922,6 +4936,7 @@ export default function App() {
                       </div>
                     </div>
 
+                    {false ? (
                     <div
                       style={{
                         display: "grid",
@@ -4947,6 +4962,7 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+                    ) : null}
 
                     <div
                       style={{
@@ -4994,6 +5010,8 @@ export default function App() {
                     </div>
                   </div>
 
+                  {false ? (
+                  <>
                   <div
                     style={{
                       borderRadius: 22,
@@ -5782,6 +5800,8 @@ export default function App() {
                       </div>
                     ) : null}
                   </div>
+                  </>
+                  ) : null}
                 </div>
               </AnalyticsCard>
               </ErrorBoundary>
