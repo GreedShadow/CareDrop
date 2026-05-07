@@ -8009,7 +8009,13 @@ export default function App() {
                     <div style={{ fontSize: 12, color: C.faint, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                       Add Planner Item
                     </div>
-                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        addPlannerItem();
+                      }}
+                      style={{ marginTop: 12, display: "grid", gap: 10 }}
+                    >
                       <input
                         value={plannerTitle}
                         onChange={(event) => setPlannerTitle(event.target.value)}
@@ -8049,8 +8055,7 @@ export default function App() {
                         }}
                       />
                       <button
-                        type="button"
-                        onClick={addPlannerItem}
+                        type="submit"
                         style={{
                           padding: "11px 14px",
                           borderRadius: 12,
@@ -8063,7 +8068,7 @@ export default function App() {
                       >
                         Save planner item
                       </button>
-                    </div>
+                    </form>
                   </div>
 
                   <div style={{ display: "grid", gap: 14 }}>
