@@ -2648,6 +2648,30 @@ export default function App() {
     return [...dueSelection, ...fillSelection].slice(0, FLASHCARD_SET_SIZE);
   }
 
+  function buildFlashcardCandidatePool(activeTopic = topicFilter) {
+    const resolvedTopic = getActiveTopicFocus(activeTopic);
+    const reviewSubject = resolveReviewSubject(resolvedTopic);
+    const candidates = uniqueBy(
+      getExactEntries(activeEntries, reviewSubject, difficulty, resolvedTopic).flatMap((entry) => buildFlashcardVariants(entry)),
+      (card) => card.id
+    );
+    const filteredCandidates = filterWeakOnly
+      ? candidates.filter((card) => weakCardIds.includes(card.id))
+      : candidates;
+    const freshCandidates = hasCustomSource
+      ? filteredCandidates
+      : filteredCandidates.filter((card) => !usedFlashcardIdsRef.current.includes(card.id));
+    const nonRecentFreshCandidates = freshCandidates.filter(
+      (card) => !recentFlashcardIdsRef.current.includes(card.id)
+    );
+
+    return {
+      candidates: filteredCandidates,
+      freshCandidates,
+      nonRecentFreshCandidates,
+    };
+  }
+
   function loadLocalFlashcardSet(message, activeTopic = topicFilter) {
     const resolvedTopic = getActiveTopicFocus(activeTopic);
 
@@ -2705,41 +2729,22 @@ export default function App() {
         ? buildTopicGenerationNotes(activeEntries, resolvedTopic, difficulty, studyText)
         : studyText;
 
-    if (!isOnline) {
-      loadLocalFlashcardSet("Offline mode: CareDrop loaded a local flashcard set so you can keep studying.", resolvedTopic);
-      return;
-    }
+    const { candidates: bankCandidates, freshCandidates, nonRecentFreshCandidates } =
+      buildFlashcardCandidatePool(resolvedTopic);
+    const preferredBankPool = nonRecentFreshCandidates.length ? nonRecentFreshCandidates : freshCandidates;
+    const bankFirstDeck = selectSessionItems(
+      preferredBankPool.length ? preferredBankPool : bankCandidates,
+      Math.min(FLASHCARD_SET_SIZE, preferredBankPool.length || bankCandidates.length),
+      [],
+      recentFlashcardIdsRef.current,
+      (card) => card.id
+    );
+    const hasFreshBankSet = preferredBankPool.length >= FLASHCARD_SET_SIZE;
 
-    setApiLoading(true);
-
-    try {
-      const data = await postJson("/api/claude/cards", {
-        notes: topicSeedNotes,
-        subject: reviewSubject,
-        topic: resolvedTopic,
-        difficulty: difficulty === "All" ? "mixed" : difficulty,
-        count: FLASHCARD_SET_SIZE,
-        excludeQuestions: hasCustomSource
-          ? []
-          : usedFlashcardQuestionsRef.current,
-      });
-
-      const aiCards = sanitizeFlashcards(
-        data.cards,
-        reviewSubject,
-        difficulty,
-        resolvedTopic,
-        usedFlashcardIdsRef.current,
-        hasCustomSource
-      );
-      const needed = Math.max(0, FLASHCARD_SET_SIZE - aiCards.length);
-      const fallback = needed
-        ? buildLocalFlashcardSet(resolvedTopic)
-            .filter((card) => !aiCards.some((item) => item.id === card.id))
-            .slice(0, needed)
-        : [];
-      const aiNeeded = resolvedTopic && deckLowOnTopicFocus(aiCards, needed);
-      const deck = [...aiCards, ...fallback].slice(0, FLASHCARD_SET_SIZE);
+    if (!isOnline || hasFreshBankSet) {
+      const deck = bankFirstDeck.length >= FLASHCARD_SET_SIZE
+        ? bankFirstDeck.slice(0, FLASHCARD_SET_SIZE)
+        : selectSessionItems(bankCandidates, FLASHCARD_SET_SIZE, [], recentFlashcardIdsRef.current, (card) => card.id);
 
       setFlashcards(deck);
       if (deck.length) {
@@ -2754,24 +2759,91 @@ export default function App() {
       setFlashcardSessionSubmitted(false);
       markFlashcardsAsUsed(deck);
       setStatusMessage(
-        deck.length >= FLASHCARD_SET_SIZE
-          ? resolvedTopic
-            ? aiNeeded
-              ? `Gemini expanded a fresh ${FLASHCARD_SET_SIZE}-card focus set for ${resolvedTopic}.`
-              : `Gemini generated another ${FLASHCARD_SET_SIZE}-card focus set for ${resolvedTopic}.`
-            : "Gemini generated a fresh 10-card flashcard set."
-          : `Gemini returned ${deck.length} cards for this focus.`
+        !isOnline
+          ? "Offline mode: CareDrop loaded a local flashcard set so you can keep studying."
+          : resolvedTopic
+            ? `CareDrop loaded a bank-supported ${FLASHCARD_SET_SIZE}-card focus set for ${resolvedTopic}.`
+            : "CareDrop loaded a fresh bank-supported 10-card flashcard set."
+      );
+      return;
+    }
+
+    setApiLoading(true);
+
+    try {
+      const needed = Math.max(0, FLASHCARD_SET_SIZE - bankFirstDeck.length);
+      const data = await postJson("/api/claude/cards", {
+        notes: topicSeedNotes,
+        subject: reviewSubject,
+        topic: resolvedTopic,
+        difficulty: difficulty === "All" ? "mixed" : difficulty,
+        count: needed || FLASHCARD_SET_SIZE,
+        excludeQuestions: [
+          ...(hasCustomSource ? [] : usedFlashcardQuestionsRef.current),
+          ...bankFirstDeck.map((card) => card.question),
+        ],
+      });
+
+      const aiCards = sanitizeFlashcards(
+        data.cards,
+        reviewSubject,
+        difficulty,
+        resolvedTopic,
+        usedFlashcardIdsRef.current,
+        hasCustomSource
+      );
+      const combinedDeck = uniqueBy([...bankFirstDeck, ...aiCards], (card) => card.id).slice(0, FLASHCARD_SET_SIZE);
+      const deck = combinedDeck.length >= FLASHCARD_SET_SIZE
+        ? combinedDeck
+        : [
+            ...combinedDeck,
+            ...selectSessionItems(
+              bankCandidates,
+              FLASHCARD_SET_SIZE - combinedDeck.length,
+              combinedDeck.map((card) => card.id),
+              recentFlashcardIdsRef.current,
+              (card) => card.id
+            ),
+          ].slice(0, FLASHCARD_SET_SIZE);
+
+      setFlashcards(deck);
+      if (deck.length) {
+        setFlashcardViewMode("study");
+        setViewMode("study");
+      }
+      setRemediationContext(null);
+      setCardIdx(0);
+      setMode("flashcard");
+      setFlashcardSessionRatings({});
+      setFlashcardResponseTimes({});
+      setFlashcardSessionSubmitted(false);
+      markFlashcardsAsUsed(deck);
+      setStatusMessage(
+        aiCards.length
+          ? `CareDrop used the bank first, then Gemini filled ${Math.min(aiCards.length, needed)} more card${Math.min(aiCards.length, needed) === 1 ? "" : "s"} for this focus.`
+          : "CareDrop loaded the best available bank cards for this focus."
       );
     } catch (error) {
-      setApiError(error.message || "Gemini flashcards failed. Using local cards instead.");
-      loadLocalFlashcardSet("Gemini flashcards were unavailable, so the local deck was loaded.", resolvedTopic);
+      const backupDeck = bankFirstDeck.length >= FLASHCARD_SET_SIZE
+        ? bankFirstDeck
+        : selectSessionItems(bankCandidates, FLASHCARD_SET_SIZE, [], recentFlashcardIdsRef.current, (card) => card.id);
+
+      if (backupDeck.length) {
+        setFlashcards(backupDeck);
+        setFlashcardViewMode("study");
+        setViewMode("study");
+        setRemediationContext(null);
+        setCardIdx(0);
+        setMode("flashcard");
+        setFlashcardSessionRatings({});
+        setFlashcardResponseTimes({});
+        setFlashcardSessionSubmitted(false);
+        markFlashcardsAsUsed(backupDeck);
+      }
+      setApiError(error.message || "Gemini was busy, so CareDrop loaded the strongest available bank cards for now.");
     } finally {
       setApiLoading(false);
     }
-  }
-
-  function deckLowOnTopicFocus(aiCards, needed) {
-    return aiCards.length < FLASHCARD_SET_SIZE || needed > 0;
   }
 
   async function requestNextFlashcardSet(activeTopic = topicFilter) {
@@ -2832,79 +2904,32 @@ export default function App() {
       resolvedTopic
         ? buildTopicGenerationNotes(activeEntries, resolvedTopic, difficulty, studyText)
         : studyText;
-    if (!isOnline) {
-      const fallbackPool = buildLocalQuizFallback(
-        activeEntries,
-        reviewSubject,
-        difficulty,
-        resolvedTopic,
-        QUIZ_SET_SIZE,
-        []
-      );
-      const fallback = selectSessionItems(
-        fallbackPool,
-        QUIZ_SET_SIZE,
-        hasCustomSource ? [] : usedQuizPromptsRef.current,
-        recentQuizPromptsRef.current,
-        (item) => normalize(item.prompt)
-      );
-      if (!fallback.length) {
-        setQuiz([]);
-        setQuizIdx(0);
-        setQuizResponseTimes({});
-        setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
-        return;
-      }
-      setQuiz(fallback);
-      setQuizViewMode("study");
-      setViewMode("study");
-      setQuizIdx(0);
-      setQuizResponseTimes({});
-      setMode("quiz");
-      setQuizSubmitted(false);
-      setQuizAnswerSheetOpen(false);
-      setStatusMessage("Offline mode: CareDrop prepared a local 10-question quiz from the stored review bank.");
-      return;
-    }
+    const localPool = buildLocalQuizFallback(
+      activeEntries,
+      reviewSubject,
+      difficulty,
+      resolvedTopic,
+      QUIZ_SET_SIZE * 4,
+      []
+    );
+    const freshLocalPool = hasCustomSource
+      ? localPool
+      : localPool.filter((item) => !usedQuizPromptsRef.current.includes(normalize(item.prompt)));
+    const nonRecentFreshLocalPool = freshLocalPool.filter(
+      (item) => !recentQuizPromptsRef.current.includes(normalize(item.prompt))
+    );
+    const preferredLocalPool = nonRecentFreshLocalPool.length ? nonRecentFreshLocalPool : freshLocalPool;
+    const localQuestions = selectSessionItems(
+      preferredLocalPool.length ? preferredLocalPool : localPool,
+      Math.min(QUIZ_SET_SIZE, preferredLocalPool.length || localPool.length),
+      [],
+      recentQuizPromptsRef.current,
+      (item) => normalize(item.prompt)
+    );
+    const hasFreshLocalQuiz = preferredLocalPool.length >= QUIZ_SET_SIZE;
 
-    setApiLoading(true);
-    setQuizSubmitted(false);
-    setQuizAnswerSheetOpen(false);
-    setQuizResponseTimes({});
-
-    try {
-      const aiQuestions = await requestQuizBatch(
-        resolvedTopic,
-        QUIZ_SET_SIZE,
-        hasCustomSource ? [] : usedQuizPromptsRef.current,
-        {
-          subjectOverride: reviewSubject,
-          notesOverride: topicSeedNotes,
-        }
-      );
-      const fallback = buildLocalQuizFallback(
-        activeEntries,
-        reviewSubject,
-        difficulty,
-        resolvedTopic,
-        QUIZ_SET_SIZE - aiQuestions.length,
-        []
-      );
-      const questions = selectSessionItems(
-        [...aiQuestions, ...fallback],
-        QUIZ_SET_SIZE,
-        hasCustomSource ? [] : usedQuizPromptsRef.current,
-        recentQuizPromptsRef.current,
-        (item) => normalize(item.prompt)
-      );
-      if (!questions.length) {
-        setQuiz([]);
-        setQuizIdx(0);
-        setQuizResponseTimes({});
-        setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
-        return;
-      }
-
+    function commitQuizSet(questions, message, options = {}) {
+      const { asError = false } = options;
       setQuiz(questions);
       setQuizViewMode("study");
       setViewMode("study");
@@ -2912,15 +2937,14 @@ export default function App() {
       setQuizIdx(0);
       setQuizResponseTimes({});
       setMode("quiz");
-      setStatusMessage(
-        questions.length >= QUIZ_SET_SIZE
-          ? resolvedTopic
-            ? aiQuestions.length < QUIZ_SET_SIZE
-              ? `Gemini expanded a fresh ${QUIZ_SET_SIZE}-question focus quiz for ${resolvedTopic}.`
-              : `Gemini generated another ${QUIZ_SET_SIZE}-question focus quiz for ${resolvedTopic}.`
-            : "A fresh 10-question quiz is ready for review."
-          : `Loaded ${questions.length} questions for this focus.`
-      );
+      setQuizSubmitted(false);
+      setQuizAnswerSheetOpen(false);
+
+      if (asError) {
+        setApiError(message);
+      } else {
+        setStatusMessage(message);
+      }
 
       if (!hasCustomSource) {
         setUsedQuizPrompts((prev) =>
@@ -2933,17 +2957,11 @@ export default function App() {
           [...prev, ...questions.map((item) => normalize(item.prompt))].slice(-RECENT_MEMORY_LIMIT)
         );
       }
-    } catch (error) {
-      const fallbackPool = buildLocalQuizFallback(
-        activeEntries,
-        reviewSubject,
-        difficulty,
-        resolvedTopic,
-        QUIZ_SET_SIZE,
-        []
-      );
+    }
+
+    if (!isOnline) {
       const fallback = selectSessionItems(
-        fallbackPool,
+        localPool,
         QUIZ_SET_SIZE,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
         recentQuizPromptsRef.current,
@@ -2956,27 +2974,93 @@ export default function App() {
         setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
         return;
       }
-      setQuiz(fallback);
-      setQuizViewMode("study");
-      setViewMode("study");
-      setRemediationContext(null);
-      setQuizIdx(0);
-      setQuizResponseTimes({});
-      setMode("quiz");
-      setApiError(
-        error.message || "Gemini quiz generation failed. A local 10-question backup quiz has been loaded."
+      commitQuizSet(fallback, "Offline mode: CareDrop prepared a local 10-question quiz from the stored review bank.");
+      return;
+    }
+
+    if (hasFreshLocalQuiz) {
+      commitQuizSet(
+        localQuestions.slice(0, QUIZ_SET_SIZE),
+        resolvedTopic
+          ? `CareDrop loaded a bank-supported ${QUIZ_SET_SIZE}-question focus quiz for ${resolvedTopic}.`
+          : "CareDrop loaded a fresh bank-supported 10-question quiz."
       );
-      if (!hasCustomSource) {
-        setUsedQuizPrompts((prev) =>
-          uniqueBy(
-            [...prev, ...fallback.map((item) => normalize(item.prompt))],
-            (value) => value
-          )
-        );
-        setRecentQuizPrompts((prev) =>
-          [...prev, ...fallback.map((item) => normalize(item.prompt))].slice(-RECENT_MEMORY_LIMIT)
-        );
+      return;
+    }
+
+    setApiLoading(true);
+    setQuizSubmitted(false);
+    setQuizAnswerSheetOpen(false);
+    setQuizResponseTimes({});
+
+    try {
+      const needed = Math.max(0, QUIZ_SET_SIZE - localQuestions.length);
+      const aiQuestions = await requestQuizBatch(
+        resolvedTopic,
+        needed || QUIZ_SET_SIZE,
+        uniqueBy(
+          [
+            ...(hasCustomSource ? [] : usedQuizPromptsRef.current),
+            ...localQuestions.map((item) => item.prompt),
+          ],
+          (value) => normalize(value)
+        ),
+        {
+          subjectOverride: reviewSubject,
+          notesOverride: topicSeedNotes,
+        }
+      );
+      const combinedQuestions = uniqueBy([...localQuestions, ...aiQuestions], (item) => normalize(item.prompt));
+      const recycledFill = combinedQuestions.length >= QUIZ_SET_SIZE
+        ? []
+        : selectSessionItems(
+            localPool,
+            QUIZ_SET_SIZE - combinedQuestions.length,
+            combinedQuestions.map((item) => normalize(item.prompt)),
+            recentQuizPromptsRef.current,
+            (item) => normalize(item.prompt)
+          );
+      const questions = selectSessionItems(
+        [...combinedQuestions, ...recycledFill],
+        QUIZ_SET_SIZE,
+        [],
+        recentQuizPromptsRef.current,
+        (item) => normalize(item.prompt)
+      );
+      if (!questions.length) {
+        setQuiz([]);
+        setQuizIdx(0);
+        setQuizResponseTimes({});
+        setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
+        return;
       }
+
+      commitQuizSet(
+        questions,
+        aiQuestions.length
+          ? `CareDrop used the bank first, then Gemini filled ${Math.min(aiQuestions.length, needed)} more question${Math.min(aiQuestions.length, needed) === 1 ? "" : "s"} for this focus.`
+          : "CareDrop loaded the best available bank questions for this focus."
+      );
+    } catch (error) {
+      const fallback = selectSessionItems(
+        localPool,
+        QUIZ_SET_SIZE,
+        hasCustomSource ? [] : usedQuizPromptsRef.current,
+        recentQuizPromptsRef.current,
+        (item) => normalize(item.prompt)
+      );
+      if (!fallback.length) {
+        setQuiz([]);
+        setQuizIdx(0);
+        setQuizResponseTimes({});
+        setApiError("No quiz questions are ready yet for this exact focus. Try generating again and CareDrop will use the bank plus Gemini to expand the set.");
+        return;
+      }
+      commitQuizSet(
+        fallback,
+        error.message || "Gemini was busy, so CareDrop loaded a bank-supported 10-question backup quiz.",
+        { asError: true }
+      );
     } finally {
       setApiLoading(false);
     }

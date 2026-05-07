@@ -90,11 +90,21 @@ export function Flashcard({ card, idx, total, onRate }) {
 
   const isMobile = viewportWidth < 640;
   const isTablet = viewportWidth < 1024;
-  const useStackedCard = viewportWidth < 1180;
-  const cardMinHeight = useStackedCard ? "auto" : "clamp(260px, 38vw, 340px)";
+  const useStackedCard = true;
+  const compactDetails = viewportWidth < 1280;
+  const cardMinHeight = "auto";
   const facePadding = isMobile ? "16px" : isTablet ? "18px" : "22px 22px 20px";
+  const compactNoteLimit = isMobile ? 150 : isTablet ? 190 : 230;
   const diffColor =
     card.difficulty === "hard" ? "red" : card.difficulty === "medium" ? "amber" : "green";
+
+  function trimStudyNote(text, limit = compactNoteLimit) {
+    const value = String(text || "").replace(/\s+/g, " ").trim();
+    if (value.length <= limit) {
+      return value;
+    }
+    return `${value.slice(0, limit).trim()}...`;
+  }
 
   function handleFlip() {
     if (flipLocked) {
@@ -218,54 +228,46 @@ export function Flashcard({ card, idx, total, onRate }) {
                 accentColor: C.muted,
                 extra: (
                   <div style={{ marginTop: isMobile ? 12 : 16, display: "grid", gap: isMobile ? 10 : 12 }}>
-                    <div
-                      style={{
-                        padding: isMobile ? 12 : 14,
-                        borderRadius: isMobile ? 12 : 14,
-                        background: C.surface,
-                        border: `1.5px solid ${C.panelNeutralDark}`,
-                      }}
-                    >
+                    {(compactDetails
+                      ? [{ label: "Key takeaway", text: trimStudyNote(card.notes || card.rationale) }]
+                      : [
+                          { label: "Short rationale", text: card.rationale },
+                          { label: "Key takeaway", text: card.notes },
+                        ]
+                    ).map((note) => (
                       <div
+                        key={note.label}
                         style={{
-                          fontSize: 11,
-                          color: C.faint,
-                          fontWeight: 700,
-                          letterSpacing: "0.07em",
-                          textTransform: "uppercase",
-                          marginBottom: 8,
+                          padding: isMobile ? 12 : 14,
+                          borderRadius: isMobile ? 12 : 14,
+                          background: C.surface,
+                          border: `1.5px solid ${C.panelNeutralDark}`,
                         }}
                       >
-                        Short rationale
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: C.faint,
+                            fontWeight: 700,
+                            letterSpacing: "0.07em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {note.label}
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 8,
+                            fontSize: isMobile ? 12.5 : 13,
+                            lineHeight: 1.6,
+                            color: C.muted,
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {note.text}
+                        </div>
                       </div>
-                      <div style={{ fontSize: isMobile ? 12.5 : 13, lineHeight: 1.6, color: C.muted, overflowWrap: "anywhere" }}>
-                        {card.rationale}
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        padding: isMobile ? 12 : 14,
-                        borderRadius: isMobile ? 12 : 14,
-                        background: C.surface,
-                        border: `1.5px solid ${C.panelNeutralDark}`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: C.faint,
-                          fontWeight: 700,
-                          letterSpacing: "0.07em",
-                          textTransform: "uppercase",
-                          marginBottom: 8,
-                        }}
-                      >
-                        Key takeaway
-                      </div>
-                      <div style={{ fontSize: isMobile ? 12.5 : 13, lineHeight: 1.6, color: C.muted, overflowWrap: "anywhere" }}>
-                        {card.notes}
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 ),
               },
