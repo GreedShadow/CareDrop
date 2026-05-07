@@ -6439,13 +6439,28 @@ export default function App() {
                       <div style={{ fontSize: studyMetaSize, fontWeight: 800, color: C.muted, marginBottom: 10 }}>
                         Flashcard Session Progress
                       </div>
-                      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: studyBodySize, lineHeight: 1.65 }}>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: width < 640 ? "1fr 1fr" : "repeat(4, max-content)",
+                          gap: width < 640 ? 10 : 18,
+                          fontSize: studyBodySize,
+                          lineHeight: 1.65,
+                        }}
+                      >
                         <div>Reviewed: <strong>{flashcardCompletedCount} / {flashcards.length}</strong></div>
                         <div>Strong: <strong>{flashcardStrongCount}</strong></div>
                         <div>Needs work: <strong>{flashcardNeedsReviewCount}</strong></div>
                         <div>Progress: <strong>{flashcardProgressPercent}%</strong></div>
                       </div>
-                      <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          marginTop: 14,
+                          display: "grid",
+                          gridTemplateColumns: width < 640 ? "1fr" : "repeat(2, max-content)",
+                          gap: 10,
+                        }}
+                      >
                         <button
                           onClick={submitFlashcardSession}
                           disabled={flashcardCompletedCount < flashcards.length || flashcardSessionSubmitted}

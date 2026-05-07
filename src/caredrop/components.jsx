@@ -89,6 +89,10 @@ export function Flashcard({ card, idx, total, onRate }) {
   }
 
   const isMobile = viewportWidth < 640;
+  const isTablet = viewportWidth < 1024;
+  const useStackedCard = viewportWidth < 1180;
+  const cardMinHeight = useStackedCard ? "auto" : "clamp(260px, 38vw, 340px)";
+  const facePadding = isMobile ? "16px" : isTablet ? "18px" : "22px 22px 20px";
   const diffColor =
     card.difficulty === "hard" ? "red" : card.difficulty === "medium" ? "amber" : "green";
 
@@ -137,7 +141,7 @@ export function Flashcard({ card, idx, total, onRate }) {
   }, [card?.id, flipLocked]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 12 : 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div
           style={{
@@ -163,7 +167,7 @@ export function Flashcard({ card, idx, total, onRate }) {
         </span>
       </div>
 
-      <div style={{ perspective: 1400 }}>
+      <div style={{ perspective: 1400, width: "100%" }}>
         <button
           ref={cardButtonRef}
           type="button"
@@ -176,7 +180,7 @@ export function Flashcard({ card, idx, total, onRate }) {
           }}
           style={{
             cursor: flipLocked ? "default" : "pointer",
-            minHeight: isMobile ? "auto" : "clamp(240px, 42vw, 280px)",
+            minHeight: cardMinHeight,
             width: "100%",
             background: "transparent",
             border: "none",
@@ -187,10 +191,10 @@ export function Flashcard({ card, idx, total, onRate }) {
           <div
             style={{
               position: "relative",
-              minHeight: isMobile ? "auto" : "clamp(240px, 42vw, 280px)",
-              transformStyle: isMobile ? "flat" : "preserve-3d",
-              transition: isMobile ? "opacity 0.18s ease" : "transform 0.42s cubic-bezier(0.2, 0.7, 0.2, 1)",
-              transform: isMobile ? "none" : flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+              minHeight: cardMinHeight,
+              transformStyle: useStackedCard ? "flat" : "preserve-3d",
+              transition: useStackedCard ? "opacity 0.18s ease" : "transform 0.42s cubic-bezier(0.2, 0.7, 0.2, 1)",
+              transform: useStackedCard ? "none" : flipped ? "rotateY(180deg)" : "rotateY(0deg)",
             }}
           >
             {[
@@ -213,11 +217,11 @@ export function Flashcard({ card, idx, total, onRate }) {
                 borderColor: C.panelNeutralDark,
                 accentColor: C.muted,
                 extra: (
-                  <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+                  <div style={{ marginTop: isMobile ? 12 : 16, display: "grid", gap: isMobile ? 10 : 12 }}>
                     <div
                       style={{
-                        padding: 14,
-                        borderRadius: 14,
+                        padding: isMobile ? 12 : 14,
+                        borderRadius: isMobile ? 12 : 14,
                         background: C.surface,
                         border: `1.5px solid ${C.panelNeutralDark}`,
                       }}
@@ -234,14 +238,14 @@ export function Flashcard({ card, idx, total, onRate }) {
                       >
                         Short rationale
                       </div>
-                      <div style={{ fontSize: 13, lineHeight: 1.65, color: C.muted }}>
+                      <div style={{ fontSize: isMobile ? 12.5 : 13, lineHeight: 1.6, color: C.muted, overflowWrap: "anywhere" }}>
                         {card.rationale}
                       </div>
                     </div>
                     <div
                       style={{
-                        padding: 14,
-                        borderRadius: 14,
+                        padding: isMobile ? 12 : 14,
+                        borderRadius: isMobile ? 12 : 14,
                         background: C.surface,
                         border: `1.5px solid ${C.panelNeutralDark}`,
                       }}
@@ -258,7 +262,7 @@ export function Flashcard({ card, idx, total, onRate }) {
                       >
                         Key takeaway
                       </div>
-                      <div style={{ fontSize: 13, lineHeight: 1.65, color: C.muted }}>
+                      <div style={{ fontSize: isMobile ? 12.5 : 13, lineHeight: 1.6, color: C.muted, overflowWrap: "anywhere" }}>
                         {card.notes}
                       </div>
                     </div>
@@ -269,18 +273,18 @@ export function Flashcard({ card, idx, total, onRate }) {
               <div
                 key={face.side}
                 style={{
-                  position: isMobile ? "relative" : "absolute",
-                  inset: isMobile ? "auto" : 0,
-                  minHeight: isMobile ? "auto" : "clamp(240px, 42vw, 280px)",
+                  position: useStackedCard ? "relative" : "absolute",
+                  inset: useStackedCard ? "auto" : 0,
+                  minHeight: cardMinHeight,
                   background: face.background,
                   border: `1.5px solid ${face.borderColor}`,
-                  borderRadius: 22,
-                  padding: isMobile ? "18px 18px 16px" : "22px 22px 20px",
+                  borderRadius: isMobile ? 18 : 22,
+                  padding: facePadding,
                   boxShadow: "0 12px 24px rgba(15, 23, 42, 0.05)",
-                  backfaceVisibility: isMobile ? "visible" : "hidden",
-                  transform: isMobile ? "none" : face.side === "back" ? "rotateY(180deg)" : "rotateY(0deg)",
+                  backfaceVisibility: useStackedCard ? "visible" : "hidden",
+                  transform: useStackedCard ? "none" : face.side === "back" ? "rotateY(180deg)" : "rotateY(0deg)",
                   textAlign: "left",
-                  display: isMobile
+                  display: useStackedCard
                     ? flipped === (face.side === "back")
                       ? "block"
                       : "none"
@@ -309,10 +313,11 @@ export function Flashcard({ card, idx, total, onRate }) {
                 </div>
                 <div
                   style={{
-                    fontSize: face.side === "front" ? "clamp(17px, 2.6vw, 21px)" : "clamp(14px, 2.2vw, 15px)",
+                    fontSize: face.side === "front" ? "clamp(16px, 2.6vw, 21px)" : "clamp(14px, 2.1vw, 16px)",
                     fontWeight: face.side === "front" ? 800 : 600,
                     color: C.text,
-                    lineHeight: face.side === "front" ? 1.55 : 1.7,
+                    lineHeight: face.side === "front" ? 1.5 : 1.65,
+                    overflowWrap: "anywhere",
                   }}
                 >
                   {face.body}
@@ -331,13 +336,13 @@ export function Flashcard({ card, idx, total, onRate }) {
 
       <div
         style={{
-          display: "flex",
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
           gap: 10,
           opacity: flipped ? 1 : 0,
           transition: "opacity 0.2s ease",
           pointerEvents: flipped ? "auto" : "none",
-          flexWrap: "wrap",
-          marginTop: 4,
+          marginTop: isMobile ? 0 : 2,
         }}
       >
         {[
@@ -349,8 +354,7 @@ export function Flashcard({ card, idx, total, onRate }) {
             key={button.key}
             onClick={() => onRate(button.key)}
             style={{
-              flex: isMobile ? "1 1 100%" : 1,
-              minWidth: isMobile ? "100%" : 120,
+              width: "100%",
               padding: isMobile ? "12px 14px" : "11px 14px",
               borderRadius: 12,
               border: `1.5px solid ${button.color}`,
