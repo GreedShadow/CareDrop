@@ -393,6 +393,21 @@ function matchesTopicFocus(entry, topic) {
   return getTopicSearchTerms(topic).some((term) => haystack.includes(term));
 }
 
+function matchesGeneratedTopicContent(item, topic) {
+  const terms = getTopicSearchTerms(topic);
+  if (!terms.length) {
+    return true;
+  }
+
+  const optionsText = Array.isArray(item.options)
+    ? item.options.map((option) => (typeof option === "string" ? option : option?.text || "")).join(" ")
+    : "";
+  const haystack = normalize(
+    `${item.q || item.prompt || item.question || ""} ${item.a || item.answer || item.correctAnswer || ""} ${optionsText} ${item.rationale || ""} ${item.notes || ""}`
+  );
+  return terms.some((term) => haystack.includes(term));
+}
+
 function cleanQuizPrompt(prompt) {
   return String(prompt || "")
     .replace(/^\s*(question\s*:|q\s*:)\s*/i, "")
@@ -595,8 +610,25 @@ function getExactEntries(sourceEntries, subject, difficulty, topic) {
   return sourceEntries.filter((entry) => matchesStudyFilter(entry, subject, difficulty, topic));
 }
 
+function getTopicAlignedEntries(sourceEntries, subject, difficulty, topic) {
+  if (!String(topic || "").trim()) {
+    return getExactEntries(sourceEntries, subject, difficulty, topic);
+  }
+
+  const tiers = [
+    getExactEntries(sourceEntries, subject, difficulty, topic),
+    getExactEntries(sourceEntries, subject, "All", topic),
+    getExactEntries(sourceEntries, "", difficulty, topic),
+    getExactEntries(sourceEntries, "", "All", topic),
+  ];
+
+  return uniqueBy(tiers.flat(), (entry) =>
+    `${entry.subject || ""}-${entry.difficulty || ""}-${normalize(entry.topic || "")}-${normalize(entry.q || entry.prompt || "")}`
+  );
+}
+
 function buildTopicFocusContext(sourceEntries, topic, difficulty = "All", limit = 18) {
-  const exactMatches = getExactEntries(sourceEntries, "", difficulty, topic);
+  const exactMatches = getTopicAlignedEntries(sourceEntries, "", difficulty, topic);
   const selected = exactMatches.slice(0, limit);
 
   if (!selected.length) {
@@ -760,8 +792,8 @@ function buildDistractors(entry, pool) {
 }
 
 function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count, usedPrompts = []) {
-  const prioritized = shuffle(getExactEntries(sourceEntries, subject, difficulty, topic));
-  const distractorPool = prioritized.length ? prioritized : getExactEntries(sourceEntries, subject, difficulty, topic);
+  const prioritized = shuffle(getTopicAlignedEntries(sourceEntries, subject, difficulty, topic));
+  const distractorPool = prioritized.length ? prioritized : getTopicAlignedEntries(sourceEntries, subject, difficulty, topic);
 
   function collectQuestions(ignoreUsedPrompts) {
     const questions = [];
@@ -849,6 +881,7 @@ function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRep
         difficulty,
         topic
       ) &&
+      matchesGeneratedTopicContent(card, topic) &&
       (allowRepeat ? true : !usedIds.includes(card.id))
   );
 }
@@ -955,7 +988,8 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
         subject,
         difficulty,
         topic
-      )
+      ) &&
+      matchesGeneratedTopicContent(item, topic)
     );
   });
 }
@@ -2611,7 +2645,7 @@ export default function App() {
     const resolvedTopic = getActiveTopicFocus(activeTopic);
     const reviewSubject = resolveReviewSubject(resolvedTopic);
     const candidates = uniqueBy(
-      getExactEntries(activeEntries, reviewSubject, difficulty, resolvedTopic).flatMap((entry) => buildFlashcardVariants(entry)),
+      getTopicAlignedEntries(activeEntries, reviewSubject, difficulty, resolvedTopic).flatMap((entry) => buildFlashcardVariants(entry)),
       (card) => card.id
     );
     const filteredCandidates = filterWeakOnly
@@ -2652,7 +2686,7 @@ export default function App() {
     const resolvedTopic = getActiveTopicFocus(activeTopic);
     const reviewSubject = resolveReviewSubject(resolvedTopic);
     const candidates = uniqueBy(
-      getExactEntries(activeEntries, reviewSubject, difficulty, resolvedTopic).flatMap((entry) => buildFlashcardVariants(entry)),
+      getTopicAlignedEntries(activeEntries, reviewSubject, difficulty, resolvedTopic).flatMap((entry) => buildFlashcardVariants(entry)),
       (card) => card.id
     );
     const filteredCandidates = filterWeakOnly
