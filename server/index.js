@@ -6,7 +6,7 @@ import cors from "cors";
 import express from "express";
 import multer from "multer";
 import { listAdminUsers } from "./admin-analytics.js";
-import { buildStudyContext, generateJson, generateText, model, requireClient } from "./ai-utils.js";
+import { buildStudyContext, fallbackModels, generateJson, generateText, model, requireClient } from "./ai-utils.js";
 import { generateValidatedCards, generateValidatedQuestions, generateValidatedSummary } from "./ai-validation.js";
 import { extractFileText, SUPPORTED_EXTENSIONS } from "./extract-utils.js";
 import { createFeedbackRequest, listFeedbackRequests } from "./feedback-utils.js";
@@ -46,6 +46,7 @@ app.get("/api/health", (_req, res) => {
     success: true,
     ok: true,
     model,
+    fallbackModels,
     configured: Boolean(process.env.GEMINI_API_KEY),
   });
 });
