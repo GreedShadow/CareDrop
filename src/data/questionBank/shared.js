@@ -14,16 +14,16 @@ export const QUESTION_LEAD_INS = [
 ];
 export const QUESTION_TEMPLATES = [
   (entry) => entry.q,
-  (entry, subject) => `Which statement is most accurate about ${entry.topic} in ${subject}?`,
-  (entry, subject) => `A patient scenario highlights ${entry.topic}. What should the nurse remember first in ${subject}?`,
-  (entry, subject) => `What is the safest nursing takeaway for ${entry.topic} in ${subject}?`,
-  (entry, subject) => `Which clue most strongly points to the correct response for ${entry.topic} in ${subject}?`,
-  (entry, subject, difficulty) => `For a ${difficulty} ${subject} review item about ${entry.topic}, which response is best?`,
-  (entry, subject) => `During review of ${subject}, what key principle should be tied to ${entry.topic}?`,
-  (entry, subject) => `If ${entry.topic} appears in a ${subject} question stem, what answer should come to mind?`,
-  (entry, subject) => `Which nursing judgment matters most when ${entry.topic} appears in ${subject}?`,
-  (entry, subject, difficulty) => `A ${difficulty} board item on ${entry.topic} is testing which safe response in ${subject}?`,
-  (entry, subject) => `What board-level reminder should stay attached to ${entry.topic} during ${subject} review?`
+  (entry, subject) => `A PNLE-style ${subject} item focuses on ${entry.topic}. The stem asks: ${entry.q} Which option is the best answer?`,
+  (entry, subject) => `The nurse is reviewing ${entry.topic} in ${subject}. The key cue is: ${entry.q} Which answer best matches the nursing priority?`,
+  (entry, subject) => `During board review for ${subject}, connect this ${entry.topic} cue to the safest response: ${entry.q} What is the best answer?`,
+  (entry, subject) => `A student is practicing ${subject} questions about ${entry.topic}. The review stem is: ${entry.q} Which choice is most appropriate?`,
+  (entry, subject, difficulty) => `For a ${difficulty} PNLE review item in ${subject}, use this ${entry.topic} stem: ${entry.q} Which response is best?`,
+  (entry, subject) => `The client-care cue is tied to ${entry.topic}. Stem: ${entry.q} Which nursing judgment should guide the answer?`,
+  (entry, subject) => `In ${subject}, the question is testing ${entry.topic}. Stem: ${entry.q} Which option should the nurse choose?`,
+  (entry, subject) => `A board-style item gives this ${entry.topic} cue: ${entry.q} Which nursing response is the safest?`,
+  (entry, subject, difficulty) => `A ${difficulty} review question asks about ${entry.topic}: ${entry.q} Which answer is most accurate?`,
+  (entry, subject) => `Use the original clinical cue for ${entry.topic}: ${entry.q} Which answer best fits the stem?`
 ];
 export const ANSWER_REMINDERS = [
   (entry, subject) => `Board focus: connect ${entry.topic} to the safest nursing priority in ${subject}.`,

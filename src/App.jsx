@@ -94,7 +94,6 @@ import {
   scoreQuestion,
 } from "./services/questionTypes";
 import {
-  ANSWER_REMINDERS,
   BANK_ITEMS_PER_BUCKET,
   BUCKET_DIFFICULTIES,
   FLASHCARD_RATING_POINTS,
@@ -116,8 +115,7 @@ function buildExpandedQuestion(entry, subject, difficulty, variantIndex) {
 }
 
 function buildExpandedAnswer(entry, subject, difficulty, variantIndex) {
-  const reminder = ANSWER_REMINDERS[variantIndex % ANSWER_REMINDERS.length];
-  return `${entry.a} ${reminder(entry, subject, difficulty)}`.trim();
+  return String(entry.a || "").trim();
 }
 
 function buildExpandedBank(seedBank, targetPerBucket = BANK_ITEMS_PER_BUCKET) {
@@ -433,9 +431,19 @@ function cleanQuizOption(option) {
     .replace(/^\s*[A-D][.)]\s*/i, "")
     .replace(/^\s*-\s*/, "")
     .replace(/\b(correct answer|answer|instruction|directions)\b\s*:?.*$/i, "")
-    .replace(/\b(review note|board focus|exam cue|careDrop focus|remember)\s*:.*$/i, "")
+    .replace(/\b(review note|board focus|exam cue|careDrop focus|remember|memory hook|review clue|key takeaway|clinical anchor)\s*:.*$/i, "")
+    .replace(/\b(?:in|for)\s+(fundamentals?|pharmacology|medical[\s-]*surgical(?: nursing)?|med[\s-]*surg|maternal(?:\s*&\s*newborn)?|pediatrics?|psychiatric nursing|community health|leadership(?:\s*&\s*management)?)\b\.?/gi, "")
     .replace(/\s+/g, " ")
     .replace(/\s+[,;:.!?-]+$/g, "")
+    .trim();
+}
+
+function normalizeOptionKey(option) {
+  return normalize(cleanQuizOption(option))
+    .replace(/\b(memory hook|review clue|key takeaway|board focus|remember)\b.*$/i, "")
+    .split(" ")
+    .slice(0, 14)
+    .join(" ")
     .trim();
 }
 
@@ -534,13 +542,17 @@ function hasScopeMismatch(prompt, answer) {
 
 function isWeakDistractor(option, correctAnswer) {
   const normalizedOption = normalize(option);
+  const optionKey = normalizeOptionKey(option);
+  const correctKey = normalizeOptionKey(correctAnswer);
   return (
     !normalizedOption ||
     normalizedOption === normalize(correctAnswer) ||
+    (optionKey && correctKey && (optionKey === correctKey || optionKey.includes(correctKey) || correctKey.includes(optionKey))) ||
     isInstructionLikeOption(option) ||
     hasCategoryLeakage(option) ||
     normalizedOption.includes("correct answer") ||
-    normalizedOption.includes("because it is correct")
+    normalizedOption.includes("because it is correct") ||
+    normalizedOption.includes("memory hook")
   );
 }
 
@@ -551,15 +563,15 @@ function buildFallbackDistractors(prompt, correctAnswer) {
   if (scope === "specific") {
     return [
       "Delay the priority action until more symptoms appear.",
-      "Choose the option that is useful but not the immediate priority.",
+      "Continue routine monitoring before addressing the priority cue.",
       "Delegate the judgment call before completing the nursing assessment.",
     ].filter((option) => normalize(option) !== normalize(trimmedCorrect));
   }
 
   return [
-    "Choose the response that is reasonable but not the safest nursing priority.",
-    "Delay action and continue routine care first.",
-    "Select a partially correct action that misses the main clinical need.",
+    "Continue routine care before reassessing the client.",
+    "Delay the priority intervention until the provider evaluates the client.",
+    "Focus on a secondary comfort measure before addressing the main clinical need.",
   ].filter((option) => normalize(option) !== normalize(trimmedCorrect));
 }
 
@@ -719,19 +731,26 @@ function buildFlashcardVariants(entry) {
 function buildQuizVariants(entry) {
   const alignedAnswer = alignTextToPrompt(entry.q, entry.a, 18, 26) || entry.a;
   const baseRationale = buildQuizRationale(entry, entry.q, alignedAnswer);
+  const sourceCue = cleanQuizPrompt(entry.q || "");
+  const topicLabel = entry.topic || "this nursing concept";
+  const subjectLabel = entry.subject || "nursing review";
+  const contextualCue = sourceCue
+    ? `The review cue is: ${sourceCue}`
+    : `The main concern is ${topicLabel}.`;
+
   return [
     { prompt: entry.q, rationale: baseRationale },
     {
-      prompt: `A client is being reviewed for ${entry.topic}. Which response by the nurse is most appropriate?`,
-      rationale: buildQuizRationale(entry, `A client is being reviewed for ${entry.topic}. Which response by the nurse is most appropriate?`, alignedAnswer),
+      prompt: `A PNLE-style ${subjectLabel} item focuses on ${topicLabel}. ${contextualCue} Which option is the best nursing answer?`,
+      rationale: buildQuizRationale(entry, `A PNLE-style ${subjectLabel} item focuses on ${topicLabel}. ${contextualCue} Which option is the best nursing answer?`, alignedAnswer),
     },
     {
-      prompt: `During PNLE review, which finding best supports the correct nursing action for ${entry.topic}?`,
-      rationale: buildQuizRationale(entry, `During PNLE review, which finding best supports the correct nursing action for ${entry.topic}?`, alignedAnswer),
+      prompt: `The nurse is answering a board-review question about ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`,
+      rationale: buildQuizRationale(entry, `The nurse is answering a board-review question about ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`, alignedAnswer),
     },
     {
-      prompt: `Which action should the nurse prioritize first when ${entry.topic} is the main concern?`,
-      rationale: buildQuizRationale(entry, `Which action should the nurse prioritize first when ${entry.topic} is the main concern?`, alignedAnswer),
+      prompt: `A student is reviewing ${topicLabel} and must connect the stem to the safest nursing priority. ${contextualCue} What is the best answer?`,
+      rationale: buildQuizRationale(entry, `A student is reviewing ${topicLabel} and must connect the stem to the safest nursing priority. ${contextualCue} What is the best answer?`, alignedAnswer),
     },
   ];
 }
@@ -755,7 +774,7 @@ function finalizeQuizOptions(prompt, correctAnswer, options, subject, difficulty
     (Array.isArray(options) ? options : [])
       .map((option) => alignTextToPrompt(prompt, option, 18, 24))
       .filter((option) => option && !isWeakDistractor(option, alignedCorrect)),
-    (option) => normalize(option)
+    (option) => normalizeOptionKey(option)
   ).filter((option) => normalize(option) !== normalize(alignedCorrect));
 
   const mergedDistractors = [...distractors];
@@ -764,7 +783,8 @@ function finalizeQuizOptions(prompt, correctAnswer, options, subject, difficulty
     if (mergedDistractors.length >= 3) {
       break;
     }
-    if (!mergedDistractors.some((item) => normalize(item) === normalize(option)) && normalize(option) !== normalize(alignedCorrect)) {
+    const optionKey = normalizeOptionKey(option);
+    if (!mergedDistractors.some((item) => normalizeOptionKey(item) === optionKey) && normalize(option) !== normalize(alignedCorrect)) {
       mergedDistractors.push(option);
     }
   }
@@ -773,7 +793,8 @@ function finalizeQuizOptions(prompt, correctAnswer, options, subject, difficulty
     if (mergedDistractors.length >= 3) {
       break;
     }
-    if (!mergedDistractors.some((item) => normalize(item) === normalize(option)) && normalize(option) !== normalize(alignedCorrect)) {
+    const optionKey = normalizeOptionKey(option);
+    if (!mergedDistractors.some((item) => normalizeOptionKey(item) === optionKey) && normalize(option) !== normalize(alignedCorrect)) {
       mergedDistractors.push(option);
     }
   }
@@ -922,7 +943,7 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
             };
           })
           .filter((option) => option.text && !isInstructionLikeOption(option.text)),
-        (option) => normalize(option.text)
+        (option) => normalizeOptionKey(option.text)
       );
       const correctAnswer = alignTextToPrompt(prompt, item.correctAnswer || "", 18, 26);
       const sanitizedType = sanitizeQuestionType(item.type, allowMultipleResponse);
