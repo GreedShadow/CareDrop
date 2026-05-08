@@ -1,10 +1,13 @@
 import { sendJson, readJsonBody } from "../utils.js";
 import { generateText, requireClient } from "../../server/ai-utils.js";
+import { buildFallbackReviewHelp } from "../../server/ai-fallbacks.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { success: false, error: "Method not allowed." });
   }
+
+  let body = {};
 
   try {
     const client = requireClient();
@@ -12,7 +15,7 @@ export default async function handler(req, res) {
       return sendJson(res, 500, { success: false, error: "Missing GEMINI_API_KEY in server environment." });
     }
 
-    const body = await readJsonBody(req);
+    body = await readJsonBody(req);
     const userPrompt = String(body?.userPrompt || "").trim();
     const question = String(body?.question || "").trim();
     const selectedAnswer = String(body?.selectedAnswer || "").trim();
@@ -60,9 +63,18 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error("Vercel Gemini review help error:", error);
-    return sendJson(res, 500, {
-      success: false,
-      error: error.message || "Failed to generate the AI explanation.",
+    return sendJson(res, 200, {
+      success: true,
+      fallback: true,
+      warning: "Gemini was temporarily unavailable, so CareDrop prepared a structured fallback explanation.",
+      response: buildFallbackReviewHelp({
+        userPrompt: body?.userPrompt,
+        question: body?.question,
+        selectedAnswer: body?.selectedAnswer,
+        correctAnswer: body?.correctAnswer,
+        rationale: body?.rationale,
+        topic: body?.topic,
+      }),
     });
   }
 }

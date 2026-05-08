@@ -5,11 +5,14 @@ import {
   requireClient,
 } from "../../server/ai-utils.js";
 import { generateValidatedCards } from "../../server/ai-validation.js";
+import { buildFallbackCards } from "../../server/ai-fallbacks.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { success: false, error: "Method not allowed." });
   }
+
+  let body = {};
 
   try {
     const client = requireClient();
@@ -17,7 +20,7 @@ export default async function handler(req, res) {
       return sendJson(res, 500, { success: false, error: "Missing GEMINI_API_KEY in server environment." });
     }
 
-    const body = await readJsonBody(req);
+    body = await readJsonBody(req);
     const notes = String(body?.notes || "").trim();
     const subject = String(body?.subject || "Mixed Review");
     const topic = String(body?.topic || "").trim();
@@ -66,9 +69,18 @@ export default async function handler(req, res) {
     return sendJson(res, 200, { success: true, cards });
   } catch (error) {
     console.error("Vercel Gemini cards error:", error);
-    return sendJson(res, 500, {
-      success: false,
-      error: error.message || "Failed to generate Gemini study cards.",
+    const count = Math.max(6, Math.min(24, Number(body?.count || 10)));
+    return sendJson(res, 200, {
+      success: true,
+      fallback: true,
+      warning: "Gemini was temporarily unavailable, so CareDrop prepared a structured fallback flashcard set.",
+      cards: buildFallbackCards({
+        notes: body?.notes,
+        subject: body?.subject,
+        topic: body?.topic,
+        difficulty: body?.difficulty,
+        count,
+      }),
     });
   }
 }

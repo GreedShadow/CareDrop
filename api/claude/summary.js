@@ -1,11 +1,14 @@
 import { sendJson, readJsonBody } from "../utils.js";
 import { generateText, model, requireClient } from "../../server/ai-utils.js";
 import { generateValidatedSummary } from "../../server/ai-validation.js";
+import { buildFallbackSummary } from "../../server/ai-fallbacks.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { success: false, error: "Method not allowed." });
   }
+
+  let body = {};
 
   try {
     const client = requireClient();
@@ -13,7 +16,7 @@ export default async function handler(req, res) {
       return sendJson(res, 500, { success: false, error: "Missing GEMINI_API_KEY in server environment." });
     }
 
-    const body = await readJsonBody(req);
+    body = await readJsonBody(req);
     const notes = String(body?.notes || "").trim();
 
     if (!notes) {
@@ -65,9 +68,11 @@ ${notes}`,
     });
   } catch (error) {
     console.error("Vercel Gemini summary error:", error);
-    return sendJson(res, 500, {
-      success: false,
-      error: error.message || "Failed to generate Gemini summary.",
+    return sendJson(res, 200, {
+      success: true,
+      fallback: true,
+      warning: "Gemini was temporarily unavailable, so CareDrop prepared a structured reviewer summary from the available text.",
+      summary: buildFallbackSummary(body?.notes || ""),
     });
   }
 }
