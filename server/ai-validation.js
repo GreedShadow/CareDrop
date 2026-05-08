@@ -165,9 +165,31 @@ function rationaleHasTeachingValue(text) {
       normalized.includes("less appropriate") ||
       normalized.includes("less correct") ||
       normalized.includes("weaker") ||
+      normalized.includes("wrong choice") ||
+      normalized.includes("distractor") ||
       normalized.includes("priority") ||
       normalized.includes("safest")) &&
     (normalized.includes("key takeaway") || normalized.includes("remember") || normalized.includes("board"))
+  );
+}
+
+function cardRationaleHasTeachingValue(text) {
+  const normalized = normalizeText(text).toLowerCase();
+  return (
+    normalized.length >= 24 &&
+    (normalized.includes("because") ||
+      normalized.includes("rationale") ||
+      normalized.includes("priority") ||
+      normalized.includes("safety") ||
+      normalized.includes("assessment") ||
+      normalized.includes("intervention") ||
+      normalized.includes("teaching")) &&
+    (normalized.includes("takeaway") ||
+      normalized.includes("remember") ||
+      normalized.includes("board") ||
+      normalized.includes("pnle") ||
+      normalized.includes("nle") ||
+      normalized.includes("clinical"))
   );
 }
 
@@ -245,7 +267,7 @@ function validateCard(card, index, requestedDifficulty) {
   if (!hasClinicalReasoningCue(question, answer, rationale, notes)) {
     issues.push(`card ${index + 1}: card needs a clearer nursing priority, safety, assessment, or teaching cue`);
   }
-  if (!rationaleHasTeachingValue(`${rationale} ${notes}`)) {
+  if (!cardRationaleHasTeachingValue(`${rationale} ${notes}`)) {
     issues.push(`card ${index + 1}: rationale should include the correct-answer reason and key takeaway`);
   }
   if (requestedDifficulty !== "mixed" && difficulty !== requestedDifficulty) {
@@ -300,7 +322,7 @@ export function validateQuestion(question, index, requestedDifficulty) {
     if (!correctOptionIds.every((id) => optionIds.includes(id))) {
       issues.push(`question ${index + 1}: SATA correctOptionIds must match real option ids`);
     }
-  } else if (!options.includes(correctAnswer)) {
+  } else if (!options.map((option) => option.toLowerCase()).includes(correctAnswer.toLowerCase())) {
     issues.push(`question ${index + 1}: correct answer must appear inside options`);
   }
   if (options.some((option) => option.length < 2)) {
@@ -340,7 +362,7 @@ export function validateSummary(summary) {
     }
   });
 
-  if (!/[-â€¢]\s+\S/.test(summary)) {
+  if (!/[-•*]\s+\S/.test(summary)) {
     issues.push("summary should use bullet points for scan-friendly review");
   }
 
@@ -487,3 +509,4 @@ export async function generateValidatedQuestions({
   logger.error("AI quiz validation failed", { failureReasons });
   throw new Error("The AI returned invalid quiz questions repeatedly. Please try again.");
 }
+
