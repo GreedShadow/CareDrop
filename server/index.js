@@ -179,6 +179,7 @@ Verification rules:
 
 Notes to summarize:
 ${notes}`,
+      sourceText: notes,
       maxOutputTokens: 2600,
       logger: console,
     });

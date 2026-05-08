@@ -136,6 +136,77 @@ const LOW_QUALITY_OPTION_PATTERNS = [
   /maybe/i,
 ];
 
+const SUMMARY_STOP_WORDS = new Set([
+  "about",
+  "after",
+  "before",
+  "between",
+  "client",
+  "clients",
+  "clinical",
+  "common",
+  "considerations",
+  "disease",
+  "during",
+  "important",
+  "include",
+  "includes",
+  "intervention",
+  "interventions",
+  "management",
+  "material",
+  "monitor",
+  "nurse",
+  "nurses",
+  "nursing",
+  "patient",
+  "patients",
+  "priority",
+  "report",
+  "review",
+  "safety",
+  "should",
+  "signs",
+  "symptoms",
+  "teaching",
+  "their",
+  "these",
+  "those",
+  "where",
+  "which",
+  "while",
+  "with",
+]);
+
+const KNOWN_TOPIC_TERMS = [
+  "stroke",
+  "cva",
+  "ischemic",
+  "hemorrhagic",
+  "thrombolytic",
+  "alteplase",
+  "tpa",
+  "seizure",
+  "diabetes",
+  "insulin",
+  "hypertension",
+  "shock",
+  "perfusion",
+  "sepsis",
+  "dengue",
+  "tuberculosis",
+  "pneumonia",
+  "asthma",
+  "bronchiolitis",
+  "heart failure",
+  "myocardial",
+  "postpartum",
+  "preeclampsia",
+  "heparin",
+  "warfarin",
+  "digoxin",
+];
+
 const AMBIGUOUS_STEM_PATTERNS = [
   /^what is (the )?(definition|meaning) of\b/i,
   /^which statement is true\??$/i,
@@ -148,6 +219,54 @@ function normalizeText(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function extractSourceKeywords(text, limit = 10) {
+  const counts = {};
+  normalizeText(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 5 && !SUMMARY_STOP_WORDS.has(word))
+    .forEach((word) => {
+      counts[word] = (counts[word] || 0) + 1;
+    });
+
+  return Object.entries(counts)
+    .sort((left, right) => right[1] - left[1])
+    .map(([word]) => word)
+    .slice(0, limit);
+}
+
+function validateSummaryGrounding(summary, sourceText) {
+  const issues = [];
+  const source = normalizeText(sourceText).toLowerCase();
+  const generated = normalizeText(summary).toLowerCase();
+
+  if (!source || source.length < 80) {
+    return issues;
+  }
+
+  const sourceKeywords = extractSourceKeywords(source, 12);
+  const matchedKeywords = sourceKeywords.filter((keyword) => generated.includes(keyword));
+  const requiredMatches = Math.min(3, Math.max(1, Math.ceil(sourceKeywords.length * 0.25)));
+
+  if (sourceKeywords.length >= 4 && matchedKeywords.length < requiredMatches) {
+    issues.push(
+      `summary appears weakly grounded in the uploaded file; matched ${matchedKeywords.length}/${sourceKeywords.length} source keywords`
+    );
+  }
+
+  const sourceTopicTerms = KNOWN_TOPIC_TERMS.filter((term) => source.includes(term));
+  const generatedTopicTerms = KNOWN_TOPIC_TERMS.filter((term) => generated.includes(term));
+  const unsupportedTerms = generatedTopicTerms.filter((term) => !sourceTopicTerms.includes(term));
+
+  if (unsupportedTerms.length >= 2) {
+    issues.push(`summary introduces unsupported topic content: ${unsupportedTerms.slice(0, 5).join(", ")}`);
+  }
+
+  return issues;
 }
 
 function hasCategoryLeak(text) {
@@ -347,7 +466,7 @@ export function validateQuestion(question, index, requestedDifficulty) {
   return issues;
 }
 
-export function validateSummary(summary) {
+export function validateSummary(summary, sourceText = "") {
   const issues = [];
   const normalized = normalizeText(summary);
   const lower = normalized.toLowerCase();
@@ -362,13 +481,15 @@ export function validateSummary(summary) {
     }
   });
 
-  if (!/[-•*]\s+\S/.test(summary)) {
+  if (!/[-*]\s+\S/.test(summary)) {
     issues.push("summary should use bullet points for scan-friendly review");
   }
 
   if (!hasClinicalReasoningCue(summary)) {
     issues.push("summary needs clearer nursing assessment, intervention, safety, or teaching cues");
   }
+
+  issues.push(...validateSummaryGrounding(summary, sourceText));
 
   return issues;
 }
@@ -378,6 +499,7 @@ export async function generateValidatedSummary({
   generateText,
   systemInstruction,
   prompt,
+  sourceText = "",
   maxOutputTokens = 2600,
   logger = console,
 }) {
@@ -394,7 +516,7 @@ export async function generateValidatedSummary({
       ),
       maxOutputTokens,
     });
-    const issues = validateSummary(summary);
+    const issues = validateSummary(summary, sourceText);
 
     if (!issues.length) {
       return summary;
@@ -509,4 +631,5 @@ export async function generateValidatedQuestions({
   logger.error("AI quiz validation failed", { failureReasons });
   throw new Error("The AI returned invalid quiz questions repeatedly. Please try again.");
 }
+
 

@@ -111,4 +111,31 @@ High-Yield PNLE Points
     expect(validateSummary(summary)).toEqual([]);
     expect(validateSummary("Short recap only.")).toContain("summary is too short to be useful as a reviewer");
   });
+
+  it("rejects summaries that drift away from uploaded source content", () => {
+    const source =
+      "Shock causes ineffective tissue perfusion with tachycardia, cool clammy skin, weak pulses, delayed capillary refill, oliguria, respiratory distress, oxygen support, IV access, urine output monitoring, and rapid escalation.";
+    const hallucinated = `
+Key Concepts
+- CVA or stroke interrupts blood flow to the brain and may be ischemic or hemorrhagic.
+Important Terms
+- Thrombolytic therapy includes alteplase or tPA for selected ischemic stroke patients.
+Signs and Symptoms
+- Monitor facial droop, arm weakness, speech difficulty, and sudden severe headache.
+Nursing Interventions
+- Prioritize neurological assessment and stroke-team activation.
+Patient Teaching
+- Teach FAST and stroke warning signs.
+Safety Considerations
+- Watch for intracranial bleeding after thrombolytic therapy.
+Exam Traps
+- Do not confuse TIA with completed stroke.
+High-Yield PNLE Points
+- Time is brain in acute stroke care.
+`;
+
+    expect(validateSummary(hallucinated, source)).toContain(
+      "summary introduces unsupported topic content: stroke, cva, ischemic, hemorrhagic, thrombolytic"
+    );
+  });
 });
