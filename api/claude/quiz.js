@@ -42,13 +42,17 @@ export default async function handler(req, res) {
     const examInstruction = examMode
       ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form board review: broad subject coverage, clinically varied stems, strong prioritization, assessment, intervention, and delegation language, and no repetitive wording. Keep exam mode difficult and PNLE-like.`
       : "Make the set feel like a focused PNLE quiz batch with scenario-based stems whenever appropriate.";
+    const topicInstruction = topic
+      ? `Hard topic boundary: every generated question, correct answer, rationale, and clinical scenario must stay centered on "${topic}". Do not drift to another topic just because the subject is broad. If using related terms, keep them clinically connected to "${topic}" and mention the focus topic or a direct synonym in the stem or rationale.`
+      : "No specific topic focus was provided, so keep the set aligned to the requested subject and difficulty.";
 
     const systemInstruction =
-      "You generate PRC NLE-style nursing quiz questions. Every item must be clinically accurate, PNLE-relevant, and structured as JSON only. Use scenario-based nursing stems whenever possible, with prioritization, assessment-vs-intervention, safety, delegation, or patient-teaching reasoning. Each item must have 4-5 distinct plausible options, one best answer for single_choice, and strong rationales. Most items should be single_choice. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
+      "You generate PRC NLE-style nursing quiz questions. Every item must be clinically accurate, PNLE-relevant, and structured as JSON only. Use scenario-based nursing stems whenever possible, with prioritization, assessment-vs-intervention, safety, delegation, or patient-teaching reasoning. Each item must have 4-5 distinct plausible options, one best answer for single_choice, and strong rationales. Most items should be single_choice. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries as strict constraints. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
     const prompt = [
         `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
         difficultyInstruction,
         examInstruction,
+        topicInstruction,
         context,
         "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
         "Question quality rules:",

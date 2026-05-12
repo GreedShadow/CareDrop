@@ -37,12 +37,16 @@ export default async function handler(req, res) {
       difficulty === "mixed"
         ? "Use a balanced mix of easy, medium, and hard flashcards."
         : `Every flashcard must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
+    const topicInstruction = topic
+      ? `Hard topic boundary: every flashcard question, answer, rationale, and takeaway must stay centered on "${topic}". Do not drift to unrelated content. If using related clinical terms, keep them directly connected to "${topic}" and mention the focus topic or a direct synonym in the card.`
+      : "No specific topic focus was provided, so keep the cards aligned to the requested subject and difficulty.";
 
     const systemInstruction =
-      `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, clinically meaningful, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt. Each card must include: a front-side recall prompt only, a correct answer, a short rationale explaining why the answer matters clinically, and a separate key takeaway for board review.`;
+      `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, clinically meaningful, board-focused cards. Respect the requested subject, topic, and difficulty boundaries as strict constraints. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt. Each card must include: a front-side recall prompt only, a correct answer, a short rationale explaining why the answer matters clinically, and a separate key takeaway for board review.`;
     const prompt = [
         "Build nursing study cards for a learner preparing for the Philippine PRC Nurse Licensure Examination.",
         difficultyInstruction,
+        topicInstruction,
         context,
         "Keep the cards practical, safety-focused, and framed for board-review recall in the Philippines.",
         "Flashcard structure rules:",

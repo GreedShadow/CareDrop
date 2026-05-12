@@ -413,7 +413,7 @@ function matchesGeneratedTopicContent(item, topic) {
     ? item.options.map((option) => (typeof option === "string" ? option : option?.text || "")).join(" ")
     : "";
   const haystack = normalize(
-    `${item.q || item.prompt || item.question || ""} ${item.a || item.answer || item.correctAnswer || ""} ${optionsText}`
+    `${item.topic || ""} ${item.q || item.prompt || item.question || ""} ${item.a || item.answer || item.correctAnswer || ""} ${optionsText}`
   );
   return terms.some((term) => haystack.includes(term));
 }
@@ -613,6 +613,70 @@ function buildFlashcardRationale(entry, answer) {
 function buildFlashcardTakeaway(entry, answer) {
   const topic = entry.topic || "general review";
   return `Key takeaway: link ${topic} to the safest nursing priority, core assessment cue, or first-line intervention. Remember: ${answer}`;
+}
+
+function resolveTopicSubject(subject, topic) {
+  if (subject && subject !== "Mixed Review") {
+    return subject;
+  }
+
+  return inferSubject(topic || "");
+}
+
+function resolveTopicDifficulty(difficulty, index = 0) {
+  if (["easy", "medium", "hard"].includes(difficulty)) {
+    return difficulty;
+  }
+
+  return ["easy", "medium", "hard"][index % 3];
+}
+
+function buildTopicFallbackAnswer(topic, index) {
+  const topicLabel = String(topic || "the requested topic").trim();
+  const templates = [
+    `For ${topicLabel}, start with the assessment cue that can threaten safety, then choose the nursing action that protects airway, breathing, circulation, or deterioration risk first.`,
+    `In ${topicLabel}, the safest PNLE approach is to identify the priority finding, reassess focused signs, and avoid routine care when the stem suggests instability.`,
+    `When reviewing ${topicLabel}, connect symptoms, vital signs, labs, and patient teaching to the best nursing priority rather than choosing a merely possible intervention.`,
+    `For ${topicLabel}, ask whether the item is testing assessment before intervention, urgent escalation, medication safety, or patient teaching, then choose the option that prevents harm.`,
+    `A strong ${topicLabel} answer should match the stem cue, address the most immediate risk, and avoid delaying care with low-priority comfort or documentation actions.`,
+  ];
+
+  return templates[index % templates.length];
+}
+
+function buildTopicFallbackEntries(topic, subject, difficulty, count, offset = 0) {
+  const topicLabel = String(topic || "").trim();
+  if (!topicLabel) {
+    return [];
+  }
+
+  const safeSubject = resolveTopicSubject(subject, topicLabel);
+  const prompts = [
+    `What is the safest nursing priority when a PNLE item focuses on ${topicLabel}?`,
+    `Which assessment cue should guide care first for ${topicLabel}?`,
+    `What should the nurse remember when reviewing ${topicLabel}?`,
+    `Which patient-safety point is most important for ${topicLabel}?`,
+    `How should a student approach a board-style question about ${topicLabel}?`,
+    `Which nursing judgment best supports safe care for ${topicLabel}?`,
+    `What common exam trap should be avoided when answering about ${topicLabel}?`,
+    `Which clinical thinking rule helps identify the best answer for ${topicLabel}?`,
+    `What patient-teaching focus is important when reviewing ${topicLabel}?`,
+    `Which sign of worsening status should be considered first in ${topicLabel}?`,
+  ];
+
+  return Array.from({ length: count }, (_, index) => {
+    const sequence = offset + index;
+    const q = prompts[sequence % prompts.length];
+    const a = buildTopicFallbackAnswer(topicLabel, sequence);
+
+    return {
+      q,
+      a,
+      subject: safeSubject,
+      difficulty: resolveTopicDifficulty(difficulty, sequence),
+      topic: topicLabel,
+    };
+  });
 }
 
 function buildQuizRationale(entry, prompt, correctAnswer) {
@@ -826,9 +890,18 @@ function buildDistractors(entry, pool) {
   return finalizeQuizOptions(entry.q, entry.a, options, entry.subject, entry.difficulty, entry.topic);
 }
 
-function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count, usedPrompts = []) {
-  const prioritized = shuffle(getTopicAlignedEntries(sourceEntries, subject, difficulty, topic));
-  const distractorPool = prioritized.length ? prioritized : getTopicAlignedEntries(sourceEntries, subject, difficulty, topic);
+function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count, usedPrompts = [], options = {}) {
+  const { includeSyntheticTopicFill = true } = options;
+  const topicFallbackEntries = includeSyntheticTopicFill
+    ? buildTopicFallbackEntries(topic, subject, difficulty, count)
+    : [];
+  const prioritized = shuffle(
+    uniqueBy(
+      [...getTopicAlignedEntries(sourceEntries, subject, difficulty, topic), ...topicFallbackEntries],
+      (entry) => `${entry.subject || ""}-${entry.difficulty || ""}-${normalize(entry.topic || "")}-${normalize(entry.q || "")}`
+    )
+  );
+  const distractorPool = prioritized;
 
   function collectQuestions(ignoreUsedPrompts) {
     const questions = [];
@@ -2682,8 +2755,17 @@ export default function App() {
   function buildLocalFlashcardSet(activeTopic = topicFilter) {
     const resolvedTopic = getActiveTopicFocus(activeTopic);
     const reviewSubject = resolveReviewSubject(resolvedTopic);
+    const topicFallbackEntries = buildTopicFallbackEntries(
+      resolvedTopic,
+      reviewSubject,
+      difficulty,
+      FLASHCARD_SET_SIZE
+    );
     const candidates = uniqueBy(
-      getTopicAlignedEntries(activeEntries, reviewSubject, difficulty, resolvedTopic).flatMap((entry) => buildFlashcardVariants(entry)),
+      [
+        ...getTopicAlignedEntries(activeEntries, reviewSubject, difficulty, resolvedTopic),
+        ...topicFallbackEntries,
+      ].flatMap((entry) => buildFlashcardVariants(entry)),
       (card) => card.id
     );
     const filteredCandidates = filterWeakOnly
@@ -2742,6 +2824,20 @@ export default function App() {
       freshCandidates,
       nonRecentFreshCandidates,
     };
+  }
+
+  function buildSyntheticFlashcardDeck(activeTopic, count, existingCards = []) {
+    const resolvedTopic = getActiveTopicFocus(activeTopic);
+    const reviewSubject = resolveReviewSubject(resolvedTopic);
+    return selectSessionItems(
+      buildTopicFallbackEntries(resolvedTopic, reviewSubject, difficulty, count * 2)
+        .flatMap((entry) => buildFlashcardVariants(entry))
+        .filter((card) => !existingCards.some((existing) => existing.id === card.id)),
+      count,
+      [],
+      [],
+      (card) => card.id
+    );
   }
 
   function loadLocalFlashcardSet(message, activeTopic = topicFilter) {
@@ -2816,7 +2912,16 @@ export default function App() {
     if (!isOnline || hasFreshBankSet) {
       const deck = bankFirstDeck.length >= FLASHCARD_SET_SIZE
         ? bankFirstDeck.slice(0, FLASHCARD_SET_SIZE)
-        : selectSessionItems(bankCandidates, FLASHCARD_SET_SIZE, [], recentFlashcardIdsRef.current, (card) => card.id);
+        : resolvedTopic
+          ? [
+              ...bankFirstDeck,
+              ...buildSyntheticFlashcardDeck(
+                resolvedTopic,
+                FLASHCARD_SET_SIZE - bankFirstDeck.length,
+                bankFirstDeck
+              ),
+            ].slice(0, FLASHCARD_SET_SIZE)
+          : selectSessionItems(bankCandidates, FLASHCARD_SET_SIZE, [], recentFlashcardIdsRef.current, (card) => card.id);
 
       setFlashcards(deck);
       if (deck.length) {
@@ -2867,16 +2972,25 @@ export default function App() {
       const combinedDeck = uniqueBy([...bankFirstDeck, ...aiCards], (card) => card.id).slice(0, FLASHCARD_SET_SIZE);
       const deck = combinedDeck.length >= FLASHCARD_SET_SIZE
         ? combinedDeck
-        : [
-            ...combinedDeck,
-            ...selectSessionItems(
-              bankCandidates,
-              FLASHCARD_SET_SIZE - combinedDeck.length,
-              combinedDeck.map((card) => card.id),
-              recentFlashcardIdsRef.current,
-              (card) => card.id
-            ),
-          ].slice(0, FLASHCARD_SET_SIZE);
+        : resolvedTopic
+          ? [
+              ...combinedDeck,
+              ...buildSyntheticFlashcardDeck(
+                resolvedTopic,
+                FLASHCARD_SET_SIZE - combinedDeck.length,
+                combinedDeck
+              ),
+            ].slice(0, FLASHCARD_SET_SIZE)
+          : [
+              ...combinedDeck,
+              ...selectSessionItems(
+                bankCandidates,
+                FLASHCARD_SET_SIZE - combinedDeck.length,
+                combinedDeck.map((card) => card.id),
+                recentFlashcardIdsRef.current,
+                (card) => card.id
+              ),
+            ].slice(0, FLASHCARD_SET_SIZE);
 
       setFlashcards(deck);
       if (deck.length) {
@@ -2898,7 +3012,16 @@ export default function App() {
     } catch (error) {
       const backupDeck = bankFirstDeck.length >= FLASHCARD_SET_SIZE
         ? bankFirstDeck
-        : selectSessionItems(bankCandidates, FLASHCARD_SET_SIZE, [], recentFlashcardIdsRef.current, (card) => card.id);
+        : resolvedTopic
+          ? [
+              ...bankFirstDeck,
+              ...buildSyntheticFlashcardDeck(
+                resolvedTopic,
+                FLASHCARD_SET_SIZE - bankFirstDeck.length,
+                bankFirstDeck
+              ),
+            ].slice(0, FLASHCARD_SET_SIZE)
+          : selectSessionItems(bankCandidates, FLASHCARD_SET_SIZE, [], recentFlashcardIdsRef.current, (card) => card.id);
 
       if (backupDeck.length) {
         setFlashcards(backupDeck);
@@ -2982,7 +3105,17 @@ export default function App() {
       difficulty,
       resolvedTopic,
       QUIZ_SET_SIZE * 4,
-      []
+      [],
+      { includeSyntheticTopicFill: false }
+    );
+    const topicFallbackPool = buildLocalQuizFallback(
+      activeEntries,
+      reviewSubject,
+      difficulty,
+      resolvedTopic,
+      QUIZ_SET_SIZE * 4,
+      [],
+      { includeSyntheticTopicFill: true }
     );
     const freshLocalPool = hasCustomSource
       ? localPool
@@ -3033,7 +3166,7 @@ export default function App() {
 
     if (!isOnline) {
       const fallback = selectSessionItems(
-        localPool,
+        topicFallbackPool,
         QUIZ_SET_SIZE,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
         recentQuizPromptsRef.current,
@@ -3086,7 +3219,7 @@ export default function App() {
       const recycledFill = combinedQuestions.length >= QUIZ_SET_SIZE
         ? []
         : selectSessionItems(
-            localPool,
+            topicFallbackPool,
             QUIZ_SET_SIZE - combinedQuestions.length,
             combinedQuestions.map((item) => normalize(item.prompt)),
             recentQuizPromptsRef.current,
@@ -3115,7 +3248,7 @@ export default function App() {
       );
     } catch (error) {
       const fallback = selectSessionItems(
-        localPool,
+        topicFallbackPool,
         QUIZ_SET_SIZE,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
         recentQuizPromptsRef.current,
