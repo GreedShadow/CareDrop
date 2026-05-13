@@ -800,29 +800,69 @@ function buildFlashcardVariants(entry) {
   );
 }
 
-function buildQuizVariants(entry) {
+function buildFocusedFlashcardVariants(entry, requestedTopic) {
+  const focusTopic = String(requestedTopic || "").trim();
+  if (!focusTopic) {
+    return buildFlashcardVariants(entry);
+  }
+
+  const subject = entry.subject;
+  const baseId = `${subject}-${normalize(focusTopic)}-${normalize(entry.q)}`;
+  const answer = alignTextToPrompt(entry.q, entry.a, 20, 30) || entry.a;
+  const focusedEntry = { ...entry, topic: focusTopic };
+  const rationale = buildFlashcardRationale(focusedEntry, answer);
+  const notes = buildFlashcardTakeaway(focusedEntry, answer);
+  const prompts = [
+    `For ${focusTopic}, what nursing priority should you remember from this review cue?`,
+    `Which assessment or safety cue matters most when reviewing ${focusTopic}?`,
+    `What is the PNLE takeaway for ${focusTopic} in this item?`,
+    `How should a nurse connect ${focusTopic} to safe clinical judgment?`,
+  ];
+
+  return uniqueBy(
+    prompts.map((prompt, index) => ({
+      id: `${baseId}-focus-card-${index + 1}`,
+      subject,
+      difficulty: entry.difficulty || "medium",
+      topic: focusTopic,
+      question: prompt,
+      answer,
+      rationale,
+      notes,
+    })),
+    (item) => item.id
+  );
+}
+
+function buildQuizVariants(entry, requestedTopic = "") {
   const alignedAnswer = alignTextToPrompt(entry.q, entry.a, 18, 26) || entry.a;
-  const baseRationale = buildQuizRationale(entry, entry.q, alignedAnswer);
   const sourceCue = cleanQuizPrompt(entry.q || "");
-  const topicLabel = entry.topic || "this nursing concept";
+  const topicLabel = String(requestedTopic || entry.topic || "this nursing concept").trim();
+  const focusedEntry = { ...entry, topic: topicLabel };
+  const baseRationale = buildQuizRationale(focusedEntry, entry.q, alignedAnswer);
   const subjectLabel = entry.subject || "nursing review";
   const contextualCue = sourceCue
-    ? `The review cue is: ${sourceCue}`
+    ? `Review cue: ${sourceCue.replace(/[?]+$/g, "")}.`
     : `The main concern is ${topicLabel}.`;
 
   return [
-    { prompt: entry.q, rationale: baseRationale },
     {
-      prompt: `A PNLE-style ${subjectLabel} item focuses on ${topicLabel}. ${contextualCue} Which option is the best nursing answer?`,
-      rationale: buildQuizRationale(entry, `A PNLE-style ${subjectLabel} item focuses on ${topicLabel}. ${contextualCue} Which option is the best nursing answer?`, alignedAnswer),
+      prompt: requestedTopic
+        ? `A PNLE-style item focuses on ${topicLabel}. ${contextualCue} What is the safest nursing answer?`
+        : entry.q,
+      rationale: baseRationale,
+    },
+    {
+      prompt: `A PNLE-style ${subjectLabel} item focuses on ${topicLabel}. ${contextualCue} Which response best protects patient safety?`,
+      rationale: buildQuizRationale(focusedEntry, `A PNLE-style ${subjectLabel} item focuses on ${topicLabel}. ${contextualCue} Which response best protects patient safety?`, alignedAnswer),
     },
     {
       prompt: `The nurse is answering a board-review question about ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`,
-      rationale: buildQuizRationale(entry, `The nurse is answering a board-review question about ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`, alignedAnswer),
+      rationale: buildQuizRationale(focusedEntry, `The nurse is answering a board-review question about ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`, alignedAnswer),
     },
     {
       prompt: `A student is reviewing ${topicLabel} and must connect the stem to the safest nursing priority. ${contextualCue} What is the best answer?`,
-      rationale: buildQuizRationale(entry, `A student is reviewing ${topicLabel} and must connect the stem to the safest nursing priority. ${contextualCue} What is the best answer?`, alignedAnswer),
+      rationale: buildQuizRationale(focusedEntry, `A student is reviewing ${topicLabel} and must connect the stem to the safest nursing priority. ${contextualCue} What is the best answer?`, alignedAnswer),
     },
   ];
 }
@@ -875,26 +915,38 @@ function finalizeQuizOptions(prompt, correctAnswer, options, subject, difficulty
 }
 
 function buildDistractors(entry, pool) {
-  const prioritizedPool = uniqueBy(
+  const sameTopicPool = uniqueBy(
     shuffle(
       pool.filter((item) => {
         if (normalize(item.a) === normalize(entry.a)) {
           return false;
         }
-        if (entry.topic && item.topic && normalize(item.topic) === normalize(entry.topic)) {
-          return true;
-        }
-        if (entry.subject && item.subject && normalize(item.subject) === normalize(entry.subject)) {
-          return true;
-        }
-        return false;
+        return entry.topic && item.topic && normalize(item.topic) === normalize(entry.topic);
       })
     ),
     (item) => normalize(item.a)
   );
+  const sameSubjectPool = uniqueBy(
+    shuffle(
+      pool.filter((item) => {
+        if (normalize(item.a) === normalize(entry.a)) {
+          return false;
+        }
+        if (sameTopicPool.some((topicItem) => normalize(topicItem.a) === normalize(item.a))) {
+          return false;
+        }
+        return entry.subject && item.subject && normalize(item.subject) === normalize(entry.subject);
+      })
+    ),
+    (item) => normalize(item.a)
+  );
+  const fallbackOptions = buildFallbackDistractors(entry.q, entry.a);
 
-  const fallbackPool = prioritizedPool.length ? prioritizedPool : uniqueBy(shuffle(pool), (item) => normalize(item.a));
-  const options = fallbackPool.slice(0, 8).map((item) => item.a);
+  const options = [
+    ...sameTopicPool.map((item) => item.a),
+    ...fallbackOptions,
+    ...sameSubjectPool.map((item) => item.a),
+  ].slice(0, 10);
   return finalizeQuizOptions(entry.q, entry.a, options, entry.subject, entry.difficulty, entry.topic);
 }
 
@@ -915,7 +967,7 @@ function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count
     const questions = [];
 
     for (const entry of prioritized) {
-      for (const variant of shuffle(buildQuizVariants(entry))) {
+      for (const variant of shuffle(buildQuizVariants(entry, topic))) {
         const normalizedPrompt = normalize(variant.prompt);
         if (!normalizedPrompt || (!ignoreUsedPrompts && usedPrompts.includes(normalizedPrompt))) {
           continue;
@@ -925,13 +977,13 @@ function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count
           id: `${entry.subject}-${uid()}`,
           subject: entry.subject,
           difficulty: entry.difficulty,
-          topic: entry.topic,
+          topic: topic || entry.topic,
           type: QUESTION_TYPES.SINGLE_CHOICE,
           prompt: variant.prompt,
           correctAnswer: alignTextToPrompt(variant.prompt, entry.a, 18, 26),
           options: buildDistractors({ ...entry, q: variant.prompt }, distractorPool),
           rationale: variant.rationale,
-          notes: `Key takeaway: focus on the best nursing priority for ${entry.topic}.`,
+          notes: `Key takeaway: focus on the best nursing priority for ${topic || entry.topic}.`,
           userAnswer: null,
         });
 
@@ -2994,7 +3046,7 @@ export default function App() {
       [
         ...getTopicAlignedEntries(activeEntries, reviewSubject, difficulty, resolvedTopic),
         ...topicFallbackEntries,
-      ].flatMap((entry) => buildFlashcardVariants(entry)),
+      ].flatMap((entry) => buildFocusedFlashcardVariants(entry, resolvedTopic)),
       (card) => card.id
     );
     const filteredCandidates = filterWeakOnly
@@ -3035,7 +3087,9 @@ export default function App() {
     const resolvedTopic = getActiveTopicFocus(activeTopic);
     const reviewSubject = resolveReviewSubject(resolvedTopic);
     const candidates = uniqueBy(
-      getTopicAlignedEntries(activeEntries, reviewSubject, difficulty, resolvedTopic).flatMap((entry) => buildFlashcardVariants(entry)),
+      getTopicAlignedEntries(activeEntries, reviewSubject, difficulty, resolvedTopic).flatMap((entry) =>
+        buildFocusedFlashcardVariants(entry, resolvedTopic)
+      ),
       (card) => card.id
     );
     const filteredCandidates = filterWeakOnly
@@ -3060,7 +3114,7 @@ export default function App() {
     const reviewSubject = resolveReviewSubject(resolvedTopic);
     return selectSessionItems(
       buildTopicFallbackEntries(resolvedTopic, reviewSubject, difficulty, count * 2)
-        .flatMap((entry) => buildFlashcardVariants(entry))
+        .flatMap((entry) => buildFocusedFlashcardVariants(entry, resolvedTopic))
         .filter((card) => !existingCards.some((existing) => existing.id === card.id)),
       count,
       [],

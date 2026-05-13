@@ -124,7 +124,7 @@ export function Flashcard({ card, idx, total, onRate }) {
 
   useEffect(() => {
     function handleSpaceFlip(event) {
-      if (!(event.key === " " || event.code === "Space")) {
+      if (!(event.key === " " || event.key === "Space" || event.key === "Spacebar" || event.code === "Space")) {
         return;
       }
 
@@ -184,7 +184,7 @@ export function Flashcard({ card, idx, total, onRate }) {
           type="button"
           onClick={handleFlip}
           onKeyDown={(event) => {
-            if (event.key === " " || event.code === "Space") {
+            if (event.key === " " || event.key === "Space" || event.key === "Spacebar" || event.code === "Space") {
               event.preventDefault();
               event.stopPropagation();
               handleFlip();
