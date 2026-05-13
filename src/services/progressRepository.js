@@ -26,6 +26,8 @@ export function buildProgressSnapshot(state) {
     simulationSubmitted: state.simulationSubmitted,
     simulationSize: state.simulationSize,
     simulationUsedAi: state.simulationUsedAi,
+    timerSettings: state.timerSettings,
+    activeTimer: state.activeTimer,
     remediationContext: state.remediationContext,
     usedFlashcardIds: state.usedFlashcardIds,
     usedFlashcardQuestions: state.usedFlashcardQuestions,

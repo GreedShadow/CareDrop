@@ -79,6 +79,14 @@ import {
 } from "./services/progressRepository";
 import { buildRemediationEntries, collectIncorrectQuestions, getTopicSearchTerms } from "./services/remediation";
 import {
+  TIMER_LIMITS,
+  TIMER_PRESETS,
+  buildTimerSessionMeta,
+  clampTimerMinutes,
+  formatDuration,
+  getPacingInsight,
+} from "./services/timerUtils";
+import {
   buildDueFlashcardPool,
   getDueTodayCount,
   updateCardSchedule,
@@ -1171,6 +1179,59 @@ function selectSessionItems(pool, size, usedKeys, recentKeys, keySelector) {
   return selected.slice(0, targetSize);
 }
 
+function createDefaultTimerSettings() {
+  return {
+    flashcard: { timerMode: "untimed", durationMinutes: 10, customMinutes: "" },
+    quiz: { timerMode: "untimed", durationMinutes: 15, customMinutes: "" },
+    simulation: { timerMode: "untimed", durationMinutes: 60, customMinutes: "" },
+  };
+}
+
+function normalizeTimerSettings(settings) {
+  const defaults = createDefaultTimerSettings();
+  const source = settings && typeof settings === "object" ? settings : {};
+
+  return Object.keys(defaults).reduce((accumulator, key) => {
+    const current = source[key] && typeof source[key] === "object" ? source[key] : {};
+    accumulator[key] = {
+      timerMode: current.timerMode === "timed" ? "timed" : "untimed",
+      durationMinutes: clampTimerMinutes(current.durationMinutes) || defaults[key].durationMinutes,
+      customMinutes: current.customMinutes ? String(current.customMinutes) : "",
+    };
+    return accumulator;
+  }, {});
+}
+
+function createInactiveTimer() {
+  return {
+    modeType: "",
+    timerMode: "untimed",
+    durationMinutes: null,
+    startedAt: null,
+    endsAt: null,
+    endedAt: null,
+    isTimerRunning: false,
+    timeExpired: false,
+    expiredHandled: false,
+  };
+}
+
+function normalizeActiveTimer(timer) {
+  if (!timer || typeof timer !== "object") {
+    return createInactiveTimer();
+  }
+
+  return {
+    ...createInactiveTimer(),
+    ...timer,
+    timerMode: timer.timerMode === "timed" ? "timed" : "untimed",
+    durationMinutes: clampTimerMinutes(timer.durationMinutes) || null,
+    isTimerRunning: Boolean(timer.isTimerRunning),
+    timeExpired: Boolean(timer.timeExpired),
+    expiredHandled: Boolean(timer.expiredHandled),
+  };
+}
+
 export default function App() {
   const width = useWindowWidth();
   const initialUser = loadAuthSession();
@@ -1227,6 +1288,10 @@ export default function App() {
   const [simulationLaunchOpen, setSimulationLaunchOpen] = useState(
     !(safeMode(persisted?.mode) === "simulation" && safeArray(persisted?.simulationQuestions).length)
   );
+  const [timerSettings, setTimerSettings] = useState(normalizeTimerSettings(persisted?.timerSettings));
+  const [activeTimer, setActiveTimer] = useState(normalizeActiveTimer(persisted?.activeTimer));
+  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(null);
+  const [timerValidationError, setTimerValidationError] = useState("");
   const [remediationContext, setRemediationContext] = useState(
     persisted?.remediationContext && typeof persisted.remediationContext === "object" ? persisted.remediationContext : null
   );
@@ -1346,6 +1411,8 @@ export default function App() {
         simulationSubmitted,
         simulationSize,
         simulationUsedAi,
+        timerSettings,
+        activeTimer,
         remediationContext,
         usedFlashcardIds,
         usedFlashcardQuestions,
@@ -1387,6 +1454,8 @@ export default function App() {
       simulationSubmitted,
       simulationSize,
       simulationUsedAi,
+      timerSettings,
+      activeTimer,
       remediationContext,
       usedFlashcardIds,
       usedFlashcardQuestions,
@@ -1455,6 +1524,10 @@ export default function App() {
     setSimulationUsedAi(Boolean(snapshot.simulationUsedAi));
     setSimulationAnswerSheetOpen(false);
     setSimulationLaunchOpen(!(safeMode(snapshot.mode) === "simulation" && safeArray(snapshot.simulationQuestions).length));
+    setTimerSettings(normalizeTimerSettings(snapshot.timerSettings));
+    setActiveTimer(normalizeActiveTimer(snapshot.activeTimer));
+    setTimeRemainingSeconds(null);
+    setTimerValidationError("");
     setRemediationContext(snapshot.remediationContext && typeof snapshot.remediationContext === "object" ? snapshot.remediationContext : null);
   }
 
@@ -1479,6 +1552,7 @@ export default function App() {
   }
 
   function returnToReviewFilters() {
+    resetSessionTimer();
     setViewMode("setup");
     if (mode === "flashcard") {
       setFlashcardViewMode("setup");
@@ -1499,9 +1573,129 @@ export default function App() {
   }
 
   function openSimulationLauncher() {
+    resetSessionTimer();
     setMobileDrawerOpen(false);
     setSimulationLaunchOpen(true);
     queueModeChange("simulation");
+  }
+
+  function openNewSimulationSetup() {
+    resetSessionTimer();
+    setSimulationLaunchOpen(true);
+    setStatusMessage("Choose a new simulation length to start another exam.");
+  }
+
+  function updateTimerSetting(modeType, patch) {
+    setTimerValidationError("");
+    setTimerSettings((prev) => ({
+      ...prev,
+      [modeType]: {
+        ...(prev[modeType] || createDefaultTimerSettings()[modeType]),
+        ...patch,
+      },
+    }));
+  }
+
+  function getTimerDurationForMode(modeType, settingsOverride = timerSettings) {
+    const settings = settingsOverride[modeType] || createDefaultTimerSettings()[modeType];
+    if (settings.timerMode !== "timed") {
+      return null;
+    }
+
+    if (String(settings.customMinutes || "").trim()) {
+      const custom = Number(settings.customMinutes);
+      if (!Number.isFinite(custom) || custom < TIMER_LIMITS.minMinutes || custom > TIMER_LIMITS.maxMinutes) {
+        return null;
+      }
+      return Math.round(custom);
+    }
+
+    return clampTimerMinutes(settings.durationMinutes);
+  }
+
+  function validateTimerBeforeStart(modeType) {
+    const settings = timerSettings[modeType] || createDefaultTimerSettings()[modeType];
+    if (settings.timerMode !== "timed") {
+      setTimerValidationError("");
+      return true;
+    }
+
+    const minutes = getTimerDurationForMode(modeType);
+    if (!minutes) {
+      setTimerValidationError(`Choose a timer duration from ${TIMER_LIMITS.minMinutes} to ${TIMER_LIMITS.maxMinutes} minutes.`);
+      return false;
+    }
+
+    setTimerValidationError("");
+    return true;
+  }
+
+  function startSessionTimer(modeType) {
+    const settings = timerSettings[modeType] || createDefaultTimerSettings()[modeType];
+    const now = new Date();
+    const durationMinutes = settings.timerMode === "timed" ? getTimerDurationForMode(modeType) : null;
+    const nextTimer = {
+      modeType,
+      timerMode: settings.timerMode === "timed" && durationMinutes ? "timed" : "untimed",
+      durationMinutes,
+      startedAt: now.toISOString(),
+      endsAt: durationMinutes ? new Date(now.getTime() + durationMinutes * 60 * 1000).toISOString() : null,
+      endedAt: null,
+      isTimerRunning: Boolean(durationMinutes),
+      timeExpired: false,
+      expiredHandled: false,
+    };
+
+    setActiveTimer(nextTimer);
+    setTimeRemainingSeconds(durationMinutes ? durationMinutes * 60 : null);
+    return nextTimer;
+  }
+
+  function stopSessionTimer(options = {}) {
+    const { expired = false, continueUntimed = false } = options;
+    const endedAt = new Date().toISOString();
+    let nextTimer = null;
+
+    setActiveTimer((prev) => {
+      nextTimer = {
+        ...prev,
+        timerMode: continueUntimed ? "untimed" : prev.timerMode,
+        endedAt: prev.endedAt || endedAt,
+        endsAt: continueUntimed ? null : prev.endsAt,
+        isTimerRunning: false,
+        timeExpired: expired || prev.timeExpired,
+        expiredHandled: expired ? true : prev.expiredHandled,
+      };
+      return nextTimer;
+    });
+
+    if (continueUntimed) {
+      setTimeRemainingSeconds(null);
+    }
+
+    return {
+      ...activeTimer,
+      endedAt: activeTimer.endedAt || endedAt,
+      isTimerRunning: false,
+      timeExpired: expired || activeTimer.timeExpired,
+      expiredHandled: expired ? true : activeTimer.expiredHandled,
+    };
+  }
+
+  function resetSessionTimer() {
+    setActiveTimer(createInactiveTimer());
+    setTimeRemainingSeconds(null);
+    setTimerValidationError("");
+  }
+
+  function finishActiveTimerMeta(modeType, counts = {}, options = {}) {
+    const finalTimer = stopSessionTimer(options);
+    return buildTimerSessionMeta(finalTimer, { modeType, ...counts });
+  }
+
+  function continueExpiredSessionUntimed() {
+    stopSessionTimer({ expired: true, continueUntimed: true });
+    setStatusMessage("Timer stopped. You can continue this session untimed.");
   }
 
   useEffect(() => {
@@ -1523,6 +1717,41 @@ export default function App() {
   useEffect(() => {
     recentQuizPromptsRef.current = recentQuizPrompts;
   }, [recentQuizPrompts]);
+
+  useEffect(() => {
+    if (activeTimer.timerMode !== "timed" || !activeTimer.endsAt || !activeTimer.isTimerRunning) {
+      return undefined;
+    }
+
+    function tick() {
+      const remaining = Math.max(0, Math.ceil((new Date(activeTimer.endsAt).getTime() - Date.now()) / 1000));
+      setTimeRemainingSeconds(remaining);
+
+      if (remaining <= 0) {
+        setActiveTimer((prev) => ({
+          ...prev,
+          isTimerRunning: false,
+          timeExpired: true,
+        }));
+      }
+    }
+
+    tick();
+    const interval = window.setInterval(tick, 1000);
+    return () => window.clearInterval(interval);
+  }, [activeTimer.endsAt, activeTimer.isTimerRunning, activeTimer.timerMode]);
+
+  useEffect(() => {
+    if (!activeTimer.timeExpired || activeTimer.expiredHandled) {
+      return;
+    }
+
+    if (activeTimer.modeType === "simulation" && simulationQuestions.length && !simulationSubmitted) {
+      setActiveTimer((prev) => ({ ...prev, expiredHandled: true }));
+      submitSimulationExam({ force: true, expired: true });
+      setApiError("Time is up. Your exam has been submitted.");
+    }
+  }, [activeTimer.timeExpired, activeTimer.expiredHandled, activeTimer.modeType, simulationQuestions.length, simulationSubmitted]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -2870,6 +3099,9 @@ export default function App() {
     setFlashcardResponseTimes({});
     setFlashcardSessionSubmitted(false);
     markFlashcardsAsUsed(deck);
+    if (deck.length && message) {
+      startSessionTimer("flashcard");
+    }
 
     if (message) {
       if (deck.length) {
@@ -2935,6 +3167,7 @@ export default function App() {
       setFlashcardResponseTimes({});
       setFlashcardSessionSubmitted(false);
       markFlashcardsAsUsed(deck);
+      startSessionTimer("flashcard");
       setStatusMessage(
         !isOnline
           ? "Offline mode: CareDrop loaded a local flashcard set so you can keep studying."
@@ -3004,6 +3237,7 @@ export default function App() {
       setFlashcardResponseTimes({});
       setFlashcardSessionSubmitted(false);
       markFlashcardsAsUsed(deck);
+      startSessionTimer("flashcard");
       setStatusMessage(
         aiCards.length
           ? `CareDrop used the bank first, then Gemini filled ${Math.min(aiCards.length, needed)} more card${Math.min(aiCards.length, needed) === 1 ? "" : "s"} for this focus.`
@@ -3034,6 +3268,7 @@ export default function App() {
         setFlashcardResponseTimes({});
         setFlashcardSessionSubmitted(false);
         markFlashcardsAsUsed(backupDeck);
+        startSessionTimer("flashcard");
       }
       setApiError(error.message || "Gemini was busy, so CareDrop loaded the strongest available bank cards for now.");
     } finally {
@@ -3144,6 +3379,9 @@ export default function App() {
       setMode("quiz");
       setQuizSubmitted(false);
       setQuizAnswerSheetOpen(false);
+      if (questions.length) {
+        startSessionTimer("quiz");
+      }
 
       if (asError) {
         setApiError(message);
@@ -3273,6 +3511,9 @@ export default function App() {
 
   async function generateSimulationExam(targetSize = simulationSize, activeTopic = topicFilter) {
     const finalTarget = SIMULATION_SIZE_OPTIONS.includes(Number(targetSize)) ? Number(targetSize) : 50;
+    if (!validateTimerBeforeStart("simulation")) {
+      return;
+    }
     const simulationSubject = "Mixed Review";
     const simulationDifficulty = "mixed";
     const simulationTopic = "";
@@ -3350,6 +3591,7 @@ export default function App() {
       setMode("simulation");
       setSimulationUsedAi(combined.length > localPool.length);
       setSimulationAnswerSheetOpen(false);
+      startSessionTimer("simulation");
       setStatusMessage(
         combined.length > localPool.length
           ? `Simulation exam ready. Gemini helped shape this mixed ${finalTarget}-question exam.`
@@ -3393,6 +3635,7 @@ export default function App() {
       setMode("simulation");
       setSimulationUsedAi(false);
       setSimulationAnswerSheetOpen(false);
+      startSessionTimer("simulation");
       setApiError(normalizeAiErrorMessage(error) || `Gemini simulation generation failed. A local ${finalTarget}-question simulation was loaded instead.`);
       setStatusMessage(`Loaded a mixed ${finalTarget}-question simulation from the CareDrop bank.`);
     } finally {
@@ -3494,10 +3737,16 @@ export default function App() {
     setReviewSessions((prev) => [session, ...prev.filter((item) => item.id !== session.id)].slice(0, 18));
   }
 
-  function submitFlashcardSession() {
-    if (!flashcards.length || flashcardCompletedCount < flashcards.length || flashcardSessionSubmitted) {
+  function submitFlashcardSession(options = {}) {
+    const { force = false, expired = false } = options;
+    if (!flashcards.length || (!force && flashcardCompletedCount < flashcards.length) || flashcardSessionSubmitted) {
       return;
     }
+
+    const timerMeta = finishActiveTimerMeta("flashcard", {
+      completedItemCount: flashcardCompletedCount,
+      totalItemCount: flashcards.length,
+    }, { expired });
 
     const session = {
       id: uid(),
@@ -3520,6 +3769,8 @@ export default function App() {
       correctCount: flashcardStrongCount,
       weakCount: flashcardNeedsReviewCount,
       isRemediation: Boolean(remediationContext),
+      timer: timerMeta,
+      pacingInsight: getPacingInsight(timerMeta, topicFilter || subject || "flashcards"),
     };
 
     recordReviewSession(session);
@@ -3529,10 +3780,16 @@ export default function App() {
     setStatusMessage("Flashcard session submitted and added to your review history.");
   }
 
-  function submitQuizSession() {
-    if (!quiz.length || answeredCount < quiz.length || quizSubmitted) {
+  function submitQuizSession(options = {}) {
+    const { force = false, expired = false } = options;
+    if (!quiz.length || (!force && answeredCount < quiz.length) || quizSubmitted) {
       return;
     }
+
+    const timerMeta = finishActiveTimerMeta("quiz", {
+      completedItemCount: answeredCount,
+      totalItemCount: quiz.length,
+    }, { expired });
 
     const session = {
       id: uid(),
@@ -3555,6 +3812,8 @@ export default function App() {
       submitted: true,
       isRemediation: Boolean(remediationContext),
       previousScore: remediationContext?.previousScore ?? null,
+      timer: timerMeta,
+      pacingInsight: getPacingInsight(timerMeta, topicFilter || subject || "quiz"),
     };
 
     recordReviewSession(session);
@@ -3740,10 +3999,16 @@ export default function App() {
     setStatusMessage(`Loaded saved session: ${buildSessionLabel(session)}.`);
   }
 
-  function submitSimulationExam() {
-    if (!simulationQuestions.length || simulationAnsweredCount < simulationQuestions.length || simulationSubmitted) {
+  function submitSimulationExam(options = {}) {
+    const { force = false, expired = false } = options;
+    if (!simulationQuestions.length || (!force && simulationAnsweredCount < simulationQuestions.length) || simulationSubmitted) {
       return;
     }
+
+    const timerMeta = finishActiveTimerMeta("simulation", {
+      completedItemCount: simulationAnsweredCount,
+      totalItemCount: simulationQuestions.length,
+    }, { expired });
 
     const session = {
       id: uid(),
@@ -3763,6 +4028,8 @@ export default function App() {
       correctCount: simulationCorrectCount,
       simulationSize,
       usedAi: simulationUsedAi,
+      timer: timerMeta,
+      pacingInsight: getPacingInsight(timerMeta, "simulation exam"),
     };
 
     recordReviewSession(session);
@@ -3923,6 +4190,7 @@ export default function App() {
     setSimulationUsedAi(false);
     setSimulationAnswerSheetOpen(false);
     setSimulationLaunchOpen(true);
+    resetSessionTimer();
     setRatings({});
     setSessions(0);
     setReviewSessions([]);
@@ -4092,6 +4360,10 @@ export default function App() {
       return;
     }
 
+    if (!validateTimerBeforeStart(activeStudyMode)) {
+      return;
+    }
+
     setTopicFilter(nextTopic);
     setViewMode("study");
     if (activeStudyMode === "flashcard") {
@@ -4157,6 +4429,8 @@ export default function App() {
   const studyBodySize = isMobile ? 14 : 15;
   const studyActionPadding = isMobile ? "10px 14px" : "10px 16px";
   const headerHeight = usesDrawerNav ? (isMobile ? 72 : 68) : isMobile ? 88 : 68;
+  const timerIsUrgent = activeTimer.timerMode === "timed" && Number(timeRemainingSeconds || 0) <= 60;
+  const timerIsCritical = activeTimer.timerMode === "timed" && Number(timeRemainingSeconds || 0) <= 10;
   const cardSurface = C.surface;
   const elevatedSurface = C.surfaceRaised;
   const heroSurface = darkMode
@@ -4227,9 +4501,149 @@ export default function App() {
     });
   }
 
+  const renderTimerSetup = (modeType) => {
+    const settings = timerSettings[modeType] || createDefaultTimerSettings()[modeType];
+    const presets = modeType === "simulation"
+      ? TIMER_PRESETS.simulation[simulationSize] || TIMER_PRESETS.simulation[50]
+      : TIMER_PRESETS[modeType];
+    const chipStyle = (active) => ({
+      padding: "9px 12px",
+      borderRadius: 999,
+      border: `1px solid ${active ? C.accent : C.border}`,
+      background: active ? C.accentLight : C.surface,
+      color: active ? C.accent : C.text,
+      fontWeight: 800,
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+    });
+
+    return (
+      <div
+        style={{
+          display: "grid",
+          gap: 10,
+          padding: "12px 14px",
+          borderRadius: 16,
+          border: `1px solid ${C.border}`,
+          background: darkMode ? C.surfaceMuted : "#FFFFFF",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 12, color: C.faint, fontWeight: 900, letterSpacing: "0.08em", textTransform: "uppercase" }}>Timer</div>
+            <div style={{ marginTop: 3, fontSize: 12, color: C.muted }}>Optional pacing practice. Timer starts only after the set loads.</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {["untimed", "timed"].map((value) => (
+              <button
+                key={`${modeType}-timer-${value}`}
+                type="button"
+                onClick={() => updateTimerSetting(modeType, { timerMode: value })}
+                style={chipStyle(settings.timerMode === value)}
+              >
+                {value === "timed" ? "Timed" : "Untimed"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {settings.timerMode === "timed" ? (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {presets.map((minutes) => (
+              <button
+                key={`${modeType}-${minutes}-minutes`}
+                type="button"
+                onClick={() => updateTimerSetting(modeType, { durationMinutes: minutes, customMinutes: "" })}
+                style={chipStyle(Number(settings.durationMinutes) === minutes)}
+              >
+                {minutes} min
+              </button>
+            ))}
+            <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: C.muted }}>
+              Custom
+              <input
+                type="number"
+                min={TIMER_LIMITS.minMinutes}
+                max={TIMER_LIMITS.maxMinutes}
+                value={settings.customMinutes}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  updateTimerSetting(modeType, {
+                    customMinutes: value,
+                    durationMinutes: value ? clampTimerMinutes(value) : settings.durationMinutes,
+                  });
+                }}
+                placeholder="min"
+                style={{ ...selectStyle, width: 90, cursor: "text" }}
+              />
+            </label>
+            {timerValidationError ? (
+              <div style={{ flexBasis: "100%", fontSize: 12, color: C.red, fontWeight: 700 }}>
+                {timerValidationError}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderTimerDisplay = (modeType) => {
+    if (activeTimer.modeType !== modeType || !activeTimer.startedAt) {
+      return null;
+    }
+
+    const text = activeTimer.timerMode === "timed"
+      ? `Time left: ${formatDuration(timeRemainingSeconds ?? 0)}`
+      : "Untimed session";
+    return (
+      <div
+        aria-live="polite"
+        style={{
+          padding: "8px 11px",
+          borderRadius: 999,
+          border: `1px solid ${timerIsCritical ? C.red : timerIsUrgent ? C.amber : C.border}`,
+          background: timerIsCritical ? errorSurface : timerIsUrgent ? warningSurface : C.surface,
+          color: timerIsCritical ? C.red : timerIsUrgent ? C.amber : C.text,
+          fontSize: 12,
+          fontWeight: 900,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {text}
+      </div>
+    );
+  };
+
+  const renderTimerSummary = (modeType, completedItemCount, totalItemCount, label) => {
+    if (activeTimer.modeType !== modeType || !activeTimer.startedAt) {
+      return null;
+    }
+
+    const meta = buildTimerSessionMeta(activeTimer, { modeType, completedItemCount, totalItemCount });
+    return (
+      <div
+        style={{
+          marginTop: 14,
+          padding: "12px 14px",
+          borderRadius: 14,
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          fontSize: 13,
+          color: C.muted,
+          lineHeight: 1.7,
+        }}
+      >
+        <strong style={{ color: C.text }}>Timer summary:</strong>{" "}
+        {meta.timerMode === "timed" ? `${meta.timerDurationMinutes} min selected | ` : "Untimed | "}
+        used {formatDuration(meta.actualDurationSeconds)} | avg {formatDuration(meta.averageTimePerItem)} per item.
+        <div style={{ marginTop: 4 }}>{getPacingInsight(meta, label)}</div>
+      </div>
+    );
+  };
+
   const renderModuleSetupControls = (lockedMode) => {
     const label = lockedMode === "quiz" ? "Quiz" : "Flashcards";
-    const gridColumns = width < 900 ? "1fr" : "160px minmax(180px, 220px) minmax(240px, 1fr) max-content";
+    const gridColumns = width < 900 ? "1fr" : "160px minmax(180px, 220px) minmax(240px, 1fr)";
     const fieldLabelStyle = {
       display: "block",
       fontSize: 11,
@@ -4289,6 +4703,9 @@ export default function App() {
               style={{ ...selectStyle, cursor: "text" }}
             />
           </label>
+        </div>
+        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: width < 900 ? "1fr" : "minmax(0, 1fr) max-content", gap: 12, alignItems: "end" }}>
+          {renderTimerSetup(lockedMode)}
           <button
             type="button"
             onClick={submitReviewFocus}
@@ -4647,6 +5064,78 @@ export default function App() {
           </>
         )}
       </nav>
+
+      {activeTimer.timeExpired && !activeTimer.expiredHandled && ["flashcard", "quiz"].includes(activeTimer.modeType) ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Timer expired"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            background: "rgba(2, 6, 23, 0.58)",
+            display: "grid",
+            placeItems: "center",
+            padding: 18,
+          }}
+        >
+          <div
+            style={{
+              width: "min(440px, 100%)",
+              borderRadius: 22,
+              padding: 22,
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              boxShadow: C.shellShadow,
+              color: C.text,
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8 }}>Time is up</div>
+            <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.7 }}>
+              {activeTimer.modeType === "flashcard"
+                ? "Would you like to finish this flashcard session now or continue reviewing without the timer?"
+                : "Would you like to submit your quiz now or continue answering without the timer?"}
+            </div>
+            <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={continueExpiredSessionUntimed}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: `1px solid ${C.border}`,
+                  background: C.surfaceMuted,
+                  color: C.text,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Continue Untimed
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  activeTimer.modeType === "flashcard"
+                    ? submitFlashcardSession({ force: true, expired: true })
+                    : submitQuizSession({ force: true, expired: true })
+                }
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: "none",
+                  background: C.accent,
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                {activeTimer.modeType === "flashcard" ? "Finish Session" : "Submit Quiz"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {usesDrawerNav ? (
         <>
@@ -6672,6 +7161,7 @@ export default function App() {
                   </div>
                   {!showFlashcardSetup ? (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {renderTimerDisplay("flashcard")}
                       <button
                         onClick={() => setCardIdx((value) => Math.max(0, value - 1))}
                         disabled={!flashcards.length || cardIdx === 0}
@@ -6742,6 +7232,9 @@ export default function App() {
                         <div>Needs work: <strong>{flashcardNeedsReviewCount}</strong></div>
                         <div>Progress: <strong>{flashcardProgressPercent}%</strong></div>
                       </div>
+                      {flashcardSessionSubmitted
+                        ? renderTimerSummary("flashcard", flashcardCompletedCount, flashcards.length, topicFilter || subject || "flashcards")
+                        : null}
                       <div
                         style={{
                           marginTop: 14,
@@ -6835,6 +7328,7 @@ export default function App() {
                         : `Target ${QUIZ_SET_SIZE} questions | strict difficulty filter | saved sessions supported`}
                     </div>
                   </div>
+                  {!showQuizSetup ? renderTimerDisplay("quiz") : null}
                 </div>
 
                 {showQuizSetup ? (
@@ -7072,6 +7566,7 @@ export default function App() {
                             Score: <strong>{quiz.length ? Math.round((correctCount / quiz.length) * 100) : 0}%</strong>
                           </div>
                         </div>
+                        {renderTimerSummary("quiz", answeredCount, quiz.length, topicFilter || subject || "quiz")}
                         <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
                           <button
                             type="button"
@@ -7234,10 +7729,7 @@ export default function App() {
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button
                         type="button"
-                        onClick={() => {
-                          setSimulationLaunchOpen(true);
-                          setStatusMessage("Choose a new simulation length to start another exam.");
-                        }}
+                        onClick={openNewSimulationSetup}
                         style={{
                           padding: "10px 16px",
                           borderRadius: 10,
@@ -7275,7 +7767,7 @@ export default function App() {
                         <button
                           key={`launch-${value}`}
                           type="button"
-                          onClick={() => generateSimulationExam(value)}
+                          onClick={() => setSimulationSize(value)}
                           disabled={apiLoading}
                           style={{
                             minWidth: 130,
@@ -7288,9 +7780,31 @@ export default function App() {
                             cursor: apiLoading ? "not-allowed" : "pointer",
                           }}
                         >
-                          {apiLoading && simulationSize === value ? "Preparing..." : `Start ${value}`}
+                          {value} questions
                         </button>
                       ))}
+                    </div>
+                    <div style={{ marginTop: 14 }}>
+                      {renderTimerSetup("simulation")}
+                    </div>
+                    <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        onClick={() => generateSimulationExam(simulationSize)}
+                        disabled={apiLoading}
+                        style={{
+                          minHeight: 48,
+                          padding: "12px 18px",
+                          borderRadius: 13,
+                          border: "none",
+                          background: apiLoading ? C.border : C.accent,
+                          color: apiLoading ? C.muted : "#fff",
+                          fontWeight: 900,
+                          cursor: apiLoading ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {apiLoading ? "Preparing..." : `Start ${simulationSize}-Question Simulation`}
+                      </button>
                     </div>
                     <div style={{ marginTop: 16, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
                       Once the exam is generated, your answers will be saved as you move between questions. Results and explanations will only appear after the final submission.
@@ -7347,7 +7861,7 @@ export default function App() {
                   </div>
                 ) : (
                   <>
-                    <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                       <div style={{ flex: 1, height: 6, borderRadius: 999, background: darkMode ? C.border : "#E8E4DC", overflow: "hidden" }}>
                         <div
                           style={{
@@ -7360,6 +7874,7 @@ export default function App() {
                       <div style={{ fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>
                         {simulationAnsweredCount}/{simulationQuestions.length} answered
                       </div>
+                      {renderTimerDisplay("simulation")}
                     </div>
 
                     <div
@@ -7697,6 +8212,7 @@ export default function App() {
                               </div>
                             ))}
                           </div>
+                          {renderTimerSummary("simulation", simulationAnsweredCount, simulationQuestions.length, "simulation exam")}
 
                           <div
                             style={{
@@ -7804,10 +8320,7 @@ export default function App() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                setSimulationLaunchOpen(true);
-                                setStatusMessage("Choose a new simulation length to start another exam.");
-                              }}
+                              onClick={openNewSimulationSetup}
                               style={{
                                 padding: "10px 14px",
                                 borderRadius: 12,
