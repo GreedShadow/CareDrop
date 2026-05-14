@@ -7,6 +7,7 @@ import express from "express";
 import multer from "multer";
 import { listAdminUsers } from "./admin-analytics.js";
 import { buildStudyContext, fallbackModels, generateJson, generateText, model, requireClient } from "./ai-utils.js";
+import { buildFallbackCards, buildFallbackQuestions, buildFallbackReviewHelp, buildFallbackSummary } from "./ai-fallbacks.js";
 import { generateValidatedCards, generateValidatedQuestions, generateValidatedSummary } from "./ai-validation.js";
 import { extractFileText, SUPPORTED_EXTENSIONS } from "./extract-utils.js";
 import { createFeedbackRequest, listFeedbackRequests } from "./feedback-utils.js";
@@ -134,14 +135,19 @@ app.post("/api/extract", upload.single("file"), async (req, res) => {
 
 app.post("/api/claude/summary", async (req, res) => {
   try {
-    const client = requireClient();
-    if (!client) {
-      return jsonError(res, 500, "Missing GEMINI_API_KEY in server environment.");
-    }
-
     const notes = String(req.body?.notes || "").trim();
     if (!notes) {
       return jsonError(res, 400, "Notes are required.");
+    }
+
+    const client = requireClient();
+    if (!client) {
+      return res.json({
+        success: true,
+        fallback: true,
+        warning: "Gemini is not configured on this server, so CareDrop prepared a structured reviewer summary from the available text.",
+        summary: buildFallbackSummary(notes),
+      });
     }
 
     const summary = await generateValidatedSummary({
@@ -181,6 +187,8 @@ Notes to summarize:
 ${notes}`,
       sourceText: notes,
       maxOutputTokens: 2600,
+      attempts: Number(process.env.AI_VALIDATION_ATTEMPTS || 1),
+      timeoutMs: Number(process.env.AI_GENERATION_TIMEOUT_MS || 16000),
       logger: console,
     });
 
@@ -193,11 +201,6 @@ ${notes}`,
 
 app.post("/api/claude/cards", async (req, res) => {
   try {
-    const client = requireClient();
-    if (!client) {
-      return jsonError(res, 500, "Missing GEMINI_API_KEY in server environment.");
-    }
-
     const notes = String(req.body?.notes || "").trim();
     const subject = String(req.body?.subject || "Mixed Review");
     const topic = String(req.body?.topic || "").trim();
@@ -208,6 +211,16 @@ app.post("/api/claude/cards", async (req, res) => {
 
     if (!context) {
       return jsonError(res, 400, "Provide notes, a subject, or a topic focus.");
+    }
+
+    const client = requireClient();
+    if (!client) {
+      return res.json({
+        success: true,
+        fallback: true,
+        warning: "Gemini is not configured on this server, so CareDrop prepared a structured fallback flashcard set.",
+        cards: buildFallbackCards({ notes, subject, topic, difficulty, count }),
+      });
     }
 
     const difficultyInstruction =
@@ -241,6 +254,8 @@ app.post("/api/claude/cards", async (req, res) => {
       count,
       difficulty,
       maxOutputTokens: 2200,
+      attempts: Number(process.env.AI_VALIDATION_ATTEMPTS || 1),
+      timeoutMs: Number(process.env.AI_GENERATION_TIMEOUT_MS || 12000),
       logger: console,
     });
     return res.json({ success: true, cards });
@@ -252,11 +267,6 @@ app.post("/api/claude/cards", async (req, res) => {
 
 app.post("/api/claude/quiz", async (req, res) => {
   try {
-    const client = requireClient();
-    if (!client) {
-      return jsonError(res, 500, "Missing GEMINI_API_KEY in server environment.");
-    }
-
     const notes = String(req.body?.notes || "").trim();
     const subject = String(req.body?.subject || "Mixed Review");
     const topic = String(req.body?.topic || "").trim();
@@ -269,6 +279,16 @@ app.post("/api/claude/quiz", async (req, res) => {
 
     if (!context) {
       return jsonError(res, 400, "Provide notes, a subject, or a topic focus.");
+    }
+
+    const client = requireClient();
+    if (!client) {
+      return res.json({
+        success: true,
+        fallback: true,
+        warning: "Gemini is not configured on this server, so CareDrop prepared a structured fallback quiz set.",
+        questions: buildFallbackQuestions({ notes, subject, topic, difficulty, count, examMode }),
+      });
     }
 
     const difficultyInstruction =
@@ -315,6 +335,8 @@ app.post("/api/claude/quiz", async (req, res) => {
       count,
       difficulty,
       maxOutputTokens: 3600,
+      attempts: Number(process.env.AI_VALIDATION_ATTEMPTS || 1),
+      timeoutMs: Number(process.env.AI_GENERATION_TIMEOUT_MS || 14000),
       logger: console,
     });
     return res.json({ success: true, questions });
@@ -326,11 +348,6 @@ app.post("/api/claude/quiz", async (req, res) => {
 
 app.post("/api/claude/review-help", async (req, res) => {
   try {
-    const client = requireClient();
-    if (!client) {
-      return jsonError(res, 500, "Missing GEMINI_API_KEY in server environment.");
-    }
-
     const userPrompt = String(req.body?.userPrompt || "").trim();
     const question = String(req.body?.question || "").trim();
     const selectedAnswer = String(req.body?.selectedAnswer || "").trim();
@@ -345,30 +362,44 @@ app.post("/api/claude/review-help", async (req, res) => {
       return jsonError(res, 400, "The wrong-answer review request is incomplete.");
     }
 
-    const response = await generateText(client, {
-      systemInstruction:
-        "You are a PRC NLE nursing board exam coach. Answer only in the context of the missed question. First, directly answer the learner's exact typed question in 1 to 2 sentences. Then explain why the correct answer is best, why the learner's chosen answer is weaker, what clue in the question stem points to the right answer, and what high-yield board takeaway to remember. Keep the reply specific to the missed item, easy to understand, and aligned with Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community health content and PNDF-aware medication context when relevant. Do not invent country-specific rules or doses.",
-      prompt: [
-        `Subject: ${subject}`,
-        `Topic: ${topic || "General review"}`,
-        `Difficulty: ${difficulty}`,
-        `Question: ${question}`,
-        `Chosen answer: ${selectedAnswer || "No answer recorded"}`,
-        `Correct answer: ${correctAnswer}`,
-        `Rationale: ${rationale || "None provided."}`,
-        notes ? `Memory tip: ${notes}` : "",
-        `Learner's exact question to answer first: ${userPrompt}`,
-        "Frame the explanation for a Philippine nursing board-review learner.",
-        "Format the answer with these short headings:",
-        "1. Direct answer",
-        "2. Why your answer was weaker",
-        "3. Clue in the question",
-        "4. What to remember for boards",
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
-      maxOutputTokens: 900,
-    });
+    const client = requireClient();
+    if (!client) {
+      return res.json({
+        success: true,
+        fallback: true,
+        warning: "Gemini is not configured on this server, so CareDrop prepared a structured fallback explanation.",
+        response: buildFallbackReviewHelp({ userPrompt, question, selectedAnswer, correctAnswer, rationale, topic }),
+      });
+    }
+
+    const response = await generateText(
+      client,
+      {
+        systemInstruction:
+          "You are a PRC NLE nursing board exam coach. Answer only in the context of the missed question. First, directly answer the learner's exact typed question in 1 to 2 sentences. Then explain why the correct answer is best, why the learner's chosen answer is weaker, what clue in the question stem points to the right answer, and what high-yield board takeaway to remember. Keep the reply specific to the missed item, easy to understand, and aligned with Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community health content and PNDF-aware medication context when relevant. Do not invent country-specific rules or doses.",
+        prompt: [
+          `Subject: ${subject}`,
+          `Topic: ${topic || "General review"}`,
+          `Difficulty: ${difficulty}`,
+          `Question: ${question}`,
+          `Chosen answer: ${selectedAnswer || "No answer recorded"}`,
+          `Correct answer: ${correctAnswer}`,
+          `Rationale: ${rationale || "None provided."}`,
+          notes ? `Memory tip: ${notes}` : "",
+          `Learner's exact question to answer first: ${userPrompt}`,
+          "Frame the explanation for a Philippine nursing board-review learner.",
+          "Format the answer with these short headings:",
+          "1. Direct answer",
+          "2. Why your answer was weaker",
+          "3. Clue in the question",
+          "4. What to remember for boards",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        maxOutputTokens: 900,
+      },
+      Number(process.env.AI_REVIEW_HELP_TIMEOUT_MS || 12000)
+    );
 
     return res.json({
       success: true,
@@ -378,7 +409,19 @@ app.post("/api/claude/review-help", async (req, res) => {
     });
   } catch (error) {
     console.error("Gemini review help error:", error);
-    return jsonError(res, 500, error.message || "Failed to generate the AI explanation.");
+    return res.json({
+      success: true,
+      fallback: true,
+      warning: "Gemini was temporarily unavailable, so CareDrop prepared a structured fallback explanation.",
+      response: buildFallbackReviewHelp({
+        userPrompt: req.body?.userPrompt,
+        question: req.body?.question,
+        selectedAnswer: req.body?.selectedAnswer,
+        correctAnswer: req.body?.correctAnswer,
+        rationale: req.body?.rationale,
+        topic: req.body?.topic,
+      }),
+    });
   }
 });
 

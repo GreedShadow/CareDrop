@@ -15,11 +15,6 @@ export default async function handler(req, res) {
   let body = {};
 
   try {
-    const client = requireClient();
-    if (!client) {
-      return sendJson(res, 500, { success: false, error: "Missing GEMINI_API_KEY in server environment." });
-    }
-
     body = await readJsonBody(req);
     const notes = String(body?.notes || "").trim();
     const subject = String(body?.subject || "Mixed Review");
@@ -33,6 +28,16 @@ export default async function handler(req, res) {
 
     if (!context) {
       return sendJson(res, 400, { success: false, error: "Provide notes, a subject, or a topic focus." });
+    }
+
+    const client = requireClient();
+    if (!client) {
+      return sendJson(res, 200, {
+        success: true,
+        fallback: true,
+        warning: "Gemini is not configured on this server, so CareDrop prepared a structured fallback quiz set.",
+        questions: buildFallbackQuestions({ notes, subject, topic, difficulty, count, examMode }),
+      });
     }
 
     const difficultyInstruction =
@@ -83,6 +88,8 @@ export default async function handler(req, res) {
       count,
       difficulty,
       maxOutputTokens: 3600,
+      attempts: Number(process.env.AI_VALIDATION_ATTEMPTS || 1),
+      timeoutMs: Number(process.env.AI_GENERATION_TIMEOUT_MS || 14000),
       logger: console,
     });
     return sendJson(res, 200, { success: true, questions });

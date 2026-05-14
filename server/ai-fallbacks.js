@@ -138,16 +138,52 @@ export function buildFallbackQuestions({ notes, subject, topic, difficulty, coun
       prompt: `A client-care question includes ${topicLabel}. Which response is most appropriate?`,
       correct: "Prioritize the safest nursing action that addresses the main clinical concern.",
     },
+    {
+      prompt: `The nurse is planning care for a client with concerns related to ${topicLabel}. What should guide the first decision?`,
+      correct: "Identify the finding that creates the greatest immediate safety risk.",
+    },
+    {
+      prompt: `During review of ${topicLabel}, which choice best reflects PNLE priority-setting?`,
+      correct: "Choose the response that protects airway, breathing, circulation, or prevents deterioration first.",
+    },
+    {
+      prompt: `A student is comparing possible actions for ${topicLabel}. Which option is least likely to delay safe care?`,
+      correct: "Use focused assessment cues to decide whether urgent intervention or escalation is needed.",
+    },
+    {
+      prompt: `The stem points to ${topicLabel} and asks for the best nursing judgment. What is the safest approach?`,
+      correct: "Match the action to the priority clinical cue instead of choosing routine care.",
+    },
+    {
+      prompt: `A nurse receives a report involving ${topicLabel}. Which response shows the strongest safety thinking?`,
+      correct: "Recognize possible deterioration early and respond before lower-priority tasks.",
+    },
+    {
+      prompt: `When answering a board-style question about ${topicLabel}, which thinking rule is most useful?`,
+      correct: "Separate urgent assessment findings from stable or comfort-focused details before choosing an answer.",
+    },
   ];
 
   return Array.from({ length: count }, (_, index) => {
     const template = templates[index % templates.length];
-    const options = [
-      template.correct,
-      "Delay action until all routine care tasks are finished.",
-      "Choose a comfort measure before checking for instability.",
-      "Delegate the clinical judgment before completing a focused assessment.",
+    const distractorSets = [
+      [
+        "Delay action until all routine care tasks are finished.",
+        "Choose a comfort measure before checking for instability.",
+        "Delegate the clinical judgment before completing a focused assessment.",
+      ],
+      [
+        "Document the finding first and reassess only at the next scheduled round.",
+        "Give general reassurance before checking for a priority risk cue.",
+        "Ask another team member to decide before gathering focused assessment data.",
+      ],
+      [
+        "Start with a nonurgent teaching point even if the stem suggests possible deterioration.",
+        "Postpone escalation until the client reports more severe symptoms.",
+        "Focus on convenience and workflow before client safety.",
+      ],
     ];
+    const options = [template.correct, ...distractorSets[index % distractorSets.length]];
 
     return {
       subject: safeSubject,

@@ -57,9 +57,10 @@ function normalizeAiError(error) {
 async function generateWithModelFallback(run, timeoutMs) {
   const candidates = [model, ...fallbackModels];
   let lastError = null;
+  const attemptsPerModel = Math.max(1, Math.min(2, Number(process.env.AI_MODEL_ATTEMPTS || 1)));
 
   for (const candidate of candidates) {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < attemptsPerModel; attempt += 1) {
       try {
         return await withTimeout(
           run(candidate),
@@ -72,7 +73,7 @@ async function generateWithModelFallback(run, timeoutMs) {
           throw error;
         }
 
-        if (attempt === 0) {
+        if (attempt + 1 < attemptsPerModel) {
           await sleep(500);
         }
       }

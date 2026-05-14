@@ -501,21 +501,27 @@ export async function generateValidatedSummary({
   prompt,
   sourceText = "",
   maxOutputTokens = 2600,
+  attempts = 3,
+  timeoutMs,
   logger = console,
 }) {
   const failureReasons = [];
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const summary = await generateText(client, {
-      systemInstruction,
-      prompt: buildValidationPrompt(
-        prompt,
-        attempt,
-        failureReasons.slice(-8),
-        "Retry and fix every listed problem. Return the same plain-text reviewer-summary format, not JSON."
-      ),
-      maxOutputTokens,
-    });
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const summary = await generateText(
+      client,
+      {
+        systemInstruction,
+        prompt: buildValidationPrompt(
+          prompt,
+          attempt,
+          failureReasons.slice(-8),
+          "Retry and fix every listed problem. Return the same plain-text reviewer-summary format, not JSON."
+        ),
+        maxOutputTokens,
+      },
+      timeoutMs
+    );
     const issues = validateSummary(summary, sourceText);
 
     if (!issues.length) {
@@ -538,17 +544,23 @@ export async function generateValidatedCards({
   count,
   difficulty = "mixed",
   maxOutputTokens = 2200,
+  attempts = 3,
+  timeoutMs,
   logger = console,
 }) {
   const failureReasons = [];
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const parsed = await generateJson(client, {
-      systemInstruction,
-      prompt: buildValidationPrompt(prompt, attempt, failureReasons.slice(-8)),
-      schema: cardSchema,
-      maxOutputTokens,
-    });
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const parsed = await generateJson(
+      client,
+      {
+        systemInstruction,
+        prompt: buildValidationPrompt(prompt, attempt, failureReasons.slice(-8)),
+        schema: cardSchema,
+        maxOutputTokens,
+      },
+      timeoutMs
+    );
 
     const cards = Array.isArray(parsed?.cards) ? parsed.cards.slice(0, count) : [];
     const issues = [];
@@ -589,17 +601,23 @@ export async function generateValidatedQuestions({
   count,
   difficulty = "mixed",
   maxOutputTokens = 3600,
+  attempts = 3,
+  timeoutMs,
   logger = console,
 }) {
   const failureReasons = [];
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const parsed = await generateJson(client, {
-      systemInstruction,
-      prompt: buildValidationPrompt(prompt, attempt, failureReasons.slice(-10)),
-      schema: quizSchema,
-      maxOutputTokens,
-    });
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const parsed = await generateJson(
+      client,
+      {
+        systemInstruction,
+        prompt: buildValidationPrompt(prompt, attempt, failureReasons.slice(-10)),
+        schema: quizSchema,
+        maxOutputTokens,
+      },
+      timeoutMs
+    );
 
     const questions = Array.isArray(parsed?.questions) ? parsed.questions.slice(0, count) : [];
     const issues = [];

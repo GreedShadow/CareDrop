@@ -11,16 +11,21 @@ export default async function handler(req, res) {
   let body = {};
 
   try {
-    const client = requireClient();
-    if (!client) {
-      return sendJson(res, 500, { success: false, error: "Missing GEMINI_API_KEY in server environment." });
-    }
-
     body = await readJsonBody(req);
     const notes = String(body?.notes || "").trim();
 
     if (!notes) {
       return sendJson(res, 400, { success: false, error: "Notes are required." });
+    }
+
+    const client = requireClient();
+    if (!client) {
+      return sendJson(res, 200, {
+        success: true,
+        fallback: true,
+        warning: "Gemini is not configured on this server, so CareDrop prepared a structured reviewer summary from the available text.",
+        summary: buildFallbackSummary(notes),
+      });
     }
 
     const summary = await generateValidatedSummary({
@@ -60,6 +65,8 @@ Notes to summarize:
 ${notes}`,
       sourceText: notes,
       maxOutputTokens: 2600,
+      attempts: Number(process.env.AI_VALIDATION_ATTEMPTS || 1),
+      timeoutMs: Number(process.env.AI_GENERATION_TIMEOUT_MS || 16000),
       logger: console,
     });
 

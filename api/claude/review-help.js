@@ -10,11 +10,6 @@ export default async function handler(req, res) {
   let body = {};
 
   try {
-    const client = requireClient();
-    if (!client) {
-      return sendJson(res, 500, { success: false, error: "Missing GEMINI_API_KEY in server environment." });
-    }
-
     body = await readJsonBody(req);
     const userPrompt = String(body?.userPrompt || "").trim();
     const question = String(body?.question || "").trim();
@@ -30,30 +25,44 @@ export default async function handler(req, res) {
       return sendJson(res, 400, { success: false, error: "The wrong-answer review request is incomplete." });
     }
 
-    const response = await generateText(client, {
-      systemInstruction:
-        "You are a PRC NLE nursing board exam coach. Answer only in the context of the missed question. First, directly answer the learner's exact typed question in 1 to 2 sentences. Then explain why the correct answer is best, why the learner's chosen answer is weaker, what clue in the question stem points to the right answer, and what high-yield board takeaway to remember. Keep the reply specific to the missed item, easy to understand, and aligned with Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community health content and PNDF-aware medication context when relevant. Do not invent country-specific rules or doses.",
-      prompt: [
-        `Subject: ${subject}`,
-        `Topic: ${topic || "General review"}`,
-        `Difficulty: ${difficulty}`,
-        `Question: ${question}`,
-        `Chosen answer: ${selectedAnswer || "No answer recorded"}`,
-        `Correct answer: ${correctAnswer}`,
-        `Rationale: ${rationale || "None provided."}`,
-        notes ? `Memory tip: ${notes}` : "",
-        `Learner's exact question to answer first: ${userPrompt}`,
-        "Frame the explanation for a Philippine nursing board-review learner.",
-        "Format the answer with these short headings:",
-        "1. Direct answer",
-        "2. Why your answer was weaker",
-        "3. Clue in the question",
-        "4. What to remember for boards",
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
-      maxOutputTokens: 900,
-    });
+    const client = requireClient();
+    if (!client) {
+      return sendJson(res, 200, {
+        success: true,
+        fallback: true,
+        warning: "Gemini is not configured on this server, so CareDrop prepared a structured fallback explanation.",
+        response: buildFallbackReviewHelp({ userPrompt, question, selectedAnswer, correctAnswer, rationale, topic }),
+      });
+    }
+
+    const response = await generateText(
+      client,
+      {
+        systemInstruction:
+          "You are a PRC NLE nursing board exam coach. Answer only in the context of the missed question. First, directly answer the learner's exact typed question in 1 to 2 sentences. Then explain why the correct answer is best, why the learner's chosen answer is weaker, what clue in the question stem points to the right answer, and what high-yield board takeaway to remember. Keep the reply specific to the missed item, easy to understand, and aligned with Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community health content and PNDF-aware medication context when relevant. Do not invent country-specific rules or doses.",
+        prompt: [
+          `Subject: ${subject}`,
+          `Topic: ${topic || "General review"}`,
+          `Difficulty: ${difficulty}`,
+          `Question: ${question}`,
+          `Chosen answer: ${selectedAnswer || "No answer recorded"}`,
+          `Correct answer: ${correctAnswer}`,
+          `Rationale: ${rationale || "None provided."}`,
+          notes ? `Memory tip: ${notes}` : "",
+          `Learner's exact question to answer first: ${userPrompt}`,
+          "Frame the explanation for a Philippine nursing board-review learner.",
+          "Format the answer with these short headings:",
+          "1. Direct answer",
+          "2. Why your answer was weaker",
+          "3. Clue in the question",
+          "4. What to remember for boards",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        maxOutputTokens: 900,
+      },
+      Number(process.env.AI_REVIEW_HELP_TIMEOUT_MS || 12000)
+    );
 
     return sendJson(res, 200, {
       success: true,
