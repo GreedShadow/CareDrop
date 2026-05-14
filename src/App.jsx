@@ -94,10 +94,13 @@ import {
 import {
   buildQuestionReview,
   getCorrectOptionIds,
+  getCorrectAnswerText,
   getQuestionOptions,
+  getQuestionRationaleText,
   getQuestionType,
   getSelectedOptionIds,
   isQuestionAnswered,
+  normalizeQuestions,
   QUESTION_TYPES,
   scoreQuestion,
 } from "./services/questionTypes";
@@ -1159,7 +1162,12 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
       ) &&
       matchesGeneratedTopicContent(item, topic)
     );
-  });
+  }).map((item) =>
+    normalizeQuestions([item], {
+      source: item.source || "ai",
+      allowMultipleResponse,
+    })[0]
+  );
 }
 
 function buildSessionLabel(session) {
@@ -1563,12 +1571,12 @@ export default function App() {
     setFlashcardSessionRatings(safeObject(snapshot.flashcardSessionRatings));
     setFlashcardResponseTimes(safeObject(snapshot.flashcardResponseTimes));
     setFlashcardSessionSubmitted(Boolean(snapshot.flashcardSessionSubmitted));
-    setQuiz(safeArray(snapshot.quiz));
+    setQuiz(normalizeQuestions(safeArray(snapshot.quiz), { source: "restored" }));
     setQuizIdx(clamp(Number(snapshot.quizIdx || 0), 0, Math.max(safeArray(snapshot.quiz).length - 1, 0)));
     setQuizResponseTimes(safeObject(snapshot.quizResponseTimes));
     setQuizSubmitted(Boolean(snapshot.quizSubmitted));
     setQuizAnswerSheetOpen(false);
-    setSimulationQuestions(safeArray(snapshot.simulationQuestions));
+    setSimulationQuestions(normalizeQuestions(safeArray(snapshot.simulationQuestions), { source: "restored", allowMultipleResponse: true }));
     setSimulationIdx(clamp(Number(snapshot.simulationIdx || 0), 0, Math.max(safeArray(snapshot.simulationQuestions).length - 1, 0)));
     setSimulationResponseTimes(safeObject(snapshot.simulationResponseTimes));
     setSimulationSubmitted(Boolean(snapshot.simulationSubmitted));
@@ -3424,7 +3432,8 @@ export default function App() {
 
     function commitQuizSet(questions, message, options = {}) {
       const { asError = false } = options;
-      setQuiz(questions);
+      const normalizedQuestions = normalizeQuestions(questions, { source: "bank" });
+      setQuiz(normalizedQuestions);
       setQuizViewMode("study");
       setViewMode("study");
       setRemediationContext(null);
@@ -3433,7 +3442,7 @@ export default function App() {
       setMode("quiz");
       setQuizSubmitted(false);
       setQuizAnswerSheetOpen(false);
-      if (questions.length) {
+      if (normalizedQuestions.length) {
         startSessionTimer("quiz");
       }
 
@@ -3446,12 +3455,12 @@ export default function App() {
       if (!hasCustomSource) {
         setUsedQuizPrompts((prev) =>
           uniqueBy(
-            [...prev, ...questions.map((item) => normalize(item.prompt))],
+            [...prev, ...normalizedQuestions.map((item) => normalize(item.prompt))],
             (value) => value
           )
         );
         setRecentQuizPrompts((prev) =>
-          [...prev, ...questions.map((item) => normalize(item.prompt))].slice(-RECENT_MEMORY_LIMIT)
+          [...prev, ...normalizedQuestions.map((item) => normalize(item.prompt))].slice(-RECENT_MEMORY_LIMIT)
         );
       }
     }
@@ -3627,13 +3636,13 @@ export default function App() {
         }
       }
 
-      const questions = selectSessionItems(
+      const questions = normalizeQuestions(selectSessionItems(
         combined,
         finalTarget,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
         recentQuizPromptsRef.current,
         (item) => normalize(item.prompt)
-      );
+      ), { source: combined.length > localPool.length ? "ai" : "bank", allowMultipleResponse: true });
 
       setSimulationQuestions(questions);
       setRemediationContext(null);
@@ -3664,7 +3673,7 @@ export default function App() {
         );
       }
     } catch (error) {
-      const fallback = selectSessionItems(
+      const fallback = normalizeQuestions(selectSessionItems(
         buildLocalQuizFallback(
           activeEntries,
           "",
@@ -3677,7 +3686,7 @@ export default function App() {
         hasCustomSource ? [] : usedQuizPromptsRef.current,
         recentQuizPromptsRef.current,
         (item) => normalize(item.prompt)
-      );
+      ), { source: "bank", allowMultipleResponse: true });
 
       setSimulationQuestions(fallback);
       setRemediationContext(null);
@@ -3764,8 +3773,8 @@ export default function App() {
         userPrompt: question,
         question: quizItem?.prompt,
         selectedAnswer: quizItem?.userAnswer,
-        correctAnswer: quizItem?.correctAnswer,
-        rationale: quizItem?.rationale,
+        correctAnswer: getCorrectAnswerText(quizItem),
+        rationale: getQuestionRationaleText(quizItem),
         notes: quizItem?.notes,
         subject: quizItem?.subject || subject,
         topic: quizItem?.topic || topicFilter,
@@ -4030,7 +4039,7 @@ export default function App() {
     }
 
     if (session.mode === "simulation") {
-      setSimulationQuestions(session.questions || []);
+      setSimulationQuestions(normalizeQuestions(session.questions || [], { source: "saved", allowMultipleResponse: true }));
       setSimulationIdx(clamp(session.currentIndex || 0, 0, Math.max((session.questions || []).length - 1, 0)));
       setSimulationResponseTimes(session.responseTimes || {});
       setSimulationSubmitted(true);
@@ -4043,7 +4052,7 @@ export default function App() {
       return;
     }
 
-    setQuiz(session.questions || []);
+    setQuiz(normalizeQuestions(session.questions || [], { source: "saved" }));
     setQuizIdx(clamp(session.currentIndex || 0, 0, Math.max((session.questions || []).length - 1, 0)));
     setQuizResponseTimes(session.responseTimes || {});
     setQuizSubmitted(Boolean(session.submitted));
@@ -4175,10 +4184,10 @@ export default function App() {
     }
 
     setQuiz(
-      questions.map((item) => ({
+      normalizeQuestions(questions.map((item) => ({
         ...item,
         notes: `${item.notes} Remediation focus: revisit why the safest answer wins for this topic.`,
-      }))
+      })), { source: "remediation" })
     );
     setQuizIdx(0);
     setQuizResponseTimes({});
@@ -7503,7 +7512,7 @@ export default function App() {
                               name={`quiz-${quizItem.id}`}
                               checked={selected}
                               disabled={quizSubmitted}
-                              onChange={() => handleQuizAnswer(option.text)}
+                              onChange={() => handleQuizAnswer(option.id)}
                               style={{ marginTop: 4 }}
                             />
                             <span>{option.text}</span>
@@ -7713,8 +7722,8 @@ export default function App() {
                         </div>
                         <div style={{ marginTop: 12, fontSize: studyBodySize, lineHeight: 1.7 }}>
                           <div><strong>Your answer:</strong> {getQuestionOptions(quizItem).find((option) => getSelectedOptionIds(quizItem).includes(option.id))?.text || "No answer saved"}</div>
-                          <div><strong>Correct answer:</strong> {quizItem.correctAnswer}</div>
-                          <div><strong>Rationale:</strong> {quizItem.rationale}</div>
+                          <div><strong>Correct answer:</strong> {getCorrectAnswerText(quizItem)}</div>
+                          <div><strong>Rationale:</strong> {getQuestionRationaleText(quizItem)}</div>
                           <div><strong>Memory tip:</strong> {quizItem.notes}</div>
                         </div>
                         {quizAnswerSheetOpen ? (
@@ -7742,10 +7751,10 @@ export default function App() {
                                       Your answer: <strong style={{ color: C.text }}>{getQuestionOptions(item).find((option) => getSelectedOptionIds(item).includes(option.id))?.text || "No answer saved"}</strong>
                                     </div>
                                     <div style={{ fontSize: studyMetaSize, color: C.muted }}>
-                                      Correct answer: <strong style={{ color: C.text }}>{item.correctAnswer}</strong>
+                                      Correct answer: <strong style={{ color: C.text }}>{getCorrectAnswerText(item)}</strong>
                                     </div>
                                     <div style={{ fontSize: studyBodySize, color: C.text, lineHeight: 1.7 }}>
-                                      <strong>Rationale:</strong> {item.rationale}
+                                      <strong>Rationale:</strong> {getQuestionRationaleText(item)}
                                     </div>
                                   </div>
                                 </div>
@@ -8425,7 +8434,7 @@ export default function App() {
                                         Your answer: <strong style={{ color: C.text }}>{review.selectedOptions.length ? review.selectedOptions.map((option) => option.text).join(", ") : "No answer saved"}</strong>
                                       </div>
                                       <div style={{ fontSize: 13, color: C.muted }}>
-                                        Correct answer: <strong style={{ color: C.text }}>{review.correctOptions.map((option) => option.text).join(", ") || item.correctAnswer}</strong>
+                                        Correct answer: <strong style={{ color: C.text }}>{review.correctOptions.map((option) => option.text).join(", ") || getCorrectAnswerText(item)}</strong>
                                       </div>
                                       {review.missedCorrectOptions.length ? (
                                         <div style={{ fontSize: 13, color: C.muted }}>
@@ -8438,7 +8447,7 @@ export default function App() {
                                         </div>
                                       ) : null}
                                       <div style={{ fontSize: 13, color: C.text, lineHeight: 1.7 }}>
-                                        <strong>Rationale:</strong> {item.rationale}
+                                        <strong>Rationale:</strong> {getQuestionRationaleText(item)}
                                       </div>
                                       {review.options.some((option) => option.rationale) ? (
                                         <div style={{ display: "grid", gap: 6 }}>

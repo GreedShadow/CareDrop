@@ -183,18 +183,39 @@ export function buildFallbackQuestions({ notes, subject, topic, difficulty, coun
         "Focus on convenience and workflow before client safety.",
       ],
     ];
-    const options = [template.correct, ...distractorSets[index % distractorSets.length]];
+    const rawOptions = [template.correct, ...distractorSets[index % distractorSets.length]];
+    const options = rawOptions.map((text, optionIndex) => ({
+      id: ["a", "b", "c", "d"][optionIndex],
+      text,
+      rationale:
+        optionIndex === 0
+          ? `This is the best answer because it keeps ${topicLabel} tied to the priority assessment cue and client safety.`
+          : "This is less appropriate because it delays focused assessment, urgent action, or escalation when the stem may point to risk.",
+    }));
 
     return {
       subject: safeSubject,
       difficulty: examMode ? (index % 3 === 0 ? "hard" : safeDifficulty) : safeDifficulty,
       topic: topicLabel,
       type: "single_choice",
+      source: "fallback",
+      tags: ["priority", "assessment", "safety"],
       prompt: template.prompt,
+      stem: template.prompt,
       correctAnswer: template.correct,
+      correctOptionIds: ["a"],
       options,
-      rationale:
-        "Correct Answer Explanation: The correct answer is best because it follows priority nursing judgment and protects client safety. Incorrect Options Explanation: The other choices delay assessment, focus on secondary comfort, or delegate judgment too early. Key Takeaway: In PNLE-style questions, prioritize safety, focused assessment, and the main clinical risk.",
+      rationale: {
+        correct:
+          "The correct answer is best because it follows priority nursing judgment and protects client safety.",
+        incorrect: {
+          b: "This choice delays assessment or action when the stem may point to a priority risk.",
+          c: "This choice focuses on a lower-priority comfort or routine action before safety is addressed.",
+          d: "This choice shifts clinical judgment away from the nurse before focused assessment is complete.",
+        },
+        takeaway:
+          "In PNLE-style questions, prioritize safety, focused assessment, and the main clinical risk.",
+      },
       notes: `Key Takeaway: Link ${topicLabel} to the safest nursing priority.`,
     };
   });
