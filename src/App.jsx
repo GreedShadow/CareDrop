@@ -3174,7 +3174,7 @@ export default function App() {
     setFlashcardSessionSubmitted(false);
     markFlashcardsAsUsed(deck);
     if (deck.length && message) {
-      startSessionTimer("flashcard");
+      resetSessionTimer();
     }
 
     if (message) {
@@ -3241,7 +3241,7 @@ export default function App() {
       setFlashcardResponseTimes({});
       setFlashcardSessionSubmitted(false);
       markFlashcardsAsUsed(deck);
-      startSessionTimer("flashcard");
+      resetSessionTimer();
       setStatusMessage(
         !isOnline
           ? "Offline mode: CareDrop loaded a local flashcard set so you can keep studying."
@@ -3311,7 +3311,7 @@ export default function App() {
       setFlashcardResponseTimes({});
       setFlashcardSessionSubmitted(false);
       markFlashcardsAsUsed(deck);
-      startSessionTimer("flashcard");
+      resetSessionTimer();
       setStatusMessage(
         aiCards.length
           ? `CareDrop used the bank first, then Gemini filled ${Math.min(aiCards.length, needed)} more card${Math.min(aiCards.length, needed) === 1 ? "" : "s"} for this focus.`
@@ -3342,7 +3342,7 @@ export default function App() {
         setFlashcardResponseTimes({});
         setFlashcardSessionSubmitted(false);
         markFlashcardsAsUsed(backupDeck);
-        startSessionTimer("flashcard");
+        resetSessionTimer();
       }
       setApiError(error.message || "Gemini was busy, so CareDrop loaded the strongest available bank cards for now.");
     } finally {
@@ -3455,7 +3455,7 @@ export default function App() {
       setQuizSubmitted(false);
       setQuizAnswerSheetOpen(false);
       if (normalizedQuestions.length) {
-        startSessionTimer("quiz");
+        resetSessionTimer();
       }
 
       if (asError) {
@@ -3813,15 +3813,10 @@ export default function App() {
   }
 
   function submitFlashcardSession(options = {}) {
-    const { force = false, expired = false } = options;
+    const { force = false } = options;
     if (!flashcards.length || (!force && flashcardCompletedCount < flashcards.length) || flashcardSessionSubmitted) {
       return;
     }
-
-    const timerMeta = finishActiveTimerMeta("flashcard", {
-      completedItemCount: flashcardCompletedCount,
-      totalItemCount: flashcards.length,
-    }, { expired });
 
     const session = {
       id: uid(),
@@ -3844,8 +3839,6 @@ export default function App() {
       correctCount: flashcardStrongCount,
       weakCount: flashcardNeedsReviewCount,
       isRemediation: Boolean(remediationContext),
-      timer: timerMeta,
-      pacingInsight: getPacingInsight(timerMeta, topicFilter || subject || "flashcards"),
     };
 
     recordReviewSession(session);
@@ -3856,15 +3849,10 @@ export default function App() {
   }
 
   function submitQuizSession(options = {}) {
-    const { force = false, expired = false } = options;
+    const { force = false } = options;
     if (!quiz.length || (!force && answeredCount < quiz.length) || quizSubmitted) {
       return;
     }
-
-    const timerMeta = finishActiveTimerMeta("quiz", {
-      completedItemCount: answeredCount,
-      totalItemCount: quiz.length,
-    }, { expired });
 
     const session = {
       id: uid(),
@@ -3887,8 +3875,6 @@ export default function App() {
       submitted: true,
       isRemediation: Boolean(remediationContext),
       previousScore: remediationContext?.previousScore ?? null,
-      timer: timerMeta,
-      pacingInsight: getPacingInsight(timerMeta, topicFilter || subject || "quiz"),
     };
 
     recordReviewSession(session);
@@ -4507,12 +4493,7 @@ export default function App() {
   const headerHeight = usesDrawerNav ? (isMobile ? 72 : 68) : isMobile ? 88 : 68;
   const timerIsUrgent = activeTimer.timerMode === "timed" && Number(timeRemainingSeconds || 0) <= 60;
   const timerIsCritical = activeTimer.timerMode === "timed" && Number(timeRemainingSeconds || 0) <= 10;
-  const showTimerExpiredModal =
-    activeTimer.timeExpired &&
-    !activeTimer.expiredHandled &&
-    ["flashcard", "quiz"].includes(activeTimer.modeType) &&
-    mode === activeTimer.modeType &&
-    (activeTimer.modeType === "flashcard" ? flashcardViewMode === "study" : quizViewMode === "study");
+  const showTimerExpiredModal = false;
   const cardSurface = C.surface;
   const elevatedSurface = C.surfaceRaised;
   const heroSurface = darkMode
@@ -4786,13 +4767,14 @@ export default function App() {
             />
           </label>
         </div>
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: width < 900 ? "1fr" : "minmax(0, 1fr) max-content", gap: 12, alignItems: "end" }}>
-          {renderTimerSetup(lockedMode)}
+        <div style={{ marginTop: 12, display: "flex", justifyContent: width < 900 ? "stretch" : "flex-end" }}>
           <button
             type="button"
             onClick={submitReviewFocus}
             disabled={apiLoading}
             style={{
+              width: width < 900 ? "100%" : "auto",
+              minWidth: width < 900 ? "auto" : 210,
               minHeight: 48,
               padding: "12px 18px",
               borderRadius: 13,
@@ -7247,7 +7229,6 @@ export default function App() {
                   </div>
                   {!showFlashcardSetup ? (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {renderTimerDisplay("flashcard")}
                       <button
                         onClick={() => setCardIdx((value) => Math.max(0, value - 1))}
                         disabled={!flashcards.length || cardIdx === 0}
@@ -7318,9 +7299,6 @@ export default function App() {
                         <div>Needs work: <strong>{flashcardNeedsReviewCount}</strong></div>
                         <div>Progress: <strong>{flashcardProgressPercent}%</strong></div>
                       </div>
-                      {flashcardSessionSubmitted
-                        ? renderTimerSummary("flashcard", flashcardCompletedCount, flashcards.length, topicFilter || subject || "flashcards")
-                        : null}
                       <div
                         style={{
                           marginTop: 14,
@@ -7414,7 +7392,6 @@ export default function App() {
                         : `Target ${QUIZ_SET_SIZE} questions | strict difficulty filter | saved sessions supported`}
                     </div>
                   </div>
-                  {!showQuizSetup ? renderTimerDisplay("quiz") : null}
                 </div>
 
                 {showQuizSetup ? (
@@ -7652,7 +7629,6 @@ export default function App() {
                             Score: <strong>{quiz.length ? Math.round((correctCount / quiz.length) * 100) : 0}%</strong>
                           </div>
                         </div>
-                        {renderTimerSummary("quiz", answeredCount, quiz.length, topicFilter || subject || "quiz")}
                         <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
                           <button
                             type="button"
