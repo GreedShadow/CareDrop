@@ -94,7 +94,9 @@ function normalizeRationale(question, correctText) {
 }
 
 function inferTags(question) {
-  const source = normalize(`${question?.prompt || question?.question || ""} ${question?.topic || ""} ${question?.rationale || ""}`);
+  const source = normalize(
+    `${question?.prompt || question?.question || ""} ${question?.topic || ""} ${getQuestionRationaleText(question)}`
+  );
   return [
     ["priority", /\b(priority|first|best|most important|initial|safest)\b/],
     ["assessment", /\b(assess|assessment|monitor|check|observe|vital|finding)\b/],

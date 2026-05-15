@@ -437,6 +437,14 @@ function cleanQuizPrompt(prompt) {
     .trim();
 }
 
+function cleanClinicalCueForPrompt(prompt) {
+  return cleanQuizPrompt(prompt)
+    .replace(/^\s*(board recall|focused review|nursing priority check|prc nle review|clinical decision point|exam coaching prompt)\s*:\s*/i, "")
+    .replace(/\b(the stem asks|review stem|the key cue is|clinical cue|stem)\s*:\s*/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function cleanQuizOption(option) {
   return String(option || "")
     .replace(/^\s*[A-D][.)]\s*/i, "")
@@ -839,33 +847,32 @@ function buildFocusedFlashcardVariants(entry, requestedTopic) {
 
 function buildQuizVariants(entry, requestedTopic = "") {
   const alignedAnswer = alignTextToPrompt(entry.q, entry.a, 18, 26) || entry.a;
-  const sourceCue = cleanQuizPrompt(entry.q || "");
+  const sourceCue = cleanClinicalCueForPrompt(entry.q || "");
   const topicLabel = String(requestedTopic || entry.topic || "this nursing concept").trim();
   const focusedEntry = { ...entry, topic: topicLabel };
   const baseRationale = buildQuizRationale(focusedEntry, entry.q, alignedAnswer);
-  const subjectLabel = entry.subject || "nursing review";
   const contextualCue = sourceCue
-    ? `Review cue: ${sourceCue.replace(/[?]+$/g, "")}.`
-    : `The main concern is ${topicLabel}.`;
+    ? `Clinical cue: ${sourceCue.replace(/[?]+$/g, "")}.`
+    : `Clinical cue: the main concern is ${topicLabel}.`;
 
   return [
     {
       prompt: requestedTopic
-        ? `A PNLE-style item focuses on ${topicLabel}. ${contextualCue} What is the safest nursing answer?`
+        ? `A client scenario involves ${topicLabel}. ${contextualCue} Which nursing response is the safest priority?`
         : entry.q,
       rationale: baseRationale,
     },
     {
-      prompt: `A PNLE-style ${subjectLabel} item focuses on ${topicLabel}. ${contextualCue} Which response best protects patient safety?`,
-      rationale: buildQuizRationale(focusedEntry, `A PNLE-style ${subjectLabel} item focuses on ${topicLabel}. ${contextualCue} Which response best protects patient safety?`, alignedAnswer),
+      prompt: `The nurse is caring for a client with concerns related to ${topicLabel}. ${contextualCue} Which response best protects patient safety?`,
+      rationale: buildQuizRationale(focusedEntry, `The nurse is caring for a client with concerns related to ${topicLabel}. ${contextualCue} Which response best protects patient safety?`, alignedAnswer),
     },
     {
-      prompt: `The nurse is answering a board-review question about ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`,
-      rationale: buildQuizRationale(focusedEntry, `The nurse is answering a board-review question about ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`, alignedAnswer),
+      prompt: `A board-style nursing item is testing ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`,
+      rationale: buildQuizRationale(focusedEntry, `A board-style nursing item is testing ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`, alignedAnswer),
     },
     {
-      prompt: `A student is reviewing ${topicLabel} and must connect the stem to the safest nursing priority. ${contextualCue} What is the best answer?`,
-      rationale: buildQuizRationale(focusedEntry, `A student is reviewing ${topicLabel} and must connect the stem to the safest nursing priority. ${contextualCue} What is the best answer?`, alignedAnswer),
+      prompt: `The stem points to ${topicLabel} and asks for safe clinical judgment. ${contextualCue} What is the best answer?`,
+      rationale: buildQuizRationale(focusedEntry, `The stem points to ${topicLabel} and asks for safe clinical judgment. ${contextualCue} What is the best answer?`, alignedAnswer),
     },
   ];
 }
@@ -1106,6 +1113,15 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
             .map((value) => String(value))
             .filter((value) => options.some((option) => option.id === value))
         : [];
+      const fallbackRationale = buildQuizRationale(
+        { ...item, subject: item.subject || subject || "Mixed Review", topic: topic || item.topic || "ai review" },
+        prompt,
+        correctAnswer
+      );
+      const rationale =
+        item.rationale && typeof item.rationale === "object"
+          ? item.rationale
+          : alignTextToPrompt(prompt, item.rationale || fallbackRationale, 30, 70);
 
       return {
         id: item.id || uid(),
@@ -1117,12 +1133,7 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
         correctAnswer,
         options,
         correctOptionIds: sanitizedType === QUESTION_TYPES.MULTIPLE_RESPONSE ? correctOptionIds : [],
-        rationale: alignTextToPrompt(
-          prompt,
-          item.rationale || buildQuizRationale({ ...item, subject: item.subject || subject || "Mixed Review", topic: topic || item.topic || "ai review" }, prompt, correctAnswer),
-          30,
-          70
-        ),
+        rationale,
         notes: String(item.notes || `Key takeaway: choose the best nursing answer, not just a possible answer, for ${topic || item.topic || "the topic"}.`),
         userAnswer:
           sanitizedType === QUESTION_TYPES.MULTIPLE_RESPONSE
@@ -1154,7 +1165,7 @@ function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompt
           topic: item.topic,
           prompt: item.prompt,
           answer: item.correctAnswer || item.options.find((option) => item.correctOptionIds.includes(option.id))?.text || "",
-          rationale: item.rationale,
+          rationale: getQuestionRationaleText(item),
         },
         subject,
         difficulty,
@@ -1328,6 +1339,7 @@ export default function App() {
   const [flashcardViewMode, setFlashcardViewMode] = useState("setup");
   const [quizViewMode, setQuizViewMode] = useState("setup");
   const [flashcards, setFlashcards] = useState([]);
+  const [flashcardDeckVersion, setFlashcardDeckVersion] = useState(0);
   const [cardIdx, setCardIdx] = useState(0);
   const [cardSchedule, setCardSchedule] = useState(safeObject(persisted?.cardSchedule));
   const [flashcardSessionRatings, setFlashcardSessionRatings] = useState({});
@@ -4486,6 +4498,7 @@ export default function App() {
   const showFlashcardSetup = mode === "flashcard" && flashcardViewMode === "setup";
   const showQuizSetup = mode === "quiz" && quizViewMode === "setup";
   const isStudyMode = mode === "flashcard" || mode === "quiz" || mode === "simulation";
+  const headerShouldBeVisible = usesDrawerNav || headerVisible || mobileDrawerOpen;
   const studySectionPadding = isMobile ? 16 : 22;
   const studyMetaSize = 12;
   const studyQuestionSize = isMobile ? 18 : 20;
@@ -4494,6 +4507,12 @@ export default function App() {
   const headerHeight = usesDrawerNav ? (isMobile ? 72 : 68) : isMobile ? 88 : 68;
   const timerIsUrgent = activeTimer.timerMode === "timed" && Number(timeRemainingSeconds || 0) <= 60;
   const timerIsCritical = activeTimer.timerMode === "timed" && Number(timeRemainingSeconds || 0) <= 10;
+  const showTimerExpiredModal =
+    activeTimer.timeExpired &&
+    !activeTimer.expiredHandled &&
+    ["flashcard", "quiz"].includes(activeTimer.modeType) &&
+    mode === activeTimer.modeType &&
+    (activeTimer.modeType === "flashcard" ? flashcardViewMode === "study" : quizViewMode === "study");
   const cardSurface = C.surface;
   const elevatedSurface = C.surfaceRaised;
   const heroSurface = darkMode
@@ -4869,6 +4888,10 @@ export default function App() {
   }, [flashcardSessionSubmitted]);
 
   useEffect(() => {
+    setFlashcardDeckVersion((value) => value + 1);
+  }, [flashcards]);
+
+  useEffect(() => {
     if (quizSubmitted) {
       setQuizViewMode("result");
     }
@@ -4951,9 +4974,9 @@ export default function App() {
           left: 0,
           right: 0,
           zIndex: 20,
-          transform: headerVisible ? "translateY(0)" : "translateY(-100%)",
+          transform: headerShouldBeVisible ? "translateY(0)" : "translateY(-100%)",
           transition: "transform 0.28s ease",
-          boxShadow: headerVisible ? C.shellShadow : "none",
+          boxShadow: headerShouldBeVisible ? C.shellShadow : "none",
           backdropFilter: "blur(14px)",
         }}
       >
@@ -5128,7 +5151,7 @@ export default function App() {
         )}
       </nav>
 
-      {activeTimer.timeExpired && !activeTimer.expiredHandled && ["flashcard", "quiz"].includes(activeTimer.modeType) ? (
+      {showTimerExpiredModal ? (
         <div
           role="dialog"
           aria-modal="true"
@@ -7263,7 +7286,7 @@ export default function App() {
                 ) : currentCard ? (
                   <>
                     <Flashcard
-                      key={`${currentCard.id || "flashcard"}-${cardIdx}`}
+                      key={`${flashcardDeckVersion}-${currentCard.id || "flashcard"}-${cardIdx}`}
                       card={currentCard}
                       idx={cardIdx}
                       total={flashcards.length}

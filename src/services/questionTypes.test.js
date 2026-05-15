@@ -1,6 +1,7 @@
 import {
   QUESTION_TYPES,
   buildQuestionReview,
+  getQuestionRationaleText,
   getSelectedOptionIds,
   isQuestionAnswered,
   normalizeQuestion,
@@ -98,5 +99,37 @@ describe("question type helpers", () => {
     expect(question.rationale.correct).toContain("TB needs airborne precautions");
     expect(question.tags).toContain("safety");
     expect(scoreQuestion({ ...question, userAnswer: "b" })).toBe(1);
+  });
+
+  it("renders structured rationale objects without object leakage", () => {
+    const question = normalizeQuestion({
+      subject: "Medical-Surgical Nursing",
+      topic: "pulmonary edema",
+      difficulty: "hard",
+      prompt: "A client with pulmonary edema becomes severely dyspneic. Which action is the priority?",
+      correctAnswer: "Position the client upright and apply oxygen as prescribed",
+      options: [
+        { id: "a", text: "Position the client upright and apply oxygen as prescribed" },
+        { id: "b", text: "Encourage oral fluids to thin secretions" },
+        { id: "c", text: "Delay intervention until the provider arrives" },
+        { id: "d", text: "Place the client flat to improve venous return" },
+      ],
+      rationale: {
+        correct: "Upright positioning and oxygen improve ventilation and reduce work of breathing.",
+        incorrect: {
+          b: "Extra fluids can worsen fluid overload.",
+          c: "Immediate nursing action is required for respiratory distress.",
+          d: "A flat position can worsen dyspnea.",
+        },
+        takeaway: "Treat acute breathing compromise before lower-priority interventions.",
+      },
+    });
+
+    const rationale = getQuestionRationaleText(question);
+
+    expect(rationale).toContain("Correct Answer Explanation");
+    expect(rationale).toContain("Incorrect Options Explanation");
+    expect(rationale).toContain("Key Takeaway");
+    expect(rationale).not.toContain("[object Object]");
   });
 });
