@@ -207,6 +207,182 @@ const SUBJECT_VISUALS = {
   "Leadership & Management": { icon: "🧭", color: "linear-gradient(90deg, #60A5FA 0%, #22C55E 100%)" },
 };
 
+const PNLE_DOMAIN_ORDER = ["NP1", "NP2", "NP3", "NP4", "NP5"];
+const PNLE_DOMAIN_DETAILS = {
+  NP1: {
+    label: "NP1",
+    title: "Foundation of Professional Nursing Practice",
+    shortTitle: "Foundation",
+    subjects: ["Fundamentals", "Leadership & Management"],
+  },
+  NP2: {
+    label: "NP2",
+    title: "Community Health, Maternal, Child, and Family Nursing",
+    shortTitle: "Community / Mother & Child",
+    subjects: ["Community Health", "Maternal & Newborn", "Pediatrics"],
+  },
+  NP3: {
+    label: "NP3",
+    title: "Care of Clients with Physiologic and Psychosocial Alterations A",
+    shortTitle: "Alterations A",
+    subjects: ["Medical-Surgical", "Psychiatric Nursing", "Pharmacology"],
+  },
+  NP4: {
+    label: "NP4",
+    title: "Care of Clients with Physiologic and Psychosocial Alterations B",
+    shortTitle: "Alterations B",
+    subjects: ["Medical-Surgical", "Pharmacology"],
+  },
+  NP5: {
+    label: "NP5",
+    title: "Care of Clients with Physiologic and Psychosocial Alterations C",
+    shortTitle: "Alterations C",
+    subjects: ["Medical-Surgical", "Pharmacology", "Leadership & Management"],
+  },
+};
+
+const PNLE_DOMAIN_FALLBACK_BY_SUBJECT = {
+  Fundamentals: "NP1",
+  "Leadership & Management": "NP1",
+  "Community Health": "NP2",
+  "Maternal & Newborn": "NP2",
+  Pediatrics: "NP2",
+  "Psychiatric Nursing": "NP3",
+};
+
+function getPnleDomainDetail(domain) {
+  return PNLE_DOMAIN_DETAILS[domain] || PNLE_DOMAIN_DETAILS.NP1;
+}
+
+function inferPnleDomain(item, fallbackIndex = 0) {
+  const explicitDomain = String(item?.pnleDomain || item?.npDomain || "").trim().toUpperCase();
+  if (PNLE_DOMAIN_ORDER.includes(explicitDomain)) {
+    return explicitDomain;
+  }
+
+  const subject = String(item?.subject || "");
+  if (PNLE_DOMAIN_FALLBACK_BY_SUBJECT[subject]) {
+    return PNLE_DOMAIN_FALLBACK_BY_SUBJECT[subject];
+  }
+
+  const source = normalize(
+    `${subject} ${item?.topic || ""} ${item?.prompt || item?.question || item?.stem || item?.q || ""} ${item?.correctAnswer || item?.answer || item?.a || ""}`
+  );
+
+  if (/\b(leadership|management|delegation|supervision|ethic|legal|documentation|research|quality|triage|informed consent|scope)\b/.test(source)) {
+    return "NP1";
+  }
+
+  if (/\b(community|public health|doh|epidemiology|immunization|vaccine|maternal|pregnan|labor|postpartum|newborn|pediatric|child|family|barangay)\b/.test(source)) {
+    return "NP2";
+  }
+
+  if (/\b(psych|mental|therapeutic communication|depression|anxiety|schizophrenia|bipolar|suicide|substance|cardiac|respiratory|oxygen|shock|chest pain|asthma|copd)\b/.test(source)) {
+    return "NP3";
+  }
+
+  if (/\b(neuro|stroke|seizure|endocrine|diabetes|thyroid|renal|kidney|fluid|electrolyte|acid base|burn|gi|liver|pancrea)\b/.test(source)) {
+    return "NP4";
+  }
+
+  if (/\b(oncology|cancer|perioperative|surgery|trauma|emergency|critical care|infection|sepsis|orthopedic|reproductive|immune|hematologic)\b/.test(source)) {
+    return "NP5";
+  }
+
+  return PNLE_DOMAIN_ORDER[fallbackIndex % PNLE_DOMAIN_ORDER.length];
+}
+
+function attachPnleDomain(item, index = 0) {
+  const pnleDomain = inferPnleDomain(item, index);
+  const detail = getPnleDomainDetail(pnleDomain);
+  return {
+    ...item,
+    pnleDomain,
+    pnleDomainTitle: detail.title,
+    pnleDomainShortTitle: detail.shortTitle,
+  };
+}
+
+function attachPnleDomains(items) {
+  return (Array.isArray(items) ? items : []).map((item, index) => attachPnleDomain(item, index));
+}
+
+function buildBalancedPnleSimulationSet(pool, targetSize, usedPrompts = [], recentPrompts = []) {
+  const target = Math.max(Number(targetSize) || 0, 1);
+  const uniquePool = uniqueBy(attachPnleDomains(pool), (item) => normalize(item.prompt || item.question || item.stem || item.q || item.id));
+  const used = new Set((Array.isArray(usedPrompts) ? usedPrompts : []).map((value) => normalize(value)));
+  const recent = new Set((Array.isArray(recentPrompts) ? recentPrompts : []).map((value) => normalize(value)));
+  const selected = [];
+  const selectedKeys = new Set();
+  const basePerDomain = Math.floor(target / PNLE_DOMAIN_ORDER.length);
+  const extraSlots = target % PNLE_DOMAIN_ORDER.length;
+
+  function getKey(item) {
+    return normalize(item.prompt || item.question || item.stem || item.q || item.id);
+  }
+
+  function takeFrom(candidates, limit) {
+    for (const item of shuffle(candidates)) {
+      const key = getKey(item);
+      if (!key || selectedKeys.has(key)) {
+        continue;
+      }
+
+      selected.push(item);
+      selectedKeys.add(key);
+
+      if (selected.length >= target || selected.filter((selectedItem) => selectedItem.pnleDomain === item.pnleDomain).length >= limit) {
+        return;
+      }
+    }
+  }
+
+  for (const domain of PNLE_DOMAIN_ORDER) {
+    const desired = basePerDomain + (PNLE_DOMAIN_ORDER.indexOf(domain) < extraSlots ? 1 : 0);
+    const domainPool = uniquePool.filter((item) => item.pnleDomain === domain);
+    takeFrom(domainPool.filter((item) => !used.has(getKey(item)) && !recent.has(getKey(item))), desired);
+    if (selected.filter((item) => item.pnleDomain === domain).length < desired) {
+      takeFrom(domainPool.filter((item) => !used.has(getKey(item))), desired);
+    }
+    if (selected.filter((item) => item.pnleDomain === domain).length < desired) {
+      takeFrom(domainPool, desired);
+    }
+  }
+
+  if (selected.length < Math.min(target, uniquePool.length)) {
+    for (const item of shuffle(uniquePool.filter((candidate) => !used.has(getKey(candidate)) && !recent.has(getKey(candidate))))) {
+      const key = getKey(item);
+      if (key && !selectedKeys.has(key)) {
+        selected.push(item);
+        selectedKeys.add(key);
+      }
+      if (selected.length >= target) break;
+    }
+  }
+
+  if (selected.length < Math.min(target, uniquePool.length)) {
+    for (const item of shuffle(uniquePool)) {
+      const key = getKey(item);
+      if (key && !selectedKeys.has(key)) {
+        selected.push(item);
+        selectedKeys.add(key);
+      }
+      if (selected.length >= target) break;
+    }
+  }
+
+  if (selected.length >= target || !uniquePool.length) {
+    return selected.slice(0, target);
+  }
+
+  while (selected.length < target) {
+    const recycled = attachPnleDomain(uniquePool[selected.length % uniquePool.length], selected.length);
+    selected.push({ ...recycled, id: `${recycled.id || "pnle-recycled"}-${selected.length}` });
+  }
+
+  return selected.slice(0, target);
+}
+
 function buildLocalSummary(text) {
   const cleaned = String(text || "").replace(/\r/g, " ").trim();
   if (!cleaned) {
@@ -1588,7 +1764,7 @@ export default function App() {
     setQuizResponseTimes(safeObject(snapshot.quizResponseTimes));
     setQuizSubmitted(Boolean(snapshot.quizSubmitted));
     setQuizAnswerSheetOpen(false);
-    setSimulationQuestions(normalizeQuestions(safeArray(snapshot.simulationQuestions), { source: "restored", allowMultipleResponse: true }));
+    setSimulationQuestions(attachPnleDomains(normalizeQuestions(safeArray(snapshot.simulationQuestions), { source: "restored", allowMultipleResponse: true })));
     setSimulationIdx(clamp(Number(snapshot.simulationIdx || 0), 0, Math.max(safeArray(snapshot.simulationQuestions).length - 1, 0)));
     setSimulationResponseTimes(safeObject(snapshot.simulationResponseTimes));
     setSimulationSubmitted(Boolean(snapshot.simulationSubmitted));
@@ -2174,6 +2350,23 @@ export default function App() {
           percent: item.total ? Math.round((item.correct / item.total) * 100) : 0,
         }))
         .sort((left, right) => right.percent - left.percent),
+    [simulationQuestions]
+  );
+  const simulationNpBreakdown = useMemo(
+    () =>
+      PNLE_DOMAIN_ORDER.map((domain) => {
+        const detail = getPnleDomainDetail(domain);
+        const questions = simulationQuestions.filter((item, index) => inferPnleDomain(item, index) === domain);
+        const correct = questions.filter((item) => scoreQuestion(item) === 1).length;
+        return {
+          domain,
+          title: detail.title,
+          shortTitle: detail.shortTitle,
+          total: questions.length,
+          correct,
+          percent: questions.length ? Math.round((correct / questions.length) * 100) : 0,
+        };
+      }),
     [simulationQuestions]
   );
   const simulationStrongSubjects = simulationSubjectBreakdown.filter((item) => item.percent >= 75).slice(0, 3);
@@ -3601,19 +3794,20 @@ export default function App() {
     setSimulationResponseTimes({});
 
     try {
-      const localPool = selectSessionItems(
-        buildLocalQuizFallback(
-          activeEntries,
-          "",
-          "All",
-          "",
-          Math.max(finalTarget, 60),
-          []
-        ),
+      const localCandidates = buildLocalQuizFallback(
+        activeEntries,
+        "",
+        "All",
+        "",
+        Math.max(finalTarget * 2, 120),
+        [],
+        { includeSyntheticTopicFill: false }
+      );
+      const localPool = buildBalancedPnleSimulationSet(
+        localCandidates,
         finalTarget,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
-        recentQuizPromptsRef.current,
-        (item) => normalize(item.prompt)
+        recentQuizPromptsRef.current
       );
 
       let combined = [...localPool];
@@ -3648,13 +3842,12 @@ export default function App() {
         }
       }
 
-      const questions = normalizeQuestions(selectSessionItems(
+      const questions = attachPnleDomains(normalizeQuestions(buildBalancedPnleSimulationSet(
         combined,
         finalTarget,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
-        recentQuizPromptsRef.current,
-        (item) => normalize(item.prompt)
-      ), { source: combined.length > localPool.length ? "ai" : "bank", allowMultipleResponse: true });
+        recentQuizPromptsRef.current
+      ), { source: combined.length > localPool.length ? "ai" : "bank", allowMultipleResponse: true }));
 
       setSimulationQuestions(questions);
       setRemediationContext(null);
@@ -3669,8 +3862,8 @@ export default function App() {
       startSessionTimer("simulation");
       setStatusMessage(
         combined.length > localPool.length
-          ? `Simulation exam ready. Gemini helped shape this mixed ${finalTarget}-question exam.`
-          : `Simulation exam ready. Your mixed ${finalTarget}-question exam is prepared.`
+          ? `Simulation exam ready. Gemini helped shape this mixed ${finalTarget}-question PNLE NP1-NP5 exam.`
+          : `Simulation exam ready. Your mixed ${finalTarget}-question PNLE NP1-NP5 exam is prepared.`
       );
 
       if (!hasCustomSource) {
@@ -3685,20 +3878,21 @@ export default function App() {
         );
       }
     } catch (error) {
-      const fallback = normalizeQuestions(selectSessionItems(
-        buildLocalQuizFallback(
-          activeEntries,
-          "",
-          "All",
-          "",
-          Math.max(finalTarget, 60),
-          []
-        ),
+      const fallbackCandidates = buildLocalQuizFallback(
+        activeEntries,
+        "",
+        "All",
+        "",
+        Math.max(finalTarget * 2, 120),
+        [],
+        { includeSyntheticTopicFill: false }
+      );
+      const fallback = attachPnleDomains(normalizeQuestions(buildBalancedPnleSimulationSet(
+        fallbackCandidates,
         finalTarget,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
-        recentQuizPromptsRef.current,
-        (item) => normalize(item.prompt)
-      ), { source: "bank", allowMultipleResponse: true });
+        recentQuizPromptsRef.current
+      ), { source: "bank", allowMultipleResponse: true }));
 
       setSimulationQuestions(fallback);
       setRemediationContext(null);
@@ -3712,7 +3906,7 @@ export default function App() {
       setSimulationAnswerSheetOpen(false);
       startSessionTimer("simulation");
       setApiError(normalizeAiErrorMessage(error) || `Gemini simulation generation failed. A local ${finalTarget}-question simulation was loaded instead.`);
-      setStatusMessage(`Loaded a mixed ${finalTarget}-question simulation from the CareDrop bank.`);
+      setStatusMessage(`Loaded a mixed ${finalTarget}-question NP1-NP5 simulation from the CareDrop bank.`);
     } finally {
       setApiLoading(false);
     }
@@ -4037,7 +4231,7 @@ export default function App() {
     }
 
     if (session.mode === "simulation") {
-      setSimulationQuestions(normalizeQuestions(session.questions || [], { source: "saved", allowMultipleResponse: true }));
+      setSimulationQuestions(attachPnleDomains(normalizeQuestions(session.questions || [], { source: "saved", allowMultipleResponse: true })));
       setSimulationIdx(clamp(session.currentIndex || 0, 0, Math.max((session.questions || []).length - 1, 0)));
       setSimulationResponseTimes(session.responseTimes || {});
       setSimulationSubmitted(true);
@@ -4089,6 +4283,7 @@ export default function App() {
       correctCount: simulationCorrectCount,
       simulationSize,
       usedAi: simulationUsedAi,
+      pnleBreakdown: simulationNpBreakdown,
       timer: timerMeta,
       pacingInsight: getPacingInsight(timerMeta, "simulation exam"),
     };
@@ -7784,7 +7979,7 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Simulation Exam</div>
                     <div style={{ fontSize: 12, color: C.muted, maxWidth: 720 }}>
-                      Build a mixed board-style exam across the full CareDrop bank. Gemini helps expand parts of the set so the simulation feels broader and closer to a real long-form review exam.
+                      Build a mixed board-style exam across NP1-NP5 using the full CareDrop bank. Gemini helps expand parts of the set so the simulation feels broader and closer to a real PNLE-style review exam.
                     </div>
                   </div>
                   {!simulationLaunchOpen && simulationQuestions.length ? (
@@ -7822,7 +8017,7 @@ export default function App() {
                       Choose your simulation length first
                     </div>
                     <div style={{ marginTop: 10, fontSize: 14, color: C.muted, lineHeight: 1.8, maxWidth: 760 }}>
-                      The exam stays hidden until you choose a format. Pick a mixed 50-, 100-, or 500-question simulation to launch a broader board-style exam experience across the full review bank.
+                      The exam stays hidden until you choose a format. Pick a mixed 50-, 100-, or 500-question simulation to launch a broader board-style exam experience balanced across NP1, NP2, NP3, NP4, and NP5.
                     </div>
                     <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
                       {SIMULATION_SIZE_OPTIONS.map((value) => (
@@ -8005,6 +8200,7 @@ export default function App() {
                     >
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
                         <Badge label={`Q ${simulationIdx + 1} / ${simulationQuestions.length}`} color="blue" />
+                        <Badge label={simulationItem.pnleDomain || inferPnleDomain(simulationItem, simulationIdx)} color="green" />
                         <Badge label={simulationItem.subject} color="gray" />
                         <Badge label={simulationItem.topic} color="gray" />
                         <Badge
@@ -8279,6 +8475,64 @@ export default function App() {
                           <div
                             style={{
                               marginTop: 14,
+                              padding: "16px 18px",
+                              borderRadius: 16,
+                              background: C.surface,
+                              border: `1px solid ${C.border}`,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                              <div>
+                                <div style={{ fontSize: 15, fontWeight: 800 }}>PNLE Practice Test Breakdown</div>
+                                <div style={{ marginTop: 4, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
+                                  Simulation items are tagged and balanced across NP1-NP5 where the bank or AI set allows.
+                                </div>
+                              </div>
+                              <Badge label="NP1-NP5" color="green" />
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 14,
+                                display: "grid",
+                                gap: 10,
+                                gridTemplateColumns: width < 920 ? "1fr" : "repeat(5, minmax(0, 1fr))",
+                              }}
+                            >
+                              {simulationNpBreakdown.map((item) => (
+                                <div
+                                  key={item.domain}
+                                  style={{
+                                    padding: "13px 14px",
+                                    borderRadius: 14,
+                                    background: darkMode ? "rgba(15, 23, 42, 0.72)" : "#F8FBF8",
+                                    border: `1px solid ${C.border}`,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                    <div style={{ fontSize: 14, fontWeight: 900 }}>{item.domain}</div>
+                                    <Badge label={`${item.percent}%`} color={item.percent >= 75 ? "green" : item.percent >= 60 ? "amber" : "red"} />
+                                  </div>
+                                  <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.45 }}>{item.shortTitle}</div>
+                                  <div style={{ marginTop: 8, height: 7, borderRadius: 999, background: darkMode ? C.border : "#E8E4DC", overflow: "hidden" }}>
+                                    <div
+                                      style={{
+                                        width: `${item.percent}%`,
+                                        height: "100%",
+                                        background: item.percent >= 75 ? "#10B981" : item.percent >= 60 ? "#E7A93B" : "#EF4444",
+                                      }}
+                                    />
+                                  </div>
+                                  <div style={{ marginTop: 8, fontSize: 12, color: C.muted }}>
+                                    {item.correct}/{item.total} correct
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: 14,
                               display: "grid",
                               gap: 12,
                               gridTemplateColumns: width < 920 ? "1fr" : "1fr 1fr",
@@ -8414,6 +8668,7 @@ export default function App() {
                                   >
                                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                                       <Badge label={`Q ${index + 1}`} color="blue" />
+                                      <Badge label={item.pnleDomain || inferPnleDomain(item, index)} color="green" />
                                       <Badge label={item.subject} color="gray" />
                                       <Badge label={item.topic} color="gray" />
                                       {item.flagged ? <Badge label="flagged" color="amber" /> : null}

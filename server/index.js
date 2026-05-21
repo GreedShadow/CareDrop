@@ -296,7 +296,7 @@ app.post("/api/claude/quiz", async (req, res) => {
         ? "Use a balanced mix of easy, medium, and hard questions."
         : `Every question must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
     const examInstruction = examMode
-      ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form board review: broad subject coverage, clinically varied stems, strong prioritization, assessment, intervention, and delegation language, and no repetitive wording. Keep exam mode difficult and PNLE-like.`
+      ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form board review: broad subject coverage, clinically varied stems, strong prioritization, assessment, intervention, and delegation language, and no repetitive wording. Keep exam mode difficult and PNLE-like. Balance coverage across NP1, NP2, NP3, NP4, and NP5 when possible.`
       : "Make the set feel like a focused PNLE quiz batch with scenario-based stems whenever appropriate.";
 
     const systemInstruction =
@@ -315,6 +315,9 @@ app.post("/api/claude/quiz", async (req, res) => {
       examMode
         ? "- For multiple_response items, set type=multiple_response and provide correctOptionIds for every correct choice. SATA must have at least 2 correct choices and cannot have every option correct"
         : "- Keep these as single_choice items only",
+      examMode
+        ? "- In simulation mode, spread the batch across the PNLE domains: NP1 foundations/professional practice, NP2 community/maternal/child/family health, and NP3-NP5 physiologic/psychosocial alterations"
+        : "",
       "- Use option objects when possible: { id, text, rationale }",
       "- Avoid clue leakage from subject labels or obvious wording",
       "- Do not use All of the above, None of the above, always, never, joke, unrelated, or pattern-giveaway options",
