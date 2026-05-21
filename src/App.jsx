@@ -172,9 +172,14 @@ function buildExpandedBank(seedBank, targetPerBucket = BANK_ITEMS_PER_BUCKET) {
   return bank;
 }
 
+const EXAM_ITEMS_PER_BUCKET = BANK_ITEMS_PER_BUCKET * 2;
 const QUESTION_BANK = buildExpandedBank(SEED_QUESTION_BANK);
+const SIMULATION_QUESTION_BANK = buildExpandedBank(SEED_QUESTION_BANK, EXAM_ITEMS_PER_BUCKET);
 const ALL_BANK_ENTRIES = Object.entries(QUESTION_BANK).flatMap(([subject, entries]) =>
   entries.map((entry) => ({ ...entry, subject }))
+);
+const ALL_SIMULATION_BANK_ENTRIES = Object.entries(SIMULATION_QUESTION_BANK).flatMap(([subject, entries]) =>
+  entries.map((entry) => ({ ...entry, subject, bankType: "simulation" }))
 );
 const SUBJECT_OPTIONS = [...Object.keys(QUESTION_BANK), "Mixed Review"];
 const DIFFICULTIES = ["All", "easy", "medium", "hard"];
@@ -889,6 +894,10 @@ function sanitizeQuestionType(type, allowMultipleResponse = false) {
 
 function getAllEntries() {
   return ALL_BANK_ENTRIES;
+}
+
+function getAllSimulationEntries() {
+  return ALL_SIMULATION_BANK_ENTRIES;
 }
 
 function getExactEntries(sourceEntries, subject, difficulty, topic) {
@@ -2263,6 +2272,7 @@ export default function App() {
   const subjectDisplay =
     activeTopicFocus && !hasCustomSource ? "Topic Focus" : subject || (activeTopicFocus ? "Topic Focus" : "Select a subject");
   const bankEntries = useMemo(() => getAllEntries(), []);
+  const simulationBankEntries = useMemo(() => getAllSimulationEntries(), []);
   const customEntries = useMemo(
     () => (hasCustomSource ? buildCustomEntries(studyText, subject) : []),
     [hasCustomSource, studyText, subject]
@@ -2285,6 +2295,24 @@ export default function App() {
 
     return customEntries;
   }, [hasCustomSource, customEntries, bankEntries, activeTopicFocus]);
+  const activeSimulationEntries = useMemo(() => {
+    if (!hasCustomSource) {
+      return simulationBankEntries;
+    }
+
+    if (!customEntries.length) {
+      return simulationBankEntries;
+    }
+
+    if (activeTopicFocus) {
+      return uniqueBy(
+        [...customEntries, ...simulationBankEntries],
+        (entry) => `${entry.subject}-${normalize(entry.q || entry.prompt)}-${normalize(entry.a || entry.answer)}`
+      );
+    }
+
+    return customEntries;
+  }, [hasCustomSource, customEntries, simulationBankEntries, activeTopicFocus]);
 
   const weakCardIds = useMemo(
     () =>
@@ -3795,7 +3823,7 @@ export default function App() {
 
     try {
       const localCandidates = buildLocalQuizFallback(
-        activeEntries,
+        activeSimulationEntries,
         "",
         "All",
         "",
@@ -3879,7 +3907,7 @@ export default function App() {
       }
     } catch (error) {
       const fallbackCandidates = buildLocalQuizFallback(
-        activeEntries,
+        activeSimulationEntries,
         "",
         "All",
         "",
