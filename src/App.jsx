@@ -216,47 +216,149 @@ const PNLE_DOMAIN_ORDER = ["NP1", "NP2", "NP3", "NP4", "NP5"];
 const PNLE_DOMAIN_DETAILS = {
   NP1: {
     label: "NP1",
-    title: "Foundation of Professional Nursing Practice",
-    shortTitle: "Foundation",
-    subjects: ["Fundamentals", "Leadership & Management"],
+    title: "Nursing Practice I: Community Health Nursing",
+    shortTitle: "Community Health",
+    weight: 20,
+    subjects: ["Community Health"],
   },
   NP2: {
     label: "NP2",
-    title: "Community Health, Maternal, Child, and Family Nursing",
-    shortTitle: "Community / Mother & Child",
-    subjects: ["Community Health", "Maternal & Newborn", "Pediatrics"],
+    title: "Nursing Practice II: Care of Healthy/At-Risk Mother and Child",
+    shortTitle: "Mother & Child",
+    weight: 20,
+    subjects: ["Maternal & Newborn", "Pediatrics"],
   },
   NP3: {
     label: "NP3",
-    title: "Care of Clients with Physiologic and Psychosocial Alterations A",
+    title: "Nursing Practice III: Care of Clients with Physiologic and Psychosocial Alterations Part A",
     shortTitle: "Alterations A",
-    subjects: ["Medical-Surgical", "Psychiatric Nursing", "Pharmacology"],
+    weight: 20,
+    subjects: ["Medical-Surgical", "Psychiatric Nursing", "Pharmacology", "Fundamentals"],
   },
   NP4: {
     label: "NP4",
-    title: "Care of Clients with Physiologic and Psychosocial Alterations B",
+    title: "Nursing Practice IV: Care of Clients with Physiologic and Psychosocial Alterations Part B",
     shortTitle: "Alterations B",
-    subjects: ["Medical-Surgical", "Pharmacology"],
+    weight: 20,
+    subjects: ["Medical-Surgical", "Pharmacology", "Fundamentals"],
   },
   NP5: {
     label: "NP5",
-    title: "Care of Clients with Physiologic and Psychosocial Alterations C",
+    title: "Nursing Practice V: Care of Clients with Physiologic and Psychosocial Alterations Part C",
     shortTitle: "Alterations C",
+    weight: 20,
     subjects: ["Medical-Surgical", "Pharmacology", "Leadership & Management"],
   },
 };
 
 const PNLE_DOMAIN_FALLBACK_BY_SUBJECT = {
-  Fundamentals: "NP1",
-  "Leadership & Management": "NP1",
-  "Community Health": "NP2",
+  "Community Health": "NP1",
   "Maternal & Newborn": "NP2",
   Pediatrics: "NP2",
-  "Psychiatric Nursing": "NP3",
 };
+
+const PNLE_INTEGRATED_DISCIPLINES = [
+  "Anatomy and Physiology",
+  "Nutrition and Diet Therapy",
+  "Pathophysiology",
+  "Parasitology and Microbiology",
+  "Pharmacology and Therapeutics",
+];
+
+const PNLE_COMPETENCY_DETAILS = {
+  "Safe and Quality Nursing Care": { cluster: "Patient Care Competencies" },
+  Communication: { cluster: "Patient Care Competencies" },
+  "Collaboration and Teamwork": { cluster: "Patient Care Competencies" },
+  "Health Education": { cluster: "Patient Care Competencies" },
+  "Legal Responsibilities": { cluster: "Empowering Competencies" },
+  "Ethico-Moral-Spiritual Responsibilities": { cluster: "Empowering Competencies" },
+  "Personal and Professional Development": { cluster: "Empowering Competencies" },
+  "Management of Resources and Environment": { cluster: "Enabling Competencies" },
+  "Records Management": { cluster: "Enabling Competencies" },
+  Research: { cluster: "Enhancing Competencies" },
+  "Quality Improvement": { cluster: "Enhancing Competencies" },
+};
+
+const PNLE_COMPETENCY_AREAS = Object.keys(PNLE_COMPETENCY_DETAILS);
 
 function getPnleDomainDetail(domain) {
   return PNLE_DOMAIN_DETAILS[domain] || PNLE_DOMAIN_DETAILS.NP1;
+}
+
+function getCompetencyCluster(area) {
+  return PNLE_COMPETENCY_DETAILS[area]?.cluster || "Patient Care Competencies";
+}
+
+function inferIntegratedDiscipline(item) {
+  const source = normalize(
+    `${item?.subject || ""} ${item?.topic || ""} ${item?.prompt || item?.question || item?.stem || item?.q || ""} ${item?.correctAnswer || item?.answer || item?.a || ""}`
+  );
+
+  if (/\b(drug|medication|dose|insulin|digoxin|heparin|warfarin|morphine|antibiotic|anticoagulant|diuretic|therapeutic|toxicity|antidote)\b/.test(source)) {
+    return "Pharmacology and Therapeutics";
+  }
+
+  if (/\b(pathophysiology|shock|sepsis|heart failure|copd|asthma|stroke|renal|liver|pancrea|diabetes|thyroid|acid base|electrolyte|bleeding)\b/.test(source)) {
+    return "Pathophysiology";
+  }
+
+  if (/\b(nutrition|diet|feeding|breastfeeding|protein|calorie|fluid intake|npo|diet therapy)\b/.test(source)) {
+    return "Nutrition and Diet Therapy";
+  }
+
+  if (/\b(infection|microbiology|parasite|parasitology|communicable|tuberculosis|dengue|asepsis|isolation|transmission)\b/.test(source)) {
+    return "Parasitology and Microbiology";
+  }
+
+  return "Anatomy and Physiology";
+}
+
+function inferCompetencyArea(item) {
+  const source = normalize(
+    `${item?.subject || ""} ${item?.topic || ""} ${item?.prompt || item?.question || item?.stem || item?.q || ""} ${item?.correctAnswer || item?.answer || item?.a || ""}`
+  );
+
+  if (/\b(research|evidence based|evidence-based|study design|data collection|sample|hypothesis)\b/.test(source)) {
+    return "Research";
+  }
+
+  if (/\b(quality improvement|quality assurance|near miss|sentinel|root cause|safety process|audit|benchmark)\b/.test(source)) {
+    return "Quality Improvement";
+  }
+
+  if (/\b(teach|teaching|education|instruction|discharge|understands|health promotion)\b/.test(source)) {
+    return "Health Education";
+  }
+
+  if (/\b(communicat|therapeutic|handoff|endorsement|closed loop|conflict|de-escalation)\b/.test(source)) {
+    return "Communication";
+  }
+
+  if (/\b(collaboration|team|delegate|assign|uap|staff|supervis|scope)\b/.test(source)) {
+    return "Collaboration and Teamwork";
+  }
+
+  if (/\b(ethical|ethico|moral|spiritual|confidentiality|advocacy|values|belief)\b/.test(source)) {
+    return "Ethico-Moral-Spiritual Responsibilities";
+  }
+
+  if (/\b(professional development|continuing education|competence|accountability|standards of practice|scope of practice)\b/.test(source)) {
+    return "Personal and Professional Development";
+  }
+
+  if (/\b(legal|consent|negligence|liability|malpractice|incident report|informed consent)\b/.test(source)) {
+    return "Legal Responsibilities";
+  }
+
+  if (/\b(resource|environment|staffing|assignment|management|shortage|triage|disaster|equipment)\b/.test(source)) {
+    return "Management of Resources and Environment";
+  }
+
+  if (/\b(record|documentation|chart|incident report)\b/.test(source)) {
+    return "Records Management";
+  }
+
+  return "Safe and Quality Nursing Care";
 }
 
 function inferPnleDomain(item, fallbackIndex = 0) {
@@ -266,32 +368,33 @@ function inferPnleDomain(item, fallbackIndex = 0) {
   }
 
   const subject = String(item?.subject || "");
-  if (PNLE_DOMAIN_FALLBACK_BY_SUBJECT[subject]) {
-    return PNLE_DOMAIN_FALLBACK_BY_SUBJECT[subject];
-  }
 
   const source = normalize(
     `${subject} ${item?.topic || ""} ${item?.prompt || item?.question || item?.stem || item?.q || ""} ${item?.correctAnswer || item?.answer || item?.a || ""}`
   );
 
-  if (/\b(leadership|management|delegation|supervision|ethic|legal|documentation|research|quality|triage|informed consent|scope)\b/.test(source)) {
+  if (/\b(community|public health|doh|epidemiology|immunization|vaccine|barangay|family planning|home visit|outbreak|surveillance|prevention|health center|communicable)\b/.test(source)) {
     return "NP1";
   }
 
-  if (/\b(community|public health|doh|epidemiology|immunization|vaccine|maternal|pregnan|labor|postpartum|newborn|pediatric|child|family|barangay)\b/.test(source)) {
+  if (/\b(maternal|pregnan|labor|postpartum|newborn|pediatric|child|infant|toddler|adolescent|family|mother|fetal|prenatal|breastfeeding|apgar)\b/.test(source)) {
     return "NP2";
   }
 
-  if (/\b(psych|mental|therapeutic communication|depression|anxiety|schizophrenia|bipolar|suicide|substance|cardiac|respiratory|oxygen|shock|chest pain|asthma|copd)\b/.test(source)) {
+  if (/\b(psych|mental|therapeutic communication|depression|anxiety|schizophrenia|bipolar|suicide|substance|cardiac|respiratory|oxygen|shock|chest pain|asthma|copd|airway|mi|heart failure)\b/.test(source)) {
     return "NP3";
   }
 
-  if (/\b(neuro|stroke|seizure|endocrine|diabetes|thyroid|renal|kidney|fluid|electrolyte|acid base|burn|gi|liver|pancrea)\b/.test(source)) {
+  if (/\b(neuro|stroke|seizure|endocrine|diabetes|thyroid|renal|kidney|fluid|electrolyte|acid base|gi|liver|pancrea|bowel|abg|siadh|diabetes insipidus)\b/.test(source)) {
     return "NP4";
   }
 
-  if (/\b(oncology|cancer|perioperative|surgery|trauma|emergency|critical care|infection|sepsis|orthopedic|reproductive|immune|hematologic)\b/.test(source)) {
+  if (/\b(oncology|cancer|perioperative|surgery|trauma|emergency|critical care|infection|sepsis|orthopedic|reproductive|immune|hematologic|burn|delegation|management|quality|legal|ethical|records|research)\b/.test(source)) {
     return "NP5";
+  }
+
+  if (PNLE_DOMAIN_FALLBACK_BY_SUBJECT[subject]) {
+    return PNLE_DOMAIN_FALLBACK_BY_SUBJECT[subject];
   }
 
   return PNLE_DOMAIN_ORDER[fallbackIndex % PNLE_DOMAIN_ORDER.length];
@@ -300,11 +403,16 @@ function inferPnleDomain(item, fallbackIndex = 0) {
 function attachPnleDomain(item, index = 0) {
   const pnleDomain = inferPnleDomain(item, index);
   const detail = getPnleDomainDetail(pnleDomain);
+  const competencyArea = item.competencyArea || inferCompetencyArea(item);
+  const competencyCluster = item.competencyCluster || getCompetencyCluster(competencyArea);
   return {
     ...item,
     pnleDomain,
     pnleDomainTitle: detail.title,
     pnleDomainShortTitle: detail.shortTitle,
+    integratedDiscipline: item.integratedDiscipline || inferIntegratedDiscipline(item),
+    competencyArea,
+    competencyCluster,
   };
 }
 
@@ -2571,6 +2679,31 @@ export default function App() {
       }),
     [simulationQuestions]
   );
+  const simulationCompetencyBreakdown = useMemo(
+    () =>
+      Object.values(
+        simulationQuestions.reduce((accumulator, item) => {
+          const area = item.competencyArea || inferCompetencyArea(item);
+          const cluster = item.competencyCluster || getCompetencyCluster(area);
+          if (!accumulator[area]) {
+            accumulator[area] = { area, cluster, total: 0, correct: 0 };
+          }
+
+          accumulator[area].total += 1;
+          if (scoreQuestion(item) === 1) {
+            accumulator[area].correct += 1;
+          }
+
+          return accumulator;
+        }, {})
+      )
+        .map((item) => ({
+          ...item,
+          percent: item.total ? Math.round((item.correct / item.total) * 100) : 0,
+        }))
+        .sort((left, right) => right.total - left.total || left.percent - right.percent),
+    [simulationQuestions]
+  );
   const simulationStrongSubjects = simulationSubjectBreakdown.filter((item) => item.percent >= 75).slice(0, 3);
   const simulationWeakSubjects = [...simulationSubjectBreakdown]
     .sort((left, right) => left.percent - right.percent)
@@ -4486,6 +4619,7 @@ export default function App() {
       simulationSize,
       usedAi: simulationUsedAi,
       pnleBreakdown: simulationNpBreakdown,
+      competencyBreakdown: simulationCompetencyBreakdown,
       timer: timerMeta,
       pacingInsight: getPacingInsight(timerMeta, "simulation exam"),
     };
@@ -8181,7 +8315,7 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Simulation Exam</div>
                     <div style={{ fontSize: 12, color: C.muted, maxWidth: 720 }}>
-                      Build a mixed board-style exam across NP1-NP5 using the full CareDrop bank. Gemini helps expand parts of the set so the simulation feels broader and closer to a real PNLE-style review exam.
+                      Build a mixed board-style exam across Nursing Practice I-V. Gemini helps expand parts of the set so the simulation follows the 20%-per-area PNLE pattern while still testing clinical judgment and responsibility-area competencies.
                     </div>
                   </div>
                   {!simulationLaunchOpen && simulationQuestions.length ? (
@@ -8219,7 +8353,7 @@ export default function App() {
                       Choose your simulation length first
                     </div>
                     <div style={{ marginTop: 10, fontSize: 14, color: C.muted, lineHeight: 1.8, maxWidth: 760 }}>
-                      The exam stays hidden until you choose a format. Pick a mixed 50-, 100-, or 500-question simulation to launch a broader board-style exam experience balanced across NP1, NP2, NP3, NP4, and NP5.
+                      The exam stays hidden until you choose a format. Pick a mixed 50-, 100-, or 500-question simulation to launch a broader board-style exam experience across Community Health, Mother and Child, and Physiologic/Psychosocial Alterations.
                     </div>
                     <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
                       {SIMULATION_SIZE_OPTIONS.map((value) => (
@@ -8403,6 +8537,7 @@ export default function App() {
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
                         <Badge label={`Q ${simulationIdx + 1} / ${simulationQuestions.length}`} color="blue" />
                         <Badge label={simulationItem.pnleDomain || inferPnleDomain(simulationItem, simulationIdx)} color="green" />
+                        <Badge label={simulationItem.competencyArea || inferCompetencyArea(simulationItem)} color="blue" />
                         <Badge label={simulationItem.subject} color="gray" />
                         <Badge label={simulationItem.topic} color="gray" />
                         <Badge
@@ -8687,7 +8822,7 @@ export default function App() {
                               <div>
                                 <div style={{ fontSize: 15, fontWeight: 800 }}>PNLE Practice Test Breakdown</div>
                                 <div style={{ marginTop: 4, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
-                                  Simulation items are tagged and balanced across NP1-NP5 where the bank or AI set allows.
+                                  A 500-item PNLE simulation targets 100 items per Nursing Practice area, or 20% each.
                                 </div>
                               </div>
                               <Badge label="NP1-NP5" color="green" />
@@ -8726,6 +8861,60 @@ export default function App() {
                                   </div>
                                   <div style={{ marginTop: 8, fontSize: 12, color: C.muted }}>
                                     {item.correct}/{item.total} correct
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: 14,
+                              padding: "16px 18px",
+                              borderRadius: 16,
+                              background: C.surface,
+                              border: `1px solid ${C.border}`,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                              <div>
+                                <div style={{ fontSize: 15, fontWeight: 800 }}>Competency Area Snapshot</div>
+                                <div style={{ marginTop: 4, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
+                                  Items are also tagged against the 11 Philippine nursing responsibility areas for safer remediation.
+                                </div>
+                              </div>
+                              <Badge label="11 areas" color="blue" />
+                            </div>
+                            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                              {simulationCompetencyBreakdown.slice(0, 6).map((item) => (
+                                <div
+                                  key={item.area}
+                                  style={{
+                                    display: "grid",
+                                    gap: 8,
+                                    gridTemplateColumns: width < 760 ? "1fr" : "minmax(0, 1.7fr) minmax(0, 1fr) 72px",
+                                    alignItems: "center",
+                                    padding: "10px 12px",
+                                    borderRadius: 12,
+                                    background: darkMode ? "rgba(15, 23, 42, 0.72)" : "#F8FBF8",
+                                    border: `1px solid ${C.border}`,
+                                  }}
+                                >
+                                  <div>
+                                    <div style={{ fontSize: 13, fontWeight: 800 }}>{item.area}</div>
+                                    <div style={{ marginTop: 2, fontSize: 11, color: C.muted }}>{item.cluster}</div>
+                                  </div>
+                                  <div style={{ height: 7, borderRadius: 999, background: darkMode ? C.border : "#E8E4DC", overflow: "hidden" }}>
+                                    <div
+                                      style={{
+                                        width: `${item.percent}%`,
+                                        height: "100%",
+                                        background: item.percent >= 75 ? "#10B981" : item.percent >= 60 ? "#E7A93B" : "#EF4444",
+                                      }}
+                                    />
+                                  </div>
+                                  <div style={{ fontSize: 12, color: C.muted, textAlign: width < 760 ? "left" : "right" }}>
+                                    {item.correct}/{item.total}
                                   </div>
                                 </div>
                               ))}
@@ -8871,6 +9060,7 @@ export default function App() {
                                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                                       <Badge label={`Q ${index + 1}`} color="blue" />
                                       <Badge label={item.pnleDomain || inferPnleDomain(item, index)} color="green" />
+                                      <Badge label={item.competencyArea || inferCompetencyArea(item)} color="blue" />
                                       <Badge label={item.subject} color="gray" />
                                       <Badge label={item.topic} color="gray" />
                                       {item.flagged ? <Badge label="flagged" color="amber" /> : null}
