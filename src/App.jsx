@@ -740,6 +740,84 @@ function hasScopeMismatch(prompt, answer) {
   return false;
 }
 
+function inferClinicalTrap(prompt, entry = {}) {
+  const primaryValue = normalize(`${prompt || ""} ${entry.topic || ""} ${entry.subject || ""}`);
+  const answerValue = normalize(`${entry.a || entry.answer || entry.correctAnswer || ""}`);
+  const value = `${primaryValue} ${answerValue}`.trim();
+
+  if (/\b(airway|stridor|breath|oxygen|dyspnea|respiratory|choking|aspiration)\b/.test(primaryValue)) {
+    return "airway-breathing";
+  }
+
+  if (/\b(delegat|assign|uap|nursing assistant|supervis|staff|scope)\b/.test(primaryValue)) {
+    return "delegation";
+  }
+
+  if (/\b(medication|drug|dose|digoxin|insulin|heparin|warfarin|morphine|opioid|anticoagulant|antibiotic|administer)\b/.test(primaryValue)) {
+    return "medication-safety";
+  }
+
+  if (/\b(infection|isolation|asepsis|sterile|transmission|communicable|tuberculosis|dengue|sepsis)\b/.test(primaryValue)) {
+    return "infection-control";
+  }
+
+  if (/\b(lab|electrolyte|potassium|sodium|calcium|abg|ph|paco2|hco3|fluid|dehydrat|shock|bleeding|perfusion|neuro|mentation|stroke|seizure|consciousness)\b/.test(primaryValue)) {
+    return "physiologic-instability";
+  }
+
+  if (/\b(teaching|discharge|instruction|education|understands|learn|home care)\b/.test(primaryValue)) {
+    return "patient-teaching";
+  }
+
+  if (/\b(first|priority|initial|most important|safest|immediate)\b/.test(primaryValue)) {
+    return "priority-setting";
+  }
+
+  if (/\b(airway|stridor|breath|oxygen|dyspnea|respiratory|choking|aspiration)\b/.test(value)) return "airway-breathing";
+  if (/\b(delegat|assign|uap|nursing assistant|supervis|staff|scope)\b/.test(value)) return "delegation";
+  if (/\b(medication|drug|dose|digoxin|insulin|heparin|warfarin|morphine|opioid|anticoagulant|antibiotic|administer)\b/.test(value)) return "medication-safety";
+  if (/\b(lab|electrolyte|potassium|sodium|calcium|abg|ph|paco2|hco3|fluid|dehydrat|shock|bleeding|perfusion|neuro|mentation|stroke|seizure|consciousness)\b/.test(value)) return "physiologic-instability";
+  if (/\b(infection|isolation|asepsis|sterile|transmission|communicable|tuberculosis|dengue|sepsis)\b/.test(value)) return "infection-control";
+  return "clinical-judgment";
+}
+
+function getTrapLabel(trap) {
+  return {
+    "airway-breathing": "ABC priority",
+    delegation: "delegation and scope",
+    "medication-safety": "medication safety",
+    "infection-control": "infection control",
+    "physiologic-instability": "physiologic instability",
+    "patient-teaching": "patient teaching",
+    "priority-setting": "priority setting",
+    "clinical-judgment": "clinical judgment",
+  }[trap] || "clinical judgment";
+}
+
+function buildClinicalStem(entry, requestedTopic = "", variantIndex = 0) {
+  const topic = String(requestedTopic || entry.topic || "the client situation").trim();
+  const subject = entry.subject || "PNLE review";
+  const cue = cleanClinicalCueForPrompt(entry.q || "");
+  const trap = inferClinicalTrap(cue || entry.q, entry);
+  const client = [
+    "an adult client",
+    "a newly admitted client",
+    "a postoperative client",
+    "a client on the medical-surgical unit",
+    "a client in a community clinic",
+    "a client receiving nursing care",
+  ][variantIndex % 6];
+  const scenarioCue = cue && cue.length > 18 ? cue.replace(/[?]+$/g, "") : `the stem centers on ${topic}`;
+  const frames = [
+    `The nurse is caring for ${client}. The key cue is: ${scenarioCue}. Which action best reflects safe ${getTrapLabel(trap)}?`,
+    `A PNLE-style item describes ${client} with a concern related to ${topic}. ${scenarioCue}. Which response should the nurse prioritize?`,
+    `During endorsement, the nurse notes this cue: ${scenarioCue}. Which option is the best nursing judgment for ${subject}?`,
+    `The nurse must choose between several reasonable actions for ${topic}. Based on this cue, ${scenarioCue}, what is the safest next response?`,
+  ];
+
+  return frames[variantIndex % frames.length].replace(/\s+/g, " ").trim();
+}
+
 function isWeakDistractor(option, correctAnswer) {
   const normalizedOption = normalize(option);
   const optionKey = normalizeOptionKey(option);
@@ -756,23 +834,117 @@ function isWeakDistractor(option, correctAnswer) {
   );
 }
 
-function buildFallbackDistractors(prompt, correctAnswer) {
+function buildTrapDistractors(prompt, correctAnswer, entry = {}) {
+  const trap = inferClinicalTrap(prompt, entry);
+  const banks = {
+    "airway-breathing": [
+      "Document the finding and reassess after completing routine care.",
+      "Offer oral fluids and allow the client to rest before escalating.",
+      "Ask a nursing assistant to obtain supplies while delaying focused respiratory assessment.",
+      "Provide reassurance first because anxiety can worsen breathing discomfort.",
+    ],
+    delegation: [
+      "Assign the unstable assessment to assistive personnel and review the findings later.",
+      "Delegate teaching because the task is routine once instructions are written.",
+      "Ask the least busy staff member to decide which client should be seen first.",
+      "Complete documentation before clarifying whether the assigned task is within scope.",
+    ],
+    "medication-safety": [
+      "Administer the medication now and check the focused assessment afterward.",
+      "Hold the medication without assessing the client or notifying the prescriber.",
+      "Give the dose through the fastest available route to prevent delay.",
+      "Rely on the previous shift's assessment because the order is already prescribed.",
+    ],
+    "infection-control": [
+      "Delay isolation measures until the diagnosis is confirmed by the provider.",
+      "Use standard precautions only because transmission risk is not yet proven.",
+      "Prioritize visitor comfort before applying the indicated transmission precautions.",
+      "Place the client with another client who has a similar symptom pattern.",
+    ],
+    "physiologic-instability": [
+      "Continue routine monitoring because one abnormal cue may be temporary.",
+      "Offer comfort measures before reassessing perfusion, vital signs, or oxygenation.",
+      "Wait for the next scheduled assessment before escalating the change.",
+      "Focus on documenting the trend before intervening for possible deterioration.",
+    ],
+    "patient-teaching": [
+      "Give all discharge instructions at once and ask the client to read them later.",
+      "Assume understanding because the client nods during the explanation.",
+      "Emphasize general wellness advice instead of the warning signs in the stem.",
+      "Ask family members to interpret teaching without checking client understanding.",
+    ],
+    "priority-setting": [
+      "Address the easiest task first to reduce the number of remaining concerns.",
+      "Choose the comfort-focused action before assessing possible instability.",
+      "Delay the priority action until all routine data have been collected.",
+      "Select the option that is helpful but does not address the most immediate risk.",
+    ],
+    "clinical-judgment": [
+      "Choose the familiar routine action even though the stem gives a higher-risk cue.",
+      "Delay focused assessment until the client reports worsening symptoms.",
+      "Prioritize documentation before acting on the most concerning cue.",
+      "Select the action that may be correct later but is not the safest first response.",
+    ],
+  };
+
+  return (banks[trap] || banks["clinical-judgment"]).filter((option) => normalize(option) !== normalize(correctAnswer));
+}
+
+function buildFallbackDistractors(prompt, correctAnswer, entry = {}) {
   const scope = inferQuestionScope(prompt);
   const trimmedCorrect = alignTextToPrompt(prompt, correctAnswer);
+  const trapDistractors = buildTrapDistractors(prompt, trimmedCorrect, entry);
 
   if (scope === "specific") {
-    return [
+    return uniqueBy([
+      ...trapDistractors,
       "Delay the priority action until more symptoms appear.",
       "Continue routine monitoring before addressing the priority cue.",
       "Delegate the judgment call before completing the nursing assessment.",
-    ].filter((option) => normalize(option) !== normalize(trimmedCorrect));
+    ].filter((option) => normalize(option) !== normalize(trimmedCorrect)), (option) => normalizeOptionKey(option));
   }
 
-  return [
+  return uniqueBy([
+    ...trapDistractors,
     "Continue routine care before reassessing the client.",
     "Delay the priority intervention until the provider evaluates the client.",
     "Focus on a secondary comfort measure before addressing the main clinical need.",
-  ].filter((option) => normalize(option) !== normalize(trimmedCorrect));
+  ].filter((option) => normalize(option) !== normalize(trimmedCorrect)), (option) => normalizeOptionKey(option));
+}
+
+function buildOptionRationale(option, correctAnswer, prompt, entry = {}) {
+  const isCorrect = normalize(option) === normalize(correctAnswer);
+  const trap = getTrapLabel(inferClinicalTrap(prompt, entry));
+
+  if (isCorrect) {
+    return `Correct: this option best matches the stem cue and protects the client using ${trap} logic.`;
+  }
+
+  if (/delay|wait|later|scheduled|routine monitoring|reassess after/i.test(option)) {
+    return `Incorrect: this delays action even though the stem points to a priority or possible deterioration.`;
+  }
+
+  if (/delegate|assign|assistant|uap|staff/i.test(option)) {
+    return `Incorrect: this shifts nursing judgment or assessment outside the safest scope for the cue given.`;
+  }
+
+  if (/document|documentation|chart/i.test(option)) {
+    return `Incorrect: documentation matters after the nurse addresses the immediate clinical priority.`;
+  }
+
+  if (/reassurance|comfort|oral fluids|visitor|wellness/i.test(option)) {
+    return `Incorrect: this may be supportive later, but it does not address the highest-risk cue first.`;
+  }
+
+  return `Incorrect: this is plausible, but it is less appropriate because it misses the safest priority in the stem.`;
+}
+
+function buildOptionObjects(prompt, correctAnswer, optionTexts, entry = {}) {
+  return optionTexts.map((text, index) => ({
+    id: ["a", "b", "c", "d", "e"][index] || `option-${index + 1}`,
+    text,
+    rationale: buildOptionRationale(text, correctAnswer, prompt, entry),
+  }));
 }
 
 function isInstructionLikeOption(option) {
@@ -882,7 +1054,8 @@ function buildTopicFallbackEntries(topic, subject, difficulty, count, offset = 0
 function buildQuizRationale(entry, prompt, correctAnswer) {
   const topic = entry.topic || "this concept";
   const subject = entry.subject || "PNLE review";
-  return `Correct Answer Explanation: ${correctAnswer} is best because it matches the priority nursing judgment for ${topic} in ${subject}. Incorrect Options Explanation: Other choices may sound relevant, but they are less appropriate when they delay the priority action, miss the main assessment cue, or fail to address the safest next step in the stem. Key Takeaway: choose the answer that best protects safety and follows assessment-before-intervention logic.`;
+  const trap = getTrapLabel(inferClinicalTrap(prompt, entry));
+  return `Correct Answer Explanation: ${correctAnswer} is best because it matches the stem cue and applies ${trap} reasoning for ${topic} in ${subject}. Incorrect Options Explanation: The distractors are designed as tempting but less safe choices, such as delaying action, choosing routine care, delegating nursing judgment, or treating a secondary concern before the priority cue. Key Takeaway: identify the highest-risk cue first, then choose the option that protects safety, follows assessment-before-intervention when appropriate, and fits the nurse's scope.`;
 }
 
 function sanitizeQuestionType(type, allowMultipleResponse = false) {
@@ -1035,35 +1208,33 @@ function buildQuizVariants(entry, requestedTopic = "") {
   const sourceCue = cleanClinicalCueForPrompt(entry.q || "");
   const topicLabel = String(requestedTopic || entry.topic || "this nursing concept").trim();
   const focusedEntry = { ...entry, topic: topicLabel };
-  const baseRationale = buildQuizRationale(focusedEntry, entry.q, alignedAnswer);
-  const contextualCue = sourceCue
-    ? `Clinical cue: ${sourceCue.replace(/[?]+$/g, "")}.`
-    : `Clinical cue: the main concern is ${topicLabel}.`;
+  const scenarioStems = [0, 1, 2, 3].map((index) => buildClinicalStem(focusedEntry, topicLabel, index));
 
   return [
     {
       prompt: requestedTopic
-        ? `A client scenario involves ${topicLabel}. ${contextualCue} Which nursing response is the safest priority?`
-        : entry.q,
-      rationale: baseRationale,
+        ? scenarioStems[0]
+        : buildClinicalStem(focusedEntry, topicLabel, 0),
+      rationale: buildQuizRationale(focusedEntry, scenarioStems[0], alignedAnswer),
     },
     {
-      prompt: `The nurse is caring for a client with concerns related to ${topicLabel}. ${contextualCue} Which response best protects patient safety?`,
-      rationale: buildQuizRationale(focusedEntry, `The nurse is caring for a client with concerns related to ${topicLabel}. ${contextualCue} Which response best protects patient safety?`, alignedAnswer),
+      prompt: scenarioStems[1],
+      rationale: buildQuizRationale(focusedEntry, scenarioStems[1], alignedAnswer),
     },
     {
-      prompt: `A board-style nursing item is testing ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`,
-      rationale: buildQuizRationale(focusedEntry, `A board-style nursing item is testing ${topicLabel}. ${contextualCue} Which choice best matches the priority nursing judgment?`, alignedAnswer),
+      prompt: scenarioStems[2],
+      rationale: buildQuizRationale(focusedEntry, scenarioStems[2], alignedAnswer),
     },
     {
-      prompt: `The stem points to ${topicLabel} and asks for safe clinical judgment. ${contextualCue} What is the best answer?`,
-      rationale: buildQuizRationale(focusedEntry, `The stem points to ${topicLabel} and asks for safe clinical judgment. ${contextualCue} What is the best answer?`, alignedAnswer),
+      prompt: scenarioStems[3],
+      rationale: buildQuizRationale(focusedEntry, scenarioStems[3], alignedAnswer),
     },
   ];
 }
 
 function finalizeQuizOptions(prompt, correctAnswer, options, subject, difficulty, topic) {
   const alignedCorrect = alignTextToPrompt(prompt, correctAnswer, 18, 26);
+  const contextEntry = { subject, difficulty, topic, a: alignedCorrect };
   const pool = getExactEntries(
     getAllEntries(),
     subject === "Mixed Review" ? "" : subject,
@@ -1096,7 +1267,7 @@ function finalizeQuizOptions(prompt, correctAnswer, options, subject, difficulty
     }
   }
 
-  for (const option of buildFallbackDistractors(prompt, alignedCorrect)) {
+  for (const option of buildFallbackDistractors(prompt, alignedCorrect, contextEntry)) {
     if (mergedDistractors.length >= 3) {
       break;
     }
@@ -1135,7 +1306,7 @@ function buildDistractors(entry, pool) {
     ),
     (item) => normalize(item.a)
   );
-  const fallbackOptions = buildFallbackDistractors(entry.q, entry.a);
+  const fallbackOptions = buildFallbackDistractors(entry.q, entry.a, entry);
 
   const options = [
     ...sameTopicPool.map((item) => item.a),
@@ -1168,6 +1339,9 @@ function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count
           continue;
         }
 
+        const correctAnswer = alignTextToPrompt(variant.prompt, entry.a, 18, 26);
+        const optionTexts = buildDistractors({ ...entry, q: variant.prompt }, distractorPool);
+
         questions.push({
           id: `${entry.subject}-${uid()}`,
           subject: entry.subject,
@@ -1175,10 +1349,10 @@ function buildLocalQuizFallback(sourceEntries, subject, difficulty, topic, count
           topic: topic || entry.topic,
           type: QUESTION_TYPES.SINGLE_CHOICE,
           prompt: variant.prompt,
-          correctAnswer: alignTextToPrompt(variant.prompt, entry.a, 18, 26),
-          options: buildDistractors({ ...entry, q: variant.prompt }, distractorPool),
+          correctAnswer,
+          options: buildOptionObjects(variant.prompt, correctAnswer, optionTexts, entry),
           rationale: variant.rationale,
-          notes: `Key takeaway: focus on the best nursing priority for ${topic || entry.topic}.`,
+          notes: `Key takeaway: use ${getTrapLabel(inferClinicalTrap(variant.prompt, entry))} logic before choosing the answer for ${topic || entry.topic}.`,
           userAnswer: null,
         });
 

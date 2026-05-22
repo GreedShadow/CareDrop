@@ -300,7 +300,7 @@ app.post("/api/claude/quiz", async (req, res) => {
       : "Make the set feel like a focused PNLE quiz batch with scenario-based stems whenever appropriate.";
 
     const systemInstruction =
-      "You generate PRC NLE-style nursing quiz questions. Every item must be clinically accurate, PNLE-relevant, and structured as JSON only. Use scenario-based nursing stems whenever possible, with prioritization, assessment-vs-intervention, safety, delegation, or patient-teaching reasoning. Each item must have 4-5 distinct plausible options, one best answer for single_choice, and strong rationales. Most items should be single_choice. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
+      "You generate PRC NLE-style nursing quiz questions. Every item must be clinically accurate, PNLE-relevant, and structured as JSON only. Use scenario-based nursing stems whenever possible, with prioritization, assessment-vs-intervention, safety, delegation, medication safety, or patient-teaching reasoning. Make the learner think: the wrong choices should be tempting because they are partly reasonable but less safe, delayed, out of sequence, outside scope, or focused on a lower-priority cue. Each item must have 4-5 distinct plausible options, one best answer for single_choice, and strong rationales. Most items should be single_choice. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
     const prompt = [
       `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
       difficultyInstruction,
@@ -309,6 +309,9 @@ app.post("/api/claude/quiz", async (req, res) => {
       "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
       "Question quality rules:",
       "- Use 4 plausible answer choices, or 5 only when a SATA item needs it",
+      "- Stems should usually include a client context, key cue, and decision task; avoid bare recall unless the requested mode is flashcard-like review",
+      "- The correct answer must be the best nursing action or interpretation, not merely a true statement",
+      "- Distractors must be attractive but flawed: delayed priority, wrong sequence, unsafe delegation, premature intervention, incomplete assessment, or lower-priority comfort/documentation",
       examMode
         ? "- Use mostly single_choice items, but you may include a limited number of multiple_response SATA items when clinically appropriate"
         : "- One best answer only",
@@ -319,6 +322,7 @@ app.post("/api/claude/quiz", async (req, res) => {
         ? "- In simulation mode, spread the batch across the PNLE domains: NP1 foundations/professional practice, NP2 community/maternal/child/family health, and NP3-NP5 physiologic/psychosocial alterations"
         : "",
       "- Use option objects when possible: { id, text, rationale }",
+      "- Every option object should include a short rationale explaining why it is correct or less appropriate",
       "- Avoid clue leakage from subject labels or obvious wording",
       "- Do not use All of the above, None of the above, always, never, joke, unrelated, or pattern-giveaway options",
       "- Distractors should be realistic but less appropriate than the correct answer",
