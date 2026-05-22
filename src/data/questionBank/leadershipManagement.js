@@ -58,5 +58,35 @@ export const leadershipManagement = [
     "a": "The nurse remains accountable for the outcome and must verify that the task was completed safely.",
     "difficulty": "medium",
     "topic": "delegation"
+  },
+  {
+    "q": "Which client should the RN assign to an experienced nurse rather than a new graduate?",
+    "a": "The unstable client with changing assessment findings, complex interventions, or high risk for rapid deterioration.",
+    "difficulty": "hard",
+    "topic": "assignment"
+  },
+  {
+    "q": "What should the charge nurse prioritize when two clients need care at the same time?",
+    "a": "Use acuity, ABCs, safety risk, and potential for deterioration rather than fairness or convenience alone.",
+    "difficulty": "hard",
+    "topic": "prioritization"
+  },
+  {
+    "q": "Which situation requires immediate RN intervention after delegation?",
+    "a": "When delegated data suggest instability or the task was completed outside the person's scope or competence.",
+    "difficulty": "hard",
+    "topic": "delegation"
+  },
+  {
+    "q": "How should a nurse respond when asked to perform a task outside competence?",
+    "a": "Clarify the concern, seek supervision or training, and protect patient safety rather than accepting unsafe responsibility.",
+    "difficulty": "medium",
+    "topic": "professional accountability"
+  },
+  {
+    "q": "What is the priority when a nurse discovers a near-miss medication error?",
+    "a": "Assess whether the patient was affected, report through the safety process, and support system improvement.",
+    "difficulty": "medium",
+    "topic": "quality improvement"
   }
 ];

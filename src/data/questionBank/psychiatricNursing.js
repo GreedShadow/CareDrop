@@ -58,5 +58,35 @@ export const psychiatricNursing = [
     "a": "Stopping medication abruptly can trigger relapse, instability, and safety risks.",
     "difficulty": "medium",
     "topic": "mood disorders"
+  },
+  {
+    "q": "A client with panic symptoms says, 'I feel like I am dying.' What is the best initial nursing response?",
+    "a": "Stay with the client, use calm brief statements, reduce stimulation, and support breathing without overwhelming the client.",
+    "difficulty": "hard",
+    "topic": "anxiety"
+  },
+  {
+    "q": "A manic client is pacing, intrusive, and unable to sit for meals. What should the nurse prioritize?",
+    "a": "Safety, low-stimulation environment, limit setting, and portable high-calorie nutrition because judgment and rest are impaired.",
+    "difficulty": "hard",
+    "topic": "mood disorders"
+  },
+  {
+    "q": "Which response is safest when a client expresses paranoid thoughts about staff poisoning food?",
+    "a": "Acknowledge the fear without arguing about the belief, offer sealed food if appropriate, and maintain safety and trust.",
+    "difficulty": "hard",
+    "topic": "psychosis"
+  },
+  {
+    "q": "What is the priority when a client with depression suddenly appears calm after days of suicidal statements?",
+    "a": "Reassess suicide risk because sudden calmness can occur after a client has formed a plan.",
+    "difficulty": "hard",
+    "topic": "crisis intervention"
+  },
+  {
+    "q": "What is the therapeutic response to a client who is escalating verbally?",
+    "a": "Use a calm voice, respect personal space, set clear limits, and offer choices that preserve safety.",
+    "difficulty": "medium",
+    "topic": "de-escalation"
   }
 ];

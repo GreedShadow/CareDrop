@@ -208,5 +208,131 @@ export const medicalSurgical = [
     "a": "Complete absence of urine can point to obstruction or severe renal compromise and needs immediate clarification.",
     "difficulty": "hard",
     "topic": "renal"
+  },
+  {
+    "q": "A client with chest pain becomes hypotensive with crackles and cool clammy skin. What complication should the nurse suspect?",
+    "a": "Cardiogenic shock. Poor perfusion with pulmonary congestion after cardiac symptoms requires urgent escalation.",
+    "difficulty": "hard",
+    "topic": "cardiac"
+  },
+  {
+    "q": "Which finding after cardiac catheterization is most urgent?",
+    "a": "Loss of distal pulse, cool extremity, expanding hematoma, or sudden back pain because bleeding or vascular compromise may be occurring.",
+    "difficulty": "hard",
+    "topic": "cardiac"
+  },
+  {
+    "q": "What should the nurse do first when a client with a chest tube develops sudden severe dyspnea and tracheal deviation?",
+    "a": "Treat it as possible tension pneumothorax, assess airway and breathing, call for immediate help, and prepare for emergency intervention.",
+    "difficulty": "hard",
+    "topic": "respiratory"
+  },
+  {
+    "q": "A ventilated client has a high-pressure alarm. What should the nurse assess first?",
+    "a": "Check the client and airway for coughing, biting, secretions, kinks, or decreased lung compliance before assuming equipment failure.",
+    "difficulty": "hard",
+    "topic": "respiratory"
+  },
+  {
+    "q": "Which ABG pattern is consistent with uncompensated respiratory acidosis?",
+    "a": "Low pH with elevated PaCO2 and near-normal bicarbonate, often reflecting hypoventilation.",
+    "difficulty": "hard",
+    "topic": "acid-base"
+  },
+  {
+    "q": "A client with SIADH becomes confused and has a seizure. What imbalance is most concerning?",
+    "a": "Severe hyponatremia from water retention, which can cause neurologic deterioration and seizures.",
+    "difficulty": "hard",
+    "topic": "endocrine"
+  },
+  {
+    "q": "A client with diabetes insipidus has excessive urine output and intense thirst. What is the priority concern?",
+    "a": "Fluid volume deficit and hypernatremia because free-water loss can quickly impair perfusion and neurologic status.",
+    "difficulty": "hard",
+    "topic": "endocrine"
+  },
+  {
+    "q": "What is the priority assessment for a client with suspected compartment syndrome after fracture?",
+    "a": "Severe pain out of proportion, pain with passive stretch, paresthesia, pallor, pulselessness, or paralysis require urgent escalation.",
+    "difficulty": "hard",
+    "topic": "musculoskeletal"
+  },
+  {
+    "q": "A client with spinal cord injury above T6 has pounding headache, sweating, and severe hypertension. What should the nurse suspect?",
+    "a": "Autonomic dysreflexia. Sit the client upright, assess for triggers such as bladder distention, and escalate promptly.",
+    "difficulty": "hard",
+    "topic": "neurologic"
+  },
+  {
+    "q": "Which finding suggests increased risk after thrombolytic therapy for ischemic stroke?",
+    "a": "New severe headache, acute hypertension, vomiting, or neurologic worsening may suggest intracranial bleeding.",
+    "difficulty": "hard",
+    "topic": "neurologic"
+  },
+  {
+    "q": "A client with bowel obstruction suddenly has fever, rigid abdomen, and worsening pain. What should the nurse suspect?",
+    "a": "Possible strangulation or perforation, which requires urgent escalation rather than routine symptom control.",
+    "difficulty": "hard",
+    "topic": "gastrointestinal"
+  },
+  {
+    "q": "Which finding is most concerning in acute pancreatitis?",
+    "a": "Grey Turner or Cullen sign, hypotension, fever, or worsening respiratory status may indicate hemorrhage or severe systemic involvement.",
+    "difficulty": "hard",
+    "topic": "gastrointestinal"
+  },
+  {
+    "q": "A client with liver disease has vomiting blood and altered mentation. What is the priority concern?",
+    "a": "Airway protection and hypovolemic shock risk from variceal bleeding take priority over routine assessment.",
+    "difficulty": "hard",
+    "topic": "gastrointestinal"
+  },
+  {
+    "q": "What is the safest interpretation of sudden dyspnea, chest pain, and petechiae after a long-bone fracture?",
+    "a": "Fat embolism syndrome is possible and requires oxygenation support, assessment, and urgent escalation.",
+    "difficulty": "hard",
+    "topic": "musculoskeletal"
+  },
+  {
+    "q": "Which finding after mastectomy should the nurse report urgently?",
+    "a": "Rapid swelling, bright-red drainage, or signs of respiratory compromise because bleeding or hematoma can threaten perfusion or airway.",
+    "difficulty": "medium",
+    "topic": "oncology"
+  },
+  {
+    "q": "A client receiving chemotherapy has fever and very low neutrophils. What is the priority nursing action?",
+    "a": "Treat it as possible neutropenic sepsis, institute protective measures, assess quickly, and notify the provider immediately.",
+    "difficulty": "hard",
+    "topic": "oncology"
+  },
+  {
+    "q": "Which finding in a burn client suggests possible inhalation injury?",
+    "a": "Facial burns, singed nasal hairs, hoarseness, soot, or carbonaceous sputum require airway-focused assessment.",
+    "difficulty": "hard",
+    "topic": "burns"
+  },
+  {
+    "q": "What is the priority during the first 24 hours after a major burn?",
+    "a": "Airway assessment and fluid resuscitation are central because edema and capillary leak can quickly threaten oxygenation and perfusion.",
+    "difficulty": "hard",
+    "topic": "burns"
+  },
+  {
+    "q": "A client with suspected sepsis has fever, tachycardia, hypotension, and confusion. What should the nurse prioritize?",
+    "a": "Rapid recognition, cultures and antibiotics as ordered, fluid support, perfusion monitoring, and urgent escalation.",
+    "difficulty": "hard",
+    "topic": "sepsis"
+  },
+  {
+    "q": "What finding suggests fluid overload during IV therapy?",
+    "a": "Dyspnea, crackles, rising blood pressure, bounding pulse, edema, or sudden weight gain suggest circulatory overload.",
+    "difficulty": "medium",
+    "topic": "fluids"
+  },
+  {
+    "q": "Which postoperative finding is most suggestive of pulmonary embolism?",
+    "a": "Sudden dyspnea, pleuritic chest pain, tachycardia, anxiety, and low oxygen saturation after immobility.",
+    "difficulty": "hard",
+    "topic": "vascular"
   }
 ];
