@@ -18,7 +18,9 @@ import {
   RECENT_MEMORY_LIMIT,
   REQUEST_STORAGE_KEY,
   SIMULATION_BATCH_SIZE,
-  SIMULATION_SIZE_OPTIONS,
+  SIMULATION_BLOCK_SIZE,
+  SIMULATION_DURATION_MINUTES,
+  SIMULATION_FULL_SIZE,
   SUPPORTED_UPLOAD_EXTENSIONS,
 } from "./caredrop/constants";
 import {
@@ -494,6 +496,64 @@ function buildBalancedPnleSimulationSet(pool, targetSize, usedPrompts = [], rece
   }
 
   return selected.slice(0, target);
+}
+
+function buildFullPnleSimulationSet(pool, usedPrompts = [], recentPrompts = []) {
+  const normalizedPool = attachPnleDomains(pool);
+  const selected = [];
+  const selectedKeys = new Set();
+
+  function getKey(item) {
+    return normalize(item.prompt || item.question || item.stem || item.q || item.id);
+  }
+
+  for (const domain of PNLE_DOMAIN_ORDER) {
+    const domainPool = normalizedPool.filter((item) => item.pnleDomain === domain);
+    const cleanDomainPool = uniqueBy(domainPool, getKey);
+    const freshDomainPool = cleanDomainPool.filter((item) => {
+      const key = getKey(item);
+      return key && !selectedKeys.has(key);
+    });
+    const block = selectSessionItems(
+      freshDomainPool.length ? freshDomainPool : cleanDomainPool,
+      SIMULATION_BLOCK_SIZE,
+      usedPrompts,
+      recentPrompts,
+      getKey
+    );
+
+    for (const item of block) {
+      const key = getKey(item);
+      selected.push(item);
+      if (key) {
+        selectedKeys.add(key);
+      }
+    }
+
+    if (block.length < SIMULATION_BLOCK_SIZE) {
+      const fill = selectSessionItems(
+        normalizedPool.filter((item) => item.pnleDomain !== domain),
+        SIMULATION_BLOCK_SIZE - block.length,
+        [...usedPrompts, ...selected.map(getKey)],
+        recentPrompts,
+        getKey
+      );
+      selected.push(...fill.map((item) => ({ ...item, pnleDomain: domain, pnleDomainTitle: getPnleDomainDetail(domain).title, pnleDomainShortTitle: getPnleDomainDetail(domain).shortTitle })));
+    }
+  }
+
+  return selected.slice(0, SIMULATION_FULL_SIZE).map((item, index) => {
+    const domainIndex = Math.floor(index / SIMULATION_BLOCK_SIZE);
+    const domain = PNLE_DOMAIN_ORDER[domainIndex] || inferPnleDomain(item, index);
+    const detail = getPnleDomainDetail(domain);
+    return {
+      ...attachPnleDomain(item, index),
+      pnleDomain: domain,
+      pnleDomainTitle: detail.title,
+      pnleDomainShortTitle: detail.shortTitle,
+      simulationBlockQuestion: (index % SIMULATION_BLOCK_SIZE) + 1,
+    };
+  });
 }
 
 function buildLocalSummary(text) {
@@ -1721,7 +1781,7 @@ function createDefaultTimerSettings() {
   return {
     flashcard: { timerMode: "untimed", durationMinutes: 10, customMinutes: "" },
     quiz: { timerMode: "untimed", durationMinutes: 15, customMinutes: "" },
-    simulation: { timerMode: "untimed", durationMinutes: 60, customMinutes: "" },
+    simulation: { timerMode: "timed", durationMinutes: SIMULATION_DURATION_MINUTES, customMinutes: "" },
   };
 }
 
@@ -1821,7 +1881,7 @@ export default function App() {
   const [simulationIdx, setSimulationIdx] = useState(0);
   const [simulationResponseTimes, setSimulationResponseTimes] = useState(safeObject(persisted?.simulationResponseTimes));
   const [simulationSubmitted, setSimulationSubmitted] = useState(false);
-  const [simulationSize, setSimulationSize] = useState(50);
+  const [simulationSize, setSimulationSize] = useState(SIMULATION_FULL_SIZE);
   const [simulationUsedAi, setSimulationUsedAi] = useState(false);
   const [simulationAnswerSheetOpen, setSimulationAnswerSheetOpen] = useState(false);
   const [simulationLaunchOpen, setSimulationLaunchOpen] = useState(
@@ -2059,7 +2119,7 @@ export default function App() {
     setSimulationIdx(clamp(Number(snapshot.simulationIdx || 0), 0, Math.max(safeArray(snapshot.simulationQuestions).length - 1, 0)));
     setSimulationResponseTimes(safeObject(snapshot.simulationResponseTimes));
     setSimulationSubmitted(Boolean(snapshot.simulationSubmitted));
-    setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(snapshot.simulationSize)) ? Number(snapshot.simulationSize) : 50);
+    setSimulationSize(SIMULATION_FULL_SIZE);
     setSimulationUsedAi(Boolean(snapshot.simulationUsedAi));
     setSimulationAnswerSheetOpen(false);
     setSimulationLaunchOpen(!(safeMode(snapshot.mode) === "simulation" && safeArray(snapshot.simulationQuestions).length));
@@ -2121,7 +2181,7 @@ export default function App() {
   function openNewSimulationSetup() {
     resetSessionTimer();
     setSimulationLaunchOpen(true);
-    setStatusMessage("Choose a new simulation length to start another exam.");
+    setStatusMessage("Take a moment before starting a new full PNLE simulation.");
   }
 
   function updateTimerSetting(modeType, patch) {
@@ -2169,10 +2229,12 @@ export default function App() {
     return true;
   }
 
-  function startSessionTimer(modeType) {
-    const settings = timerSettings[modeType] || createDefaultTimerSettings()[modeType];
+  function startSessionTimer(modeType, settingsOverride = null) {
+    const settings = settingsOverride || timerSettings[modeType] || createDefaultTimerSettings()[modeType];
     const now = new Date();
-    const durationMinutes = settings.timerMode === "timed" ? getTimerDurationForMode(modeType) : null;
+    const durationMinutes = settings.timerMode === "timed"
+      ? getTimerDurationForMode(modeType, { ...timerSettings, [modeType]: settings })
+      : null;
     const nextTimer = {
       modeType,
       timerMode: settings.timerMode === "timed" && durationMinutes ? "timed" : "untimed",
@@ -2622,6 +2684,9 @@ export default function App() {
     (item) => scoreQuestion(item) === 1
   ).length;
   const simulationItem = simulationQuestions[simulationIdx];
+  const simulationCurrentDomain = simulationItem?.pnleDomain || inferPnleDomain(simulationItem, simulationIdx);
+  const simulationCurrentDomainDetail = getPnleDomainDetail(simulationCurrentDomain);
+  const simulationBlockQuestionNumber = (simulationIdx % SIMULATION_BLOCK_SIZE) + 1;
   const simulationAnsweredCount = simulationQuestions.filter((item) => isQuestionAnswered(item)).length;
   const unansweredSimulationNumbers = simulationQuestions
     .map((item, index) => (!isQuestionAnswered(item) ? index + 1 : null))
@@ -2637,7 +2702,8 @@ export default function App() {
   const simulationScore = simulationQuestions.length
     ? Math.round((simulationCorrectCount / simulationQuestions.length) * 100)
     : 0;
-  const simulationIncorrectCount = Math.max(simulationQuestions.length - simulationCorrectCount, 0);
+  const simulationUnansweredCount = Math.max(simulationQuestions.length - simulationAnsweredCount, 0);
+  const simulationIncorrectCount = Math.max(simulationAnsweredCount - simulationCorrectCount, 0);
   const simulationSubjectBreakdown = useMemo(
     () =>
       Object.values(
@@ -2858,6 +2924,14 @@ export default function App() {
     ? `${plannerRecommendedItem.title}${plannerRecommendedItem.subject ? ` | ${plannerRecommendedItem.subject}` : ""}`
     : "No active planner items yet";
   const adaptiveInsights = useAdaptiveInsights(reviewSessions);
+  const latestFullSimulationSession = reviewSessions.find((session) => session.mode === "simulation" && session.simulationType === "full_500");
+  const latestSimulationInsight = latestFullSimulationSession?.weakestBlock
+    ? {
+        weakest: latestFullSimulationSession.weakestBlock,
+        strongest: latestFullSimulationSession.strongestBlock,
+        recommendation: latestFullSimulationSession.recommendation,
+      }
+    : null;
   const recommendedFocus = adaptiveInsights.primaryFocus;
   const dueTodayCount = useMemo(() => getDueTodayCount(cardSchedule), [cardSchedule]);
   const recommendedFocusReason = (() => {
@@ -3196,8 +3270,8 @@ export default function App() {
       openSimulationLauncher();
       setStatusMessage(
         recommendedFocus.subject && recommendedFocus.subject !== "Mixed Review"
-          ? `Choose a simulation length to retry broader exam-style practice, with extra attention on ${recommendedFocus.subject}.`
-          : "Choose a simulation length to retry broader exam-style practice."
+          ? `Prepare for a full PNLE simulation, with extra attention on ${recommendedFocus.subject}.`
+          : "Prepare for a full PNLE simulation when you are ready."
       );
       return;
     }
@@ -4112,15 +4186,12 @@ export default function App() {
     }
   }
 
-  async function generateSimulationExam(targetSize = simulationSize, activeTopic = topicFilter) {
-    const finalTarget = SIMULATION_SIZE_OPTIONS.includes(Number(targetSize)) ? Number(targetSize) : 50;
-    if (!validateTimerBeforeStart("simulation")) {
-      return;
-    }
+  async function generateSimulationExam() {
+    const finalTarget = SIMULATION_FULL_SIZE;
     const simulationSubject = "Mixed Review";
     const simulationDifficulty = "mixed";
     const simulationTopic = "";
-    const maxAiQuestions = finalTarget >= 500 ? 120 : finalTarget >= 100 ? 60 : 40;
+    const maxAiQuestions = 120;
     const aiBatchCap = Math.ceil(maxAiQuestions / SIMULATION_BATCH_SIZE);
     clearMessages();
     setApiLoading(true);
@@ -4138,15 +4209,15 @@ export default function App() {
         [],
         { includeSyntheticTopicFill: false }
       );
-      const localPool = buildBalancedPnleSimulationSet(
+      const localUniqueCount = uniqueBy(activeSimulationEntries, (item) => normalize(item.q || item.prompt || item.question || item.stem || item.id)).length;
+      const localPool = buildFullPnleSimulationSet(
         localCandidates,
-        finalTarget,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
         recentQuizPromptsRef.current
       );
 
       let combined = [...localPool];
-      const shouldAskAi = isOnline && Boolean(activeTopic || hasCustomSource || combined.length < finalTarget);
+      const shouldAskAi = isOnline && Boolean(hasCustomSource || localUniqueCount < finalTarget || combined.length < finalTarget);
 
       if (shouldAskAi) {
         const maxBatches = Math.min(Math.ceil(finalTarget / SIMULATION_BATCH_SIZE), aiBatchCap);
@@ -4177,9 +4248,8 @@ export default function App() {
         }
       }
 
-      const questions = attachPnleDomains(normalizeQuestions(buildBalancedPnleSimulationSet(
+      const questions = attachPnleDomains(normalizeQuestions(buildFullPnleSimulationSet(
         combined,
-        finalTarget,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
         recentQuizPromptsRef.current
       ), { source: combined.length > localPool.length ? "ai" : "bank", allowMultipleResponse: true }));
@@ -4194,11 +4264,11 @@ export default function App() {
       setMode("simulation");
       setSimulationUsedAi(combined.length > localPool.length);
       setSimulationAnswerSheetOpen(false);
-      startSessionTimer("simulation");
+      startSessionTimer("simulation", { timerMode: "timed", durationMinutes: SIMULATION_DURATION_MINUTES, customMinutes: "" });
       setStatusMessage(
         combined.length > localPool.length
-          ? `Simulation exam ready. Gemini helped shape this mixed ${finalTarget}-question PNLE NP1-NP5 exam.`
-          : `Simulation exam ready. Your mixed ${finalTarget}-question PNLE NP1-NP5 exam is prepared.`
+          ? "Full PNLE simulation started. Gemini helped shape the expansion set."
+          : "Full PNLE simulation started. Take it one item at a time."
       );
 
       if (!hasCustomSource) {
@@ -4222,9 +4292,8 @@ export default function App() {
         [],
         { includeSyntheticTopicFill: false }
       );
-      const fallback = attachPnleDomains(normalizeQuestions(buildBalancedPnleSimulationSet(
+      const fallback = attachPnleDomains(normalizeQuestions(buildFullPnleSimulationSet(
         fallbackCandidates,
-        finalTarget,
         hasCustomSource ? [] : usedQuizPromptsRef.current,
         recentQuizPromptsRef.current
       ), { source: "bank", allowMultipleResponse: true }));
@@ -4239,9 +4308,9 @@ export default function App() {
       setMode("simulation");
       setSimulationUsedAi(false);
       setSimulationAnswerSheetOpen(false);
-      startSessionTimer("simulation");
+      startSessionTimer("simulation", { timerMode: "timed", durationMinutes: SIMULATION_DURATION_MINUTES, customMinutes: "" });
       setApiError(normalizeAiErrorMessage(error) || `Gemini simulation generation failed. A local ${finalTarget}-question simulation was loaded instead.`);
-      setStatusMessage(`Loaded a mixed ${finalTarget}-question NP1-NP5 simulation from the CareDrop bank.`);
+      setStatusMessage("Full PNLE simulation started from the CareDrop bank.");
     } finally {
       setApiLoading(false);
     }
@@ -4570,7 +4639,7 @@ export default function App() {
       setSimulationIdx(clamp(session.currentIndex || 0, 0, Math.max((session.questions || []).length - 1, 0)));
       setSimulationResponseTimes(session.responseTimes || {});
       setSimulationSubmitted(true);
-      setSimulationSize(SIMULATION_SIZE_OPTIONS.includes(Number(session.simulationSize)) ? Number(session.simulationSize) : 50);
+      setSimulationSize(SIMULATION_FULL_SIZE);
       setSimulationUsedAi(Boolean(session.usedAi));
       setSimulationAnswerSheetOpen(false);
       setSimulationLaunchOpen(false);
@@ -4599,11 +4668,28 @@ export default function App() {
       completedItemCount: simulationAnsweredCount,
       totalItemCount: simulationQuestions.length,
     }, { expired });
+    const answeredAt = new Date().toISOString();
+    const weakestBlock = [...simulationNpBreakdown].filter((item) => item.total).sort((left, right) => left.percent - right.percent)[0] || null;
+    const strongestBlock = [...simulationNpBreakdown].filter((item) => item.total).sort((left, right) => right.percent - left.percent)[0] || null;
+    const weakTopics = simulationSubjectBreakdown
+      .filter((item) => item.percent < 65)
+      .map((item) => item.subject)
+      .slice(0, 5);
+    const recommendation = weakestBlock
+      ? `Recommended Focus: ${weakestBlock.domain}. You may benefit from extra practice in ${weakestBlock.shortTitle}, while keeping the progress you built in ${strongestBlock?.domain || "your stronger areas"}.`
+      : "Recommended Focus: review the answer sheet and choose one topic that felt uncertain.";
 
     const session = {
       id: uid(),
       createdAt: new Date().toISOString(),
       mode: "simulation",
+      simulationType: "full_500",
+      startedAt: timerMeta.startedAt,
+      submittedAt: answeredAt,
+      timeStartedAt: timerMeta.startedAt,
+      timeExpired: Boolean(expired || timerMeta.timeExpired),
+      timeUsedSeconds: timerMeta.actualDurationSeconds,
+      totalQuestions: SIMULATION_FULL_SIZE,
       subject: "Mixed Review",
       difficulty: "mixed",
       topic: "",
@@ -4615,9 +4701,26 @@ export default function App() {
       responseTimes: simulationResponseTimes,
       score: simulationQuestions.length ? Math.round((simulationCorrectCount / simulationQuestions.length) * 100) : 0,
       answeredCount: simulationAnsweredCount,
+      unansweredCount: simulationUnansweredCount,
       correctCount: simulationCorrectCount,
+      overallScore: simulationCorrectCount,
+      overallAccuracy: simulationQuestions.length ? Math.round((simulationCorrectCount / simulationQuestions.length) * 100) : 0,
       simulationSize,
       usedAi: simulationUsedAi,
+      blockScores: simulationNpBreakdown,
+      weakestBlock,
+      strongestBlock,
+      weakTopics,
+      recommendation,
+      userAnswers: simulationQuestions.map((item) => ({
+        id: item.id,
+        prompt: item.prompt,
+        userAnswer: item.userAnswer,
+        subject: item.subject,
+        topic: item.topic,
+        pnleDomain: item.pnleDomain,
+      })),
+      itemReviewData: simulationQuestions.map((item) => buildQuestionReview(item)),
       pnleBreakdown: simulationNpBreakdown,
       competencyBreakdown: simulationCompetencyBreakdown,
       timer: timerMeta,
@@ -4778,7 +4881,7 @@ export default function App() {
     setSimulationIdx(0);
     setSimulationResponseTimes({});
     setSimulationSubmitted(false);
-    setSimulationSize(50);
+    setSimulationSize(SIMULATION_FULL_SIZE);
     setSimulationUsedAi(false);
     setSimulationAnswerSheetOpen(false);
     setSimulationLaunchOpen(true);
@@ -5098,7 +5201,7 @@ export default function App() {
   const renderTimerSetup = (modeType) => {
     const settings = timerSettings[modeType] || createDefaultTimerSettings()[modeType];
     const presets = modeType === "simulation"
-      ? TIMER_PRESETS.simulation[simulationSize] || TIMER_PRESETS.simulation[50]
+      ? TIMER_PRESETS.simulation[SIMULATION_FULL_SIZE] || [SIMULATION_DURATION_MINUTES]
       : TIMER_PRESETS[modeType];
     const chipStyle = (active) => ({
       padding: "9px 12px",
@@ -6505,6 +6608,23 @@ export default function App() {
                       <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.75, color: C.text }}>
                         {recommendedFocusReason}
                       </div>
+                      {latestSimulationInsight ? (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            padding: "12px 14px",
+                            borderRadius: 14,
+                            background: darkMode ? "rgba(20, 211, 154, 0.08)" : "#ECFDF3",
+                            border: `1px solid ${darkMode ? "rgba(20, 211, 154, 0.28)" : "#BFEBD4"}`,
+                            color: C.text,
+                            fontSize: 13,
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          <strong>Simulation insight:</strong> {latestSimulationInsight.recommendation}
+                          {latestSimulationInsight.strongest ? ` Good progress showed in ${latestSimulationInsight.strongest.domain}. Keep going one block at a time.` : ""}
+                        </div>
+                      ) : null}
                       <div
                         style={{
                           marginTop: 12,
@@ -8333,7 +8453,7 @@ export default function App() {
                           cursor: "pointer",
                         }}
                       >
-                        New Simulation Setup
+                        New Full Simulation
                       </button>
                     </div>
                   ) : null}
@@ -8344,51 +8464,63 @@ export default function App() {
                     style={{
                       marginTop: 18,
                       border: `1px solid ${C.border}`,
-                      borderRadius: 20,
-                      padding: width < 720 ? 20 : 24,
-                      background: darkMode ? softSurface : "#FBFAF7",
+                      borderRadius: 24,
+                      padding: width < 720 ? 22 : 32,
+                      background: darkMode
+                        ? "linear-gradient(135deg, rgba(20, 211, 154, 0.10), rgba(30, 41, 59, 0.94))"
+                        : "linear-gradient(135deg, #F2FBF6, #FBFAF7)",
+                      minHeight: 360,
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
                     }}
                   >
-                    <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.04em", color: C.text }}>
-                      Choose your simulation length first
+                    <div>
+                      <Badge label="Full 500-item PNLE mock exam" color="green" />
+                      <div style={{ marginTop: 16, fontSize: width < 720 ? 26 : 32, fontWeight: 950, letterSpacing: "-0.05em", color: C.text }}>
+                        Take a moment before you begin.
+                      </div>
+                      <div style={{ marginTop: 12, fontSize: 15, color: C.text, lineHeight: 1.8, maxWidth: 820 }}>
+                        You are not expected to know everything right away. This simulation is here to help you understand what you already know and what needs more focus.
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 18,
+                          padding: "14px 16px",
+                          borderRadius: 16,
+                          background: darkMode ? "rgba(15, 23, 42, 0.62)" : "rgba(255, 255, 255, 0.72)",
+                          border: `1px solid ${C.border}`,
+                          color: C.muted,
+                          fontSize: 13,
+                          lineHeight: 1.75,
+                          maxWidth: 920,
+                        }}
+                      >
+                        This practice exam is intended as a study and self-assessment tool only. It is designed to help you review concepts, identify areas that may need more attention, and guide your preparation. Your consistency, effort, and continued learning are still the most important factors in your progress.
+                      </div>
+                      <div style={{ marginTop: 16, display: "grid", gap: 10, gridTemplateColumns: width < 820 ? "1fr" : "repeat(3, minmax(0, 1fr))" }}>
+                        {[
+                          { label: "500 questions", hint: "NP1 to NP5, 100 items each" },
+                          { label: "3 hours", hint: "Timer starts after you click start" },
+                          { label: "Answers hidden", hint: "Rationales appear only after submission" },
+                        ].map((item) => (
+                          <div key={item.label} style={{ padding: "13px 14px", borderRadius: 14, background: C.surface, border: `1px solid ${C.border}` }}>
+                            <div style={{ fontWeight: 900, color: C.text }}>{item.label}</div>
+                            <div style={{ marginTop: 4, fontSize: 12, color: C.muted }}>{item.hint}</div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div style={{ marginTop: 10, fontSize: 14, color: C.muted, lineHeight: 1.8, maxWidth: 760 }}>
-                      The exam stays hidden until you choose a format. Pick a mixed 50-, 100-, or 500-question simulation to launch a broader board-style exam experience across Community Health, Mother and Child, and Physiologic/Psychosocial Alterations.
-                    </div>
-                    <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      {SIMULATION_SIZE_OPTIONS.map((value) => (
-                        <button
-                          key={`launch-${value}`}
-                          type="button"
-                          onClick={() => setSimulationSize(value)}
-                          disabled={apiLoading}
-                          style={{
-                            minWidth: 130,
-                            padding: "12px 16px",
-                            borderRadius: 12,
-                            border: simulationSize === value ? "none" : `1px solid ${C.border}`,
-                            background: simulationSize === value ? C.accent : C.surface,
-                            color: simulationSize === value ? "#fff" : C.text,
-                            fontWeight: 800,
-                            cursor: apiLoading ? "not-allowed" : "pointer",
-                          }}
-                        >
-                          {value} questions
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ marginTop: 14 }}>
-                      {renderTimerSetup("simulation")}
-                    </div>
-                    <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                    <div style={{ marginTop: 24, display: "flex", justifyContent: "center", flexDirection: "column", alignItems: "center", gap: 10 }}>
                       <button
                         type="button"
-                        onClick={() => generateSimulationExam(simulationSize)}
+                        onClick={() => generateSimulationExam()}
                         disabled={apiLoading}
                         style={{
                           minHeight: 48,
-                          padding: "12px 18px",
-                          borderRadius: 13,
+                          minWidth: width < 720 ? "100%" : 260,
+                          padding: "13px 22px",
+                          borderRadius: 999,
                           border: "none",
                           background: apiLoading ? C.border : C.accent,
                           color: apiLoading ? C.muted : "#fff",
@@ -8396,47 +8528,29 @@ export default function App() {
                           cursor: apiLoading ? "not-allowed" : "pointer",
                         }}
                       >
-                        {apiLoading ? "Preparing..." : `Start ${simulationSize}-Question Simulation`}
+                        {apiLoading ? "Preparing your exam..." : "Let’s Start"}
                       </button>
-                    </div>
-                    <div style={{ marginTop: 16, fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
-                      Once the exam is generated, your answers will be saved as you move between questions. Results and explanations will only appear after the final submission.
-                    </div>
-                    {simulationQuestions.length ? (
-                      <div
-                        style={{
-                          marginTop: 16,
-                          padding: "14px 16px",
-                          borderRadius: 14,
-                          background: cardSurface,
-                          border: `1px solid ${C.border}`,
-                        }}
-                      >
-                        <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
-                          A simulation is already loaded
-                        </div>
-                        <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
-                          You currently have a {simulationSize}-question simulation in memory. You can resume it or replace it with a new one.
-                        </div>
-                        <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            onClick={() => setSimulationLaunchOpen(false)}
-                            style={{
-                              padding: "10px 14px",
-                              borderRadius: 10,
-                              border: `1px solid ${C.border}`,
-                              background: C.surface,
-                              color: C.text,
-                              fontWeight: 700,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Resume Current Simulation
-                          </button>
-                        </div>
+                      <div style={{ fontSize: 12, color: C.muted, textAlign: "center" }}>
+                        Find a quiet space, take a breath, and answer one item at a time.
                       </div>
-                    ) : null}
+                      {simulationQuestions.length ? (
+                        <button
+                          type="button"
+                          onClick={() => setSimulationLaunchOpen(false)}
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 999,
+                            border: `1px solid ${C.border}`,
+                            background: C.surface,
+                            color: C.text,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Resume Current Simulation
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 ) : !simulationItem ? (
                   <div
@@ -8450,7 +8564,7 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    Choose one of the simulation options above to start the exam.
+                    Open the preparation screen to begin the full PNLE simulation.
                   </div>
                 ) : (
                   <>
@@ -8519,8 +8633,8 @@ export default function App() {
                     </div>
                     <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", fontSize: studyMetaSize, color: C.muted }}>
                       <div>{simulationFlaggedCount} flagged</div>
-                      <div>{simulationQuestions.length - simulationAnsweredCount} unanswered</div>
-                      <div>{simulationSize}-item target</div>
+                      <div>{simulationUnansweredCount} unanswered</div>
+                      <div>{simulationCurrentDomain} block progress: {simulationBlockQuestionNumber}/{SIMULATION_BLOCK_SIZE}</div>
                       {simulationQuestions.length > 100 ? <div>Palette shows the questions around your current position</div> : null}
                     </div>
 
@@ -8535,8 +8649,8 @@ export default function App() {
                       }}
                     >
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                        <Badge label={`Q ${simulationIdx + 1} / ${simulationQuestions.length}`} color="blue" />
-                        <Badge label={simulationItem.pnleDomain || inferPnleDomain(simulationItem, simulationIdx)} color="green" />
+                        <Badge label={`${simulationCurrentDomain} · Question ${simulationIdx + 1} of ${simulationQuestions.length}`} color="blue" />
+                        <Badge label={`Block progress ${simulationBlockQuestionNumber}/${SIMULATION_BLOCK_SIZE}`} color="green" />
                         <Badge label={simulationItem.competencyArea || inferCompetencyArea(simulationItem)} color="blue" />
                         <Badge label={simulationItem.subject} color="gray" />
                         <Badge label={simulationItem.topic} color="gray" />
@@ -8554,7 +8668,7 @@ export default function App() {
                       </div>
 
                       <div style={{ fontSize: studyMetaSize, color: C.faint, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
-                        Simulation Question
+                        {simulationCurrentDomainDetail.shortTitle}
                       </div>
                       <div style={{ fontSize: studyQuestionSize, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.45 }}>
                         {simulationItem.prompt}
@@ -8719,8 +8833,8 @@ export default function App() {
                           <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>Simulation Overview</div>
                           <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: studyBodySize }}>
                             <div>Answered: <strong>{simulationAnsweredCount}</strong></div>
-                            <div>Remaining: <strong>{Math.max(simulationQuestions.length - simulationAnsweredCount, 0)}</strong></div>
-                            <div>Current target: <strong>{simulationSize} questions</strong></div>
+                            <div>Remaining: <strong>{simulationUnansweredCount}</strong></div>
+                            <div>Current block: <strong>{simulationCurrentDomain} · {simulationBlockQuestionNumber}/{SIMULATION_BLOCK_SIZE}</strong></div>
                           </div>
                           <div style={{ marginTop: 10, fontSize: studyBodySize, color: C.muted, lineHeight: 1.7 }}>
                             Answers stay hidden while the simulation is active so the flow feels closer to an actual long-form exam. Move back through earlier questions anytime if you want to review or change an answer before the final submit on the last item.
@@ -8757,8 +8871,8 @@ export default function App() {
                               <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Simulation Results</div>
                               <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, maxWidth: 760 }}>
                               {simulationUsedAi
-                                ? "This mixed simulation combined the CareDrop bank with Gemini-generated expansion to make the exam feel broader and closer to a real board-style review."
-                                : "This mixed simulation came from the CareDrop bank and is now saved in Review History for later review."}
+                                ? "This full PNLE simulation combined the CareDrop bank with Gemini-generated expansion for broader exam practice."
+                                : "This full PNLE simulation came from the CareDrop bank and is now saved in Review History for later review."}
                               </div>
                             </div>
                             <button
@@ -8787,10 +8901,10 @@ export default function App() {
                             }}
                           >
                             {[
-                              { label: "Overall score", value: `${simulationScore}%`, hint: `${simulationCorrectCount}/${simulationQuestions.length} correct` },
-                              { label: "Answered", value: `${simulationAnsweredCount}`, hint: "Full exam submitted" },
+                              { label: "Accuracy", value: `${simulationScore}%`, hint: `${simulationCorrectCount}/${simulationQuestions.length} correct` },
+                              { label: "Answered", value: `${simulationAnsweredCount}`, hint: `${simulationUnansweredCount} unanswered` },
                               { label: "Correct", value: `${simulationCorrectCount}`, hint: "Strong answers recorded" },
-                              { label: "Incorrect", value: `${simulationIncorrectCount}`, hint: "Items to review again" },
+                              { label: "Needs review", value: `${simulationIncorrectCount + simulationUnansweredCount}`, hint: `${simulationIncorrectCount} incorrect | ${simulationUnansweredCount} unanswered` },
                             ].map((item) => (
                               <div
                                 key={item.label}
@@ -8808,6 +8922,24 @@ export default function App() {
                             ))}
                           </div>
                           {renderTimerSummary("simulation", simulationAnsweredCount, simulationQuestions.length, "simulation exam")}
+
+                          <div
+                            style={{
+                              marginTop: 14,
+                              padding: "14px 16px",
+                              borderRadius: 16,
+                              background: darkMode ? "rgba(20, 211, 154, 0.08)" : "#ECFDF3",
+                              border: `1px solid ${darkMode ? "rgba(20, 211, 154, 0.28)" : "#BFEBD4"}`,
+                              fontSize: 13,
+                              color: C.text,
+                              lineHeight: 1.7,
+                            }}
+                          >
+                            <strong>Recommended next step:</strong>{" "}
+                            {simulationNpBreakdown.filter((item) => item.total).sort((left, right) => left.percent - right.percent)[0]
+                              ? `You may benefit from extra practice in ${simulationNpBreakdown.filter((item) => item.total).sort((left, right) => left.percent - right.percent)[0].domain}. Good progress still counts, and this result is here to guide your next review, not judge it.`
+                              : "Review the answer sheet and choose one area that felt uncertain."}
+                          </div>
 
                           <div
                             style={{
