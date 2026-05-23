@@ -90,8 +90,8 @@ export const SUMMARY_SECTION_HEADINGS = [
   "Nursing Interventions",
   "Patient Teaching",
   "Safety Considerations",
-  "Exam Traps",
-  "High-Yield PNLE Points",
+  "Knowledge Check Traps",
+  "High-Yield Review Points",
 ];
 
 const CLINICAL_REASONING_CUES = [
@@ -288,7 +288,10 @@ function rationaleHasTeachingValue(text) {
       normalized.includes("distractor") ||
       normalized.includes("priority") ||
       normalized.includes("safest")) &&
-    (normalized.includes("key takeaway") || normalized.includes("remember") || normalized.includes("board"))
+    (normalized.includes("key takeaway") ||
+      normalized.includes("remember") ||
+      normalized.includes("review") ||
+      normalized.includes("clinical"))
   );
 }
 
@@ -305,9 +308,7 @@ function cardRationaleHasTeachingValue(text) {
       normalized.includes("teaching")) &&
     (normalized.includes("takeaway") ||
       normalized.includes("remember") ||
-      normalized.includes("board") ||
-      normalized.includes("pnle") ||
-      normalized.includes("nle") ||
+      normalized.includes("review") ||
       normalized.includes("clinical"))
   );
 }

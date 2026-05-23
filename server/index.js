@@ -154,11 +154,11 @@ app.post("/api/claude/summary", async (req, res) => {
       client,
       generateText,
       systemInstruction:
-        "You create detailed PRC NLE nursing reviewer summaries from uploaded files. Return plain text only. Use the required section headings exactly and bullet points under every heading. If the material contains multiple topics or subtopics, break them down inside the section bullets instead of flattening them into one short summary. Preserve original constraints, conditions, warnings, contraindications, and limitations from the source. Do not add outside facts that are not supported by the uploaded material. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community-health topics and PNDF-aware medication context when relevant. Do not invent country-specific rules, laws, or doses.",
-      prompt: `Turn these uploaded nursing notes into a detailed reviewer summary for a Philippine nursing board-review learner.
+        "You create detailed nursing reviewer summaries from uploaded files. Return plain text only. Use the required section headings exactly and bullet points under every heading. If the material contains multiple topics or subtopics, break them down inside the section bullets instead of flattening them into one short summary. Preserve original constraints, conditions, warnings, contraindications, and limitations from the source. Do not add outside facts that are not supported by the uploaded material. Use Philippine nursing terminology where appropriate when the source supports it. Prefer locally appropriate community-health and medication context when relevant. Do not invent country-specific rules, laws, or doses.",
+      prompt: `Turn these uploaded nursing notes into a detailed reviewer summary for a nursing learner.
 
 Requirements:
-- audience: nursing student preparing for exams
+- audience: nursing student checking and strengthening knowledge
 - goal: understand the attached material clearly, not just shorten it
 - approach: abstractive summary, but preserve key technical terms, constraints, conditions, warnings, and limitations from the source
 - format: plain text headings with bullet points
@@ -171,12 +171,12 @@ Signs and Symptoms
 Nursing Interventions
 Patient Teaching
 Safety Considerations
-Exam Traps
-High-Yield PNLE Points
+Knowledge Check Traps
+High-Yield Review Points
 
 Under each heading, use bullet points only.
 If the source contains multiple topics, include topic labels inside the bullets so each topic is clearly separated.
-Prioritize clinical reasoning, nursing assessment, intervention, safety, teaching, and board-style traps.
+Prioritize clinical reasoning, nursing assessment, intervention, safety, teaching, and common knowledge-check traps.
 
 Verification rules:
 - do not hallucinate
@@ -229,18 +229,18 @@ app.post("/api/claude/cards", async (req, res) => {
         : `Every flashcard must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
 
     const systemInstruction =
-      `You generate PRC NLE nursing flashcards from notes and topic requests. Create exactly ${count} concise, clinically meaningful, board-focused cards. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. When community health or public-health content appears, prefer DOH-aligned guidance. When medication context appears, make the card PNDF-aware when relevant. Do not invent Philippine-specific rules or drug doses when they are not clearly supported by the prompt. Each card must include: a front-side recall prompt only, a correct answer, a short rationale explaining why the answer matters clinically, and a separate key takeaway for board review.`;
+      `You generate nursing flashcards from notes and topic requests. Create exactly ${count} concise, clinically meaningful cards for knowledge review and self-checking. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate when the source supports it. When community health or public-health content appears, prefer locally appropriate guidance. When medication context appears, keep medication details conservative and source-supported. Do not invent country-specific rules or drug doses when they are not clearly supported by the prompt. Each card must include: a front-side recall prompt only, a correct answer, a short rationale explaining why the answer matters clinically, and a separate key takeaway for review.`;
     const prompt = [
-        "Build nursing study cards for a learner preparing for the Philippine PRC Nurse Licensure Examination.",
+        "Build nursing study cards for a learner checking and strengthening nursing knowledge.",
         difficultyInstruction,
         context,
-        "Keep the cards practical, safety-focused, and framed for board-review recall in the Philippines.",
+        "Keep the cards practical, safety-focused, and framed for self-assessment and concept review.",
         "Flashcard structure rules:",
         "- Question side: recall-based prompt only",
         "- Do not leak the answer through the question or topic phrasing",
         "- Back side answer: one correct answer",
         "- Rationale: include Correct Answer Explanation and why the answer matters clinically",
-        "- Notes/key takeaway: one board-review takeaway or nursing priority reminder",
+        "- Notes/key takeaway: one nursing priority reminder",
         excludeQuestions.length
           ? `Do not repeat or closely paraphrase any of these previous questions:\n- ${excludeQuestions.join("\n- ")}`
           : "Make the cards fresh and distinct.",
@@ -296,17 +296,17 @@ app.post("/api/claude/quiz", async (req, res) => {
         ? "Use a balanced mix of easy, medium, and hard questions."
         : `Every question must be ${difficulty} difficulty only. Do not mix in other difficulties.`;
     const examInstruction = examMode
-      ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form board review: broad subject coverage, clinically varied stems, strong prioritization, assessment, intervention, and delegation language, and no repetitive wording. Keep exam mode difficult and PNLE-like. Balance coverage across the five Nursing Practice areas when possible: NP1 Community Health Nursing; NP2 Care of Healthy/At-Risk Mother and Child; NP3, NP4, and NP5 Care of Clients with Physiologic and Psychosocial Alterations Parts A-C.`
-      : "Make the set feel like a focused PNLE quiz batch with scenario-based stems whenever appropriate.";
+      ? `These questions are one batch inside a ${examLength}-question simulation exam. Make them feel like a realistic long-form nursing knowledge check: broad subject coverage, clinically varied stems, strong prioritization, assessment, intervention, and delegation language, and no repetitive wording. Keep simulation mode challenging and clinically grounded. Balance coverage across five broad review blocks when possible: Community Health; Care of Healthy/At-Risk Mother and Child; and Physiologic/Psychosocial Alterations Parts A-C.`
+      : "Make the set feel like a focused nursing knowledge-check quiz batch with scenario-based stems whenever appropriate.";
 
     const systemInstruction =
-      "You generate PRC NLE-style nursing quiz questions. Every item must be clinically accurate, PNLE-relevant, and structured as JSON only. Use scenario-based nursing stems whenever possible, with prioritization, assessment-vs-intervention, safety, delegation, medication safety, or patient-teaching reasoning. Make the learner think: the wrong choices should be tempting because they are partly reasonable but less safe, delayed, out of sequence, outside scope, or focused on a lower-priority cue. Each item must have 4-5 distinct plausible options, one best answer for single_choice, and strong rationales. Most items should be single_choice. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community/public-health content and PNDF-aware medication context when drug knowledge is relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
+      "You generate nursing quiz questions for knowledge review and self-assessment. Every item must be clinically accurate, clinically relevant, and structured as JSON only. Use scenario-based nursing stems whenever possible, with prioritization, assessment-vs-intervention, safety, delegation, medication safety, or patient-teaching reasoning. Make the learner think: the wrong choices should be tempting because they are partly reasonable but less safe, delayed, out of sequence, outside scope, or focused on a lower-priority cue. Each item must have 4-5 distinct plausible options, one best answer for single_choice, and strong rationales. Most items should be single_choice. In simulation exam mode only, you may include a limited number of multiple_response (Select All That Apply) items when clinically appropriate. Respect the requested subject, topic, and difficulty boundaries. Use Philippine nursing terminology where appropriate when the source supports it. Prefer locally appropriate community/public-health guidance and conservative medication context when relevant. Do not invent country-specific rules, laws, or medication doses when they are not clearly supported.";
     const prompt = [
-      `Generate ${count} nursing quiz questions for a Philippine board-review learner.`,
+      `Generate ${count} nursing quiz questions for a learner checking and strengthening nursing knowledge.`,
       difficultyInstruction,
       examInstruction,
       context,
-      "Make the questions clinically clear, prioritization-aware, and useful for PRC NLE preparation.",
+      "Make the questions clinically clear, prioritization-aware, and useful for self-assessment.",
       "Question quality rules:",
       "- Use 4 plausible answer choices, or 5 only when a SATA item needs it",
       "- Stems should usually include a client context, key cue, and decision task; avoid bare recall unless the requested mode is flashcard-like review",
@@ -319,7 +319,7 @@ app.post("/api/claude/quiz", async (req, res) => {
         ? "- For multiple_response items, set type=multiple_response and provide correctOptionIds for every correct choice. SATA must have at least 2 correct choices and cannot have every option correct"
         : "- Keep these as single_choice items only",
       examMode
-        ? "- In simulation mode, spread the batch across PNLE domains: NP1 Community Health Nursing; NP2 Care of Healthy/At-Risk Mother and Child; NP3-NP5 Care of Clients with Physiologic and Psychosocial Alterations Parts A-C. Integrate anatomy and physiology, nutrition and diet therapy, pathophysiology, parasitology/microbiology, and pharmacology/therapeutics across items when relevant"
+        ? "- In simulation mode, spread the batch across broad review blocks: Community Health; Care of Healthy/At-Risk Mother and Child; and Physiologic/Psychosocial Alterations Parts A-C. Integrate anatomy and physiology, nutrition and diet therapy, pathophysiology, parasitology/microbiology, and pharmacology/therapeutics across items when relevant"
         : "",
       examMode
         ? "- Tag thinking around the 11 nursing responsibility areas when useful: safe and quality care, communication, collaboration, health education, legal, ethico-moral-spiritual, professional development, resource/environment management, records management, research, and quality improvement"
@@ -386,7 +386,7 @@ app.post("/api/claude/review-help", async (req, res) => {
       client,
       {
         systemInstruction:
-          "You are a PRC NLE nursing board exam coach. Answer only in the context of the missed question. First, directly answer the learner's exact typed question in 1 to 2 sentences. Then explain why the correct answer is best, why the learner's chosen answer is weaker, what clue in the question stem points to the right answer, and what high-yield board takeaway to remember. Keep the reply specific to the missed item, easy to understand, and aligned with Philippine nursing terminology where appropriate. Prefer DOH-aligned guidance for community health content and PNDF-aware medication context when relevant. Do not invent country-specific rules or doses.",
+          "You are a nursing knowledge-review coach. Answer only in the context of the missed question. First, directly answer the learner's exact typed question in 1 to 2 sentences. Then explain why the correct answer is best, why the learner's chosen answer is weaker, what clue in the question stem points to the right answer, and what high-yield takeaway to remember. Keep the reply specific to the missed item, easy to understand, and aligned with nursing terminology where appropriate. Prefer locally appropriate community health guidance and conservative medication context when relevant. Do not invent country-specific rules or doses.",
         prompt: [
           `Subject: ${subject}`,
           `Topic: ${topic || "General review"}`,
@@ -397,12 +397,12 @@ app.post("/api/claude/review-help", async (req, res) => {
           `Rationale: ${rationale || "None provided."}`,
           notes ? `Memory tip: ${notes}` : "",
           `Learner's exact question to answer first: ${userPrompt}`,
-          "Frame the explanation for a Philippine nursing board-review learner.",
+          "Frame the explanation for a nursing learner using CareDrop as a study and self-assessment tool.",
           "Format the answer with these short headings:",
           "1. Direct answer",
           "2. Why your answer was weaker",
           "3. Clue in the question",
-          "4. What to remember for boards",
+          "4. What to remember",
         ]
           .filter(Boolean)
           .join("\n\n"),
@@ -415,7 +415,7 @@ app.post("/api/claude/review-help", async (req, res) => {
       success: true,
       response:
         response ||
-        `Direct answer: ${correctAnswer} is the best answer for this item.\n\nWhy your answer was weaker: ${selectedAnswer || "Your chosen answer"} did not match the strongest nursing priority or teaching point.\n\nClue in the question: Focus on the part of the stem that points toward ${topic || "the core concept"}.\n\nWhat to remember for boards: ${rationale || notes || correctAnswer}`,
+        `Direct answer: ${correctAnswer} is the best answer for this item.\n\nWhy your answer was weaker: ${selectedAnswer || "Your chosen answer"} did not match the strongest nursing priority or teaching point.\n\nClue in the question: Focus on the part of the stem that points toward ${topic || "the core concept"}.\n\nWhat to remember: ${rationale || notes || correctAnswer}`,
     });
   } catch (error) {
     console.error("Gemini review help error:", error);

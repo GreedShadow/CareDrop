@@ -190,7 +190,7 @@ const ENCOURAGEMENTS = [
   "One focused session at a time still counts.",
   "Read the stem slowly. Your nursing judgment is getting stronger.",
   "Progress matters more than perfection.",
-  "The board exam is hard. You're training for it every day.",
+  "Every review session helps you understand what needs more focus.",
   "A calm review session still moves you forward.",
   "Missed questions are still helping you pass.",
   "You are building safe instincts, not just memorizing facts.",
@@ -217,36 +217,36 @@ const SUBJECT_VISUALS = {
 const PNLE_DOMAIN_ORDER = ["NP1", "NP2", "NP3", "NP4", "NP5"];
 const PNLE_DOMAIN_DETAILS = {
   NP1: {
-    label: "NP1",
-    title: "Nursing Practice I: Community Health Nursing",
+    label: "Block 1",
+    title: "Review Block 1: Community Health",
     shortTitle: "Community Health",
     weight: 20,
     subjects: ["Community Health"],
   },
   NP2: {
-    label: "NP2",
-    title: "Nursing Practice II: Care of Healthy/At-Risk Mother and Child",
+    label: "Block 2",
+    title: "Review Block 2: Healthy/At-Risk Mother and Child",
     shortTitle: "Mother & Child",
     weight: 20,
     subjects: ["Maternal & Newborn", "Pediatrics"],
   },
   NP3: {
-    label: "NP3",
-    title: "Nursing Practice III: Care of Clients with Physiologic and Psychosocial Alterations Part A",
+    label: "Block 3",
+    title: "Review Block 3: Physiologic and Psychosocial Alterations Part A",
     shortTitle: "Alterations A",
     weight: 20,
     subjects: ["Medical-Surgical", "Psychiatric Nursing", "Pharmacology", "Fundamentals"],
   },
   NP4: {
-    label: "NP4",
-    title: "Nursing Practice IV: Care of Clients with Physiologic and Psychosocial Alterations Part B",
+    label: "Block 4",
+    title: "Review Block 4: Physiologic and Psychosocial Alterations Part B",
     shortTitle: "Alterations B",
     weight: 20,
     subjects: ["Medical-Surgical", "Pharmacology", "Fundamentals"],
   },
   NP5: {
-    label: "NP5",
-    title: "Nursing Practice V: Care of Clients with Physiologic and Psychosocial Alterations Part C",
+    label: "Block 5",
+    title: "Review Block 5: Physiologic and Psychosocial Alterations Part C",
     shortTitle: "Alterations C",
     weight: 20,
     subjects: ["Medical-Surgical", "Pharmacology", "Leadership & Management"],
@@ -642,13 +642,13 @@ function buildLocalSummary(text) {
     "",
     "Safety Considerations",
     "- Preserve any source warnings, contraindications, limits, or only-if conditions before choosing an intervention.",
-    "- In PNLE-style items, assess instability and safety risks before routine care.",
+    "- In knowledge-check items, assess instability and safety risks before routine care.",
     "",
-    "Exam Traps",
+    "Knowledge Check Traps",
     "- Do not choose an intervention before assessment when the stem asks for the first nursing action.",
     "- Watch for answers that are possible but not the safest, most immediate, or most patient-centered.",
     "",
-    "High-Yield PNLE Points",
+    "High-Yield Review Points",
     "- Use each topic as a separate review target, then convert the same material into flashcards or quiz questions.",
     "- Focus on clue words such as first, best, priority, most important, monitor, and teach."
   );
@@ -788,7 +788,7 @@ function cleanQuizPrompt(prompt) {
 
 function cleanClinicalCueForPrompt(prompt) {
   return cleanQuizPrompt(prompt)
-    .replace(/^\s*(board recall|focused review|nursing priority check|prc nle review|clinical decision point|exam coaching prompt)\s*:\s*/i, "")
+    .replace(/^\s*(board recall|focused review|nursing priority check|prc nle review|clinical decision point|exam coaching prompt|knowledge check)\s*:\s*/i, "")
     .replace(/\b(the stem asks|review stem|the key cue is|clinical cue|stem)\s*:\s*/gi, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -964,7 +964,7 @@ function getTrapLabel(trap) {
 
 function buildClinicalStem(entry, requestedTopic = "", variantIndex = 0) {
   const topic = String(requestedTopic || entry.topic || "the client situation").trim();
-  const subject = entry.subject || "PNLE review";
+  const subject = entry.subject || "nursing review";
   const cue = cleanClinicalCueForPrompt(entry.q || "");
   const trap = inferClinicalTrap(cue || entry.q, entry);
   const client = [
@@ -978,7 +978,7 @@ function buildClinicalStem(entry, requestedTopic = "", variantIndex = 0) {
   const scenarioCue = cue && cue.length > 18 ? cue.replace(/[?]+$/g, "") : `the stem centers on ${topic}`;
   const frames = [
     `The nurse is caring for ${client}. The key cue is: ${scenarioCue}. Which action best reflects safe ${getTrapLabel(trap)}?`,
-    `A PNLE-style item describes ${client} with a concern related to ${topic}. ${scenarioCue}. Which response should the nurse prioritize?`,
+    `A clinical judgment item describes ${client} with a concern related to ${topic}. ${scenarioCue}. Which response should the nurse prioritize?`,
     `During endorsement, the nurse notes this cue: ${scenarioCue}. Which option is the best nursing judgment for ${subject}?`,
     `The nurse must choose between several reasonable actions for ${topic}. Based on this cue, ${scenarioCue}, what is the safest next response?`,
   ];
@@ -1146,7 +1146,7 @@ function toFlashcard(entry, subject) {
 
 function buildFlashcardRationale(entry, answer) {
   const topic = entry.topic || "this nursing concept";
-  const subject = entry.subject || "PNLE review";
+  const subject = entry.subject || "nursing review";
   return `Correct Answer Explanation: ${answer} is the key point because it supports safe nursing judgment for ${topic} in ${subject}. Key Takeaway: connect the concept to the safest assessment cue, priority intervention, or patient-teaching point.`;
 }
 
@@ -1175,7 +1175,7 @@ function buildTopicFallbackAnswer(topic, index) {
   const topicLabel = String(topic || "the requested topic").trim();
   const templates = [
     `For ${topicLabel}, start with the assessment cue that can threaten safety, then choose the nursing action that protects airway, breathing, circulation, or deterioration risk first.`,
-    `In ${topicLabel}, the safest PNLE approach is to identify the priority finding, reassess focused signs, and avoid routine care when the stem suggests instability.`,
+    `In ${topicLabel}, the safest review approach is to identify the priority finding, reassess focused signs, and avoid routine care when the stem suggests instability.`,
     `When reviewing ${topicLabel}, connect symptoms, vital signs, labs, and patient teaching to the best nursing priority rather than choosing a merely possible intervention.`,
     `For ${topicLabel}, ask whether the item is testing assessment before intervention, urgent escalation, medication safety, or patient teaching, then choose the option that prevents harm.`,
     `A strong ${topicLabel} answer should match the stem cue, address the most immediate risk, and avoid delaying care with low-priority comfort or documentation actions.`,
@@ -1192,11 +1192,11 @@ function buildTopicFallbackEntries(topic, subject, difficulty, count, offset = 0
 
   const safeSubject = resolveTopicSubject(subject, topicLabel);
   const prompts = [
-    `What is the safest nursing priority when a PNLE item focuses on ${topicLabel}?`,
+    `What is the safest nursing priority when a knowledge-check item focuses on ${topicLabel}?`,
     `Which assessment cue should guide care first for ${topicLabel}?`,
     `What should the nurse remember when reviewing ${topicLabel}?`,
     `Which patient-safety point is most important for ${topicLabel}?`,
-    `How should a student approach a board-style question about ${topicLabel}?`,
+    `How should a student approach a clinical judgment question about ${topicLabel}?`,
     `Which nursing judgment best supports safe care for ${topicLabel}?`,
     `What common exam trap should be avoided when answering about ${topicLabel}?`,
     `Which clinical thinking rule helps identify the best answer for ${topicLabel}?`,
@@ -1221,7 +1221,7 @@ function buildTopicFallbackEntries(topic, subject, difficulty, count, offset = 0
 
 function buildQuizRationale(entry, prompt, correctAnswer) {
   const topic = entry.topic || "this concept";
-  const subject = entry.subject || "PNLE review";
+  const subject = entry.subject || "nursing review";
   const trap = getTrapLabel(inferClinicalTrap(prompt, entry));
   return `Correct Answer Explanation: ${correctAnswer} is best because it matches the stem cue and applies ${trap} reasoning for ${topic} in ${subject}. Incorrect Options Explanation: The distractors are designed as tempting but less safe choices, such as delaying action, choosing routine care, delegating nursing judgment, or treating a secondary concern before the priority cue. Key Takeaway: identify the highest-risk cue first, then choose the option that protects safety, follows assessment-before-intervention when appropriate, and fits the nurse's scope.`;
 }
@@ -1300,7 +1300,7 @@ function buildTopicGenerationNotes(sourceEntries, topic, difficulty = "All", not
   if (uploadedNotes && topic) {
     return [
       `CareDrop generation target: ${topic}`,
-      "The learner wants a full topic-focused set. If the uploaded notes are thin, expand with safe board-review nursing knowledge while staying centered on the requested topic.",
+      "The learner wants a full topic-focused set. If the uploaded notes are thin, expand with safe nursing review knowledge while staying centered on the requested topic.",
       `Uploaded notes:\n${uploadedNotes}`,
     ].join("\n\n");
   }
@@ -1352,7 +1352,7 @@ function buildFocusedFlashcardVariants(entry, requestedTopic) {
   const prompts = [
     `For ${focusTopic}, what nursing priority should you remember from this review cue?`,
     `Which assessment or safety cue matters most when reviewing ${focusTopic}?`,
-    `What is the PNLE takeaway for ${focusTopic} in this item?`,
+    `What is the key review takeaway for ${focusTopic} in this item?`,
     `How should a nurse connect ${focusTopic} to safe clinical judgment?`,
   ];
 
@@ -2181,7 +2181,7 @@ export default function App() {
   function openNewSimulationSetup() {
     resetSessionTimer();
     setSimulationLaunchOpen(true);
-    setStatusMessage("Take a moment before starting a new full PNLE simulation.");
+    setStatusMessage("Take a moment before starting a new full knowledge-check simulation.");
   }
 
   function updateTimerSetting(modeType, patch) {
@@ -2736,6 +2736,7 @@ export default function App() {
         const correct = questions.filter((item) => scoreQuestion(item) === 1).length;
         return {
           domain,
+          label: detail.label,
           title: detail.title,
           shortTitle: detail.shortTitle,
           total: questions.length,
@@ -3270,8 +3271,8 @@ export default function App() {
       openSimulationLauncher();
       setStatusMessage(
         recommendedFocus.subject && recommendedFocus.subject !== "Mixed Review"
-          ? `Prepare for a full PNLE simulation, with extra attention on ${recommendedFocus.subject}.`
-          : "Prepare for a full PNLE simulation when you are ready."
+          ? `Prepare for a full knowledge-check simulation, with extra attention on ${recommendedFocus.subject}.`
+          : "Prepare for a full knowledge-check simulation when you are ready."
       );
       return;
     }
@@ -4267,8 +4268,8 @@ export default function App() {
       startSessionTimer("simulation", { timerMode: "timed", durationMinutes: SIMULATION_DURATION_MINUTES, customMinutes: "" });
       setStatusMessage(
         combined.length > localPool.length
-          ? "Full PNLE simulation started. Gemini helped shape the expansion set."
-          : "Full PNLE simulation started. Take it one item at a time."
+          ? "Full knowledge-check simulation started. Gemini helped shape the expansion set."
+          : "Full knowledge-check simulation started. Take it one item at a time."
       );
 
       if (!hasCustomSource) {
@@ -4310,7 +4311,7 @@ export default function App() {
       setSimulationAnswerSheetOpen(false);
       startSessionTimer("simulation", { timerMode: "timed", durationMinutes: SIMULATION_DURATION_MINUTES, customMinutes: "" });
       setApiError(normalizeAiErrorMessage(error) || `Gemini simulation generation failed. A local ${finalTarget}-question simulation was loaded instead.`);
-      setStatusMessage("Full PNLE simulation started from the CareDrop bank.");
+      setStatusMessage("Full knowledge-check simulation started from the CareDrop bank.");
     } finally {
       setApiLoading(false);
     }
@@ -4676,7 +4677,7 @@ export default function App() {
       .map((item) => item.subject)
       .slice(0, 5);
     const recommendation = weakestBlock
-      ? `Recommended Focus: ${weakestBlock.domain}. You may benefit from extra practice in ${weakestBlock.shortTitle}, while keeping the progress you built in ${strongestBlock?.domain || "your stronger areas"}.`
+      ? `Recommended Focus: ${weakestBlock.label || weakestBlock.shortTitle}. You may benefit from extra practice in ${weakestBlock.shortTitle}, while keeping the progress you built in ${strongestBlock?.label || strongestBlock?.shortTitle || "your stronger areas"}.`
       : "Recommended Focus: review the answer sheet and choose one topic that felt uncertain.";
 
     const session = {
@@ -6622,7 +6623,7 @@ export default function App() {
                           }}
                         >
                           <strong>Simulation insight:</strong> {latestSimulationInsight.recommendation}
-                          {latestSimulationInsight.strongest ? ` Good progress showed in ${latestSimulationInsight.strongest.domain}. Keep going one block at a time.` : ""}
+                          {latestSimulationInsight.strongest ? ` Good progress showed in ${latestSimulationInsight.strongest.label || latestSimulationInsight.strongest.shortTitle}. Keep going one block at a time.` : ""}
                         </div>
                       ) : null}
                       <div
@@ -8435,7 +8436,7 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Simulation Exam</div>
                     <div style={{ fontSize: 12, color: C.muted, maxWidth: 720 }}>
-                      Build a mixed board-style exam across Nursing Practice I-V. Gemini helps expand parts of the set so the simulation follows the 20%-per-area PNLE pattern while still testing clinical judgment and responsibility-area competencies.
+                      Build a mixed long-form knowledge check across five review blocks. Gemini can help expand the set so each area receives balanced coverage while still testing clinical judgment and responsibility-area competencies.
                     </div>
                   </div>
                   {!simulationLaunchOpen && simulationQuestions.length ? (
@@ -8476,7 +8477,7 @@ export default function App() {
                     }}
                   >
                     <div>
-                      <Badge label="Full 500-item PNLE mock exam" color="green" />
+                      <Badge label="Full 500-item knowledge check" color="green" />
                       <div style={{ marginTop: 16, fontSize: width < 720 ? 26 : 32, fontWeight: 950, letterSpacing: "-0.05em", color: C.text }}>
                         Take a moment before you begin.
                       </div>
@@ -8496,11 +8497,11 @@ export default function App() {
                           maxWidth: 920,
                         }}
                       >
-                        This practice exam is intended as a study and self-assessment tool only. It is designed to help you review concepts, identify areas that may need more attention, and guide your preparation. Your consistency, effort, and continued learning are still the most important factors in your progress.
+                        This simulation is intended as a study and self-assessment tool only. It is designed to help you review concepts, identify areas that may need more attention, and guide your learning. Your consistency, effort, and continued review are still the most important factors in your progress.
                       </div>
                       <div style={{ marginTop: 16, display: "grid", gap: 10, gridTemplateColumns: width < 820 ? "1fr" : "repeat(3, minmax(0, 1fr))" }}>
                         {[
-                          { label: "500 questions", hint: "NP1 to NP5, 100 items each" },
+                          { label: "500 questions", hint: "Five review blocks, 100 items each" },
                           { label: "3 hours", hint: "Timer starts after you click start" },
                           { label: "Answers hidden", hint: "Rationales appear only after submission" },
                         ].map((item) => (
@@ -8528,7 +8529,7 @@ export default function App() {
                           cursor: apiLoading ? "not-allowed" : "pointer",
                         }}
                       >
-                        {apiLoading ? "Preparing your exam..." : "Let’s Start"}
+                        {apiLoading ? "Preparing your simulation..." : "Let’s Start"}
                       </button>
                       <div style={{ fontSize: 12, color: C.muted, textAlign: "center" }}>
                         Find a quiet space, take a breath, and answer one item at a time.
@@ -8564,7 +8565,7 @@ export default function App() {
                       lineHeight: 1.7,
                     }}
                   >
-                    Open the preparation screen to begin the full PNLE simulation.
+                    Open the preparation screen to begin the full knowledge-check simulation.
                   </div>
                 ) : (
                   <>
@@ -8634,7 +8635,7 @@ export default function App() {
                     <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", fontSize: studyMetaSize, color: C.muted }}>
                       <div>{simulationFlaggedCount} flagged</div>
                       <div>{simulationUnansweredCount} unanswered</div>
-                      <div>{simulationCurrentDomain} block progress: {simulationBlockQuestionNumber}/{SIMULATION_BLOCK_SIZE}</div>
+                      <div>{simulationCurrentDomainDetail.label} progress: {simulationBlockQuestionNumber}/{SIMULATION_BLOCK_SIZE}</div>
                       {simulationQuestions.length > 100 ? <div>Palette shows the questions around your current position</div> : null}
                     </div>
 
@@ -8649,7 +8650,7 @@ export default function App() {
                       }}
                     >
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                        <Badge label={`${simulationCurrentDomain} · Question ${simulationIdx + 1} of ${simulationQuestions.length}`} color="blue" />
+                        <Badge label={`${simulationCurrentDomainDetail.label} · Question ${simulationIdx + 1} of ${simulationQuestions.length}`} color="blue" />
                         <Badge label={`Block progress ${simulationBlockQuestionNumber}/${SIMULATION_BLOCK_SIZE}`} color="green" />
                         <Badge label={simulationItem.competencyArea || inferCompetencyArea(simulationItem)} color="blue" />
                         <Badge label={simulationItem.subject} color="gray" />
@@ -8834,10 +8835,10 @@ export default function App() {
                           <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: studyBodySize }}>
                             <div>Answered: <strong>{simulationAnsweredCount}</strong></div>
                             <div>Remaining: <strong>{simulationUnansweredCount}</strong></div>
-                            <div>Current block: <strong>{simulationCurrentDomain} · {simulationBlockQuestionNumber}/{SIMULATION_BLOCK_SIZE}</strong></div>
+                            <div>Current block: <strong>{simulationCurrentDomainDetail.label} · {simulationBlockQuestionNumber}/{SIMULATION_BLOCK_SIZE}</strong></div>
                           </div>
                           <div style={{ marginTop: 10, fontSize: studyBodySize, color: C.muted, lineHeight: 1.7 }}>
-                            Answers stay hidden while the simulation is active so the flow feels closer to an actual long-form exam. Move back through earlier questions anytime if you want to review or change an answer before the final submit on the last item.
+                            Answers stay hidden while the simulation is active so the flow feels closer to a focused long-form knowledge check. Move back through earlier questions anytime if you want to review or change an answer before the final submit on the last item.
                           </div>
                           {unansweredSimulationNumbers.length && simulationIdx === simulationQuestions.length - 1 ? (
                             <div
@@ -8871,8 +8872,8 @@ export default function App() {
                               <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Simulation Results</div>
                               <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, maxWidth: 760 }}>
                               {simulationUsedAi
-                                ? "This full PNLE simulation combined the CareDrop bank with Gemini-generated expansion for broader exam practice."
-                                : "This full PNLE simulation came from the CareDrop bank and is now saved in Review History for later review."}
+                                ? "This full knowledge-check simulation combined the CareDrop bank with Gemini-generated expansion for broader review practice."
+                                : "This full knowledge-check simulation came from the CareDrop bank and is now saved in Review History for later review."}
                               </div>
                             </div>
                             <button
@@ -8921,7 +8922,7 @@ export default function App() {
                               </div>
                             ))}
                           </div>
-                          {renderTimerSummary("simulation", simulationAnsweredCount, simulationQuestions.length, "simulation exam")}
+                          {renderTimerSummary("simulation", simulationAnsweredCount, simulationQuestions.length, "simulation")}
 
                           <div
                             style={{
@@ -8937,7 +8938,7 @@ export default function App() {
                           >
                             <strong>Recommended next step:</strong>{" "}
                             {simulationNpBreakdown.filter((item) => item.total).sort((left, right) => left.percent - right.percent)[0]
-                              ? `You may benefit from extra practice in ${simulationNpBreakdown.filter((item) => item.total).sort((left, right) => left.percent - right.percent)[0].domain}. Good progress still counts, and this result is here to guide your next review, not judge it.`
+                              ? `You may benefit from extra practice in ${simulationNpBreakdown.filter((item) => item.total).sort((left, right) => left.percent - right.percent)[0].label}. Good progress still counts, and this result is here to guide your next review, not judge it.`
                               : "Review the answer sheet and choose one area that felt uncertain."}
                           </div>
 
@@ -8952,12 +8953,12 @@ export default function App() {
                           >
                             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                               <div>
-                                <div style={{ fontSize: 15, fontWeight: 800 }}>PNLE Practice Test Breakdown</div>
+                                <div style={{ fontSize: 15, fontWeight: 800 }}>Review Block Breakdown</div>
                                 <div style={{ marginTop: 4, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
-                                  A 500-item PNLE simulation targets 100 items per Nursing Practice area, or 20% each.
+                                  A 500-item simulation targets 100 items per review block, or 20% each.
                                 </div>
                               </div>
-                              <Badge label="NP1-NP5" color="green" />
+                              <Badge label="5 balanced blocks" color="green" />
                             </div>
                             <div
                               style={{
@@ -8978,7 +8979,7 @@ export default function App() {
                                   }}
                                 >
                                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                                    <div style={{ fontSize: 14, fontWeight: 900 }}>{item.domain}</div>
+                                    <div style={{ fontSize: 14, fontWeight: 900 }}>{item.label}</div>
                                     <Badge label={`${item.percent}%`} color={item.percent >= 75 ? "green" : item.percent >= 60 ? "amber" : "red"} />
                                   </div>
                                   <div style={{ marginTop: 6, fontSize: 12, color: C.muted, lineHeight: 1.45 }}>{item.shortTitle}</div>
@@ -9012,7 +9013,7 @@ export default function App() {
                               <div>
                                 <div style={{ fontSize: 15, fontWeight: 800 }}>Competency Area Snapshot</div>
                                 <div style={{ marginTop: 4, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
-                                  Items are also tagged against the 11 Philippine nursing responsibility areas for safer remediation.
+                                  Items are also tagged against nursing responsibility areas for safer remediation.
                                 </div>
                               </div>
                               <Badge label="11 areas" color="blue" />
@@ -9191,7 +9192,7 @@ export default function App() {
                                   >
                                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                                       <Badge label={`Q ${index + 1}`} color="blue" />
-                                      <Badge label={item.pnleDomain || inferPnleDomain(item, index)} color="green" />
+                                      <Badge label={getPnleDomainDetail(item.pnleDomain || inferPnleDomain(item, index)).label} color="green" />
                                       <Badge label={item.competencyArea || inferCompetencyArea(item)} color="blue" />
                                       <Badge label={item.subject} color="gray" />
                                       <Badge label={item.topic} color="gray" />

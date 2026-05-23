@@ -102,9 +102,9 @@ Patient Teaching
 - Teach early reporting of dizziness, bleeding, fever, or worsening shortness of breath.
 Safety Considerations
 - Watch for rapid deterioration and contraindications before giving fluids or medications.
-Exam Traps
+Knowledge Check Traps
 - Do not delay assessment to complete nonurgent documentation.
-High-Yield PNLE Points
+High-Yield Review Points
 - The safest first action usually addresses circulation, oxygenation, and rapid reassessment.
 `;
 
@@ -128,9 +128,9 @@ Patient Teaching
 - Teach FAST and stroke warning signs.
 Safety Considerations
 - Watch for intracranial bleeding after thrombolytic therapy.
-Exam Traps
+Knowledge Check Traps
 - Do not confuse TIA with completed stroke.
-High-Yield PNLE Points
+High-Yield Review Points
 - Time is brain in acute stroke care.
 `;
 

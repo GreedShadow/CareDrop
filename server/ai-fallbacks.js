@@ -5,8 +5,8 @@ const SUMMARY_HEADINGS = [
   "Nursing Interventions",
   "Patient Teaching",
   "Safety Considerations",
-  "Exam Traps",
-  "High-Yield PNLE Points",
+  "Knowledge Check Traps",
+  "High-Yield Review Points",
 ];
 
 function normalizeText(value) {
@@ -71,11 +71,11 @@ export function buildFallbackSummary(notes) {
       safetyCue,
       "Preserve source warnings, contraindications, and only-if or unless conditions before choosing an answer.",
     ],
-    "Exam Traps": [
+    "Knowledge Check Traps": [
       "Do not choose routine care when the stem shows instability or a priority safety cue.",
       "Avoid jumping to implementation if the question is asking for the first assessment.",
     ],
-    "High-Yield PNLE Points": [
+    "High-Yield Review Points": [
       "Ask: what is safest, what must be assessed first, and what action prevents harm?",
       "Match broad questions with broad nursing priorities and specific questions with precise clinical cues.",
     ],
@@ -104,12 +104,12 @@ export function buildFallbackCards({ notes, subject, topic, difficulty, count })
       `Which safety point should guide care for ${topicLabel}?`,
       `What should the nurse assess first when ${topicLabel} is suspected?`,
       `What patient-teaching point matters most for ${topicLabel}?`,
-      `What board-review takeaway connects to ${topicLabel}?`,
+      `What review takeaway connects to ${topicLabel}?`,
       `Which clinical change would require prompt attention in ${topicLabel}?`,
     ][index % 6],
     answer: cue,
     rationale: `Correct Answer Explanation: This answer is useful because it keeps ${topicLabel} tied to assessment, safety, and priority nursing judgment.`,
-    notes: `Key Takeaway: For PNLE-style review, connect ${topicLabel} to the safest assessment cue or first nursing action.`,
+    notes: `Key Takeaway: For nursing knowledge review, connect ${topicLabel} to the safest assessment cue or first nursing action.`,
   }));
 }
 
@@ -127,7 +127,7 @@ export function buildFallbackQuestions({ notes, subject, topic, difficulty, coun
       correct: "Assess the priority cue first and escalate care if signs of instability are present.",
     },
     {
-      prompt: `The nurse is answering a PNLE-style item about ${topicLabel}. Which action best protects client safety?`,
+      prompt: `The nurse is answering a knowledge-check item about ${topicLabel}. Which action best protects client safety?`,
       correct: "Focus on the assessment finding that signals the greatest immediate risk.",
     },
     {
@@ -143,7 +143,7 @@ export function buildFallbackQuestions({ notes, subject, topic, difficulty, coun
       correct: "Identify the finding that creates the greatest immediate safety risk.",
     },
     {
-      prompt: `During review of ${topicLabel}, which choice best reflects PNLE priority-setting?`,
+      prompt: `During review of ${topicLabel}, which choice best reflects safe nursing priority-setting?`,
       correct: "Choose the response that protects airway, breathing, circulation, or prevents deterioration first.",
     },
     {
@@ -159,7 +159,7 @@ export function buildFallbackQuestions({ notes, subject, topic, difficulty, coun
       correct: "Recognize possible deterioration early and respond before lower-priority tasks.",
     },
     {
-      prompt: `When answering a board-style question about ${topicLabel}, which thinking rule is most useful?`,
+      prompt: `When answering a clinical judgment question about ${topicLabel}, which thinking rule is most useful?`,
       correct: "Separate urgent assessment findings from stable or comfort-focused details before choosing an answer.",
     },
   ];
@@ -214,7 +214,7 @@ export function buildFallbackQuestions({ notes, subject, topic, difficulty, coun
           d: "This choice shifts clinical judgment away from the nurse before focused assessment is complete.",
         },
         takeaway:
-          "In PNLE-style questions, prioritize safety, focused assessment, and the main clinical risk.",
+          "In nursing knowledge checks, prioritize safety, focused assessment, and the main clinical risk.",
       },
       notes: `Key Takeaway: Link ${topicLabel} to the safest nursing priority.`,
     };
@@ -226,6 +226,6 @@ export function buildFallbackReviewHelp({ userPrompt, question, selectedAnswer, 
     `1. Direct answer\n${correctAnswer} is the best answer for this item. ${userPrompt ? `For your question: ${userPrompt}` : ""}`.trim(),
     `2. Why your answer was weaker\n${selectedAnswer || "The selected answer"} is weaker because it may miss the priority cue or delay the safest nursing action.`,
     `3. Clue in the question\nLook for the part of the stem pointing to ${topic || "the main clinical risk"} and decide whether assessment, safety, or urgent intervention comes first.`,
-    `4. What to remember for boards\n${rationale || `For PNLE-style review, choose the answer that best protects safety and matches the highest-priority nursing judgment.`}`,
+    `4. What to remember\n${rationale || `For nursing knowledge review, choose the answer that best protects safety and matches the highest-priority nursing judgment.`}`,
   ].join("\n\n");
 }
