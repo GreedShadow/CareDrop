@@ -5227,6 +5227,11 @@ export default function App() {
   const usesDrawerNav = width < 960;
   const showFlashcardSetup = mode === "flashcard" && flashcardViewMode === "setup";
   const showQuizSetup = mode === "quiz" && quizViewMode === "setup";
+  const activeSimulationFocusMode =
+    mode === "simulation" &&
+    !simulationLaunchOpen &&
+    simulationQuestions.length > 0 &&
+    !simulationSubmitted;
   const isStudyMode = mode === "flashcard" || mode === "quiz" || mode === "simulation";
   const headerShouldBeVisible = usesDrawerNav || headerVisible || mobileDrawerOpen;
   const studySectionPadding = isMobile ? 16 : 22;
@@ -6282,11 +6287,11 @@ export default function App() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: usesDrawerNav ? "1fr" : "minmax(280px, 300px) minmax(0, 1fr)",
+            gridTemplateColumns: usesDrawerNav || activeSimulationFocusMode ? "1fr" : "minmax(280px, 300px) minmax(0, 1fr)",
             gap: 20,
           }}
         >
-          {!usesDrawerNav ? (
+          {!usesDrawerNav && !activeSimulationFocusMode ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ ...panelStyle, padding: 18, background: accentPanelSurface, border: darkMode ? `1px solid ${C.border}` : "1px solid rgba(8,59,40,0.22)", boxShadow: darkMode ? "none" : "0 18px 30px rgba(7, 38, 24, 0.15)", position: "sticky", top: headerVisible ? (isMobile ? headerHeight + 12 : headerHeight + 18) : 18, transition: "top 0.28s ease" }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(216,237,227,0.56)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
