@@ -106,12 +106,33 @@ export function Flashcard({ card, idx, total, rating, onRate }) {
   }
 
   function cleanStudyNote(text) {
-    return String(text || "")
+    return cleanLegacyReviewLanguage(text)
       .replace(/^\s*(Correct Answer Explanation|Key Takeaway|Short Rationale)\s*:\s*/i, "")
       .replace(/\s+/g, " ")
       .trim();
   }
 
+  function cleanLegacyReviewLanguage(text) {
+    return String(text || "")
+      .replace(/\bPNLE\s+takeaway\b/gi, "key review takeaway")
+      .replace(/\bPNLE[-\s]*style\b/gi, "knowledge-check")
+      .replace(/\bPRC\s*NLE\b/gi, "nursing knowledge")
+      .replace(/\bNurse Licensure Examination\b/gi, "nursing knowledge review")
+      .replace(/\blicensure\s+exam(?:ination)?\b/gi, "knowledge check")
+      .replace(/\bboard[-\s]*review\b/gi, "focused review")
+      .replace(/\bboard[-\s]*style\b/gi, "clinical judgment")
+      .replace(/\bboard\s+recall\s*:\s*/gi, "Focused review: ")
+      .replace(/\bwhat to remember for boards\b/gi, "what to remember")
+      .replace(/\bfor boards\b/gi, "for review")
+      .replace(/\bboards\b/gi, "review")
+      .replace(/\bPNLE\b/g, "review")
+      .replace(/\bNLE\b/g, "review")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  const displayQuestion = cleanLegacyReviewLanguage(card.question);
+  const displayAnswer = cleanLegacyReviewLanguage(card.answer);
   const answerRationale = cleanStudyNote(card.rationale);
   const answerTakeaway = cleanStudyNote(card.notes);
 
@@ -222,7 +243,7 @@ export function Flashcard({ card, idx, total, rating, onRate }) {
               {
                 side: "front",
                 heading: "Question",
-                body: card.question,
+                body: displayQuestion,
                 footer: "Tap or press Space to flip the card",
                 background: C.panelNeutralAlt,
                 borderColor: C.panelNeutralDark,
@@ -232,7 +253,7 @@ export function Flashcard({ card, idx, total, rating, onRate }) {
               {
                 side: "back",
                 heading: "Answer",
-                body: card.answer,
+                body: displayAnswer,
                 footer: null,
                 background: `linear-gradient(135deg, ${C.panelNeutral} 0%, ${C.surface} 100%)`,
                 borderColor: C.panelNeutralDark,

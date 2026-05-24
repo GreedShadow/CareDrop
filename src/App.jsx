@@ -779,11 +779,28 @@ function matchesGeneratedTopicContent(item, topic) {
 }
 
 function cleanQuizPrompt(prompt) {
-  return String(prompt || "")
+  return sanitizeLegacyReviewLanguage(prompt)
     .replace(/^\s*(question\s*:|q\s*:)\s*/i, "")
     .replace(/\b(answer\s*:|instruction\s*:|directions\s*:).*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function sanitizeLegacyReviewLanguage(text) {
+  return String(text || "")
+    .replace(/\bPNLE\s+takeaway\b/gi, "key review takeaway")
+    .replace(/\bPNLE[-\s]*style\b/gi, "knowledge-check")
+    .replace(/\bPRC\s*NLE\b/gi, "nursing knowledge")
+    .replace(/\bNurse Licensure Examination\b/gi, "nursing knowledge review")
+    .replace(/\blicensure\s+exam(?:ination)?\b/gi, "knowledge check")
+    .replace(/\bboard[-\s]*review\b/gi, "focused review")
+    .replace(/\bboard[-\s]*style\b/gi, "clinical judgment")
+    .replace(/\bboard\s+recall\s*:\s*/gi, "Focused review: ")
+    .replace(/\bwhat to remember for boards\b/gi, "what to remember")
+    .replace(/\bfor boards\b/gi, "for review")
+    .replace(/\bboards\b/gi, "review")
+    .replace(/\bPNLE\b/g, "review")
+    .replace(/\bNLE\b/g, "review");
 }
 
 function cleanClinicalCueForPrompt(prompt) {
@@ -1563,14 +1580,17 @@ function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRep
         difficulty: ["easy", "medium", "hard"].includes(card.difficulty) ? card.difficulty : "medium",
         topic: topic || card.topic || "ai review",
         question,
-        answer,
+        answer: sanitizeLegacyReviewLanguage(answer),
         rationale: alignTextToPrompt(
           question,
-          card.rationale || buildFlashcardRationale({ ...card, subject: nextSubject, topic: topic || card.topic }, answer),
+          sanitizeLegacyReviewLanguage(card.rationale) ||
+            buildFlashcardRationale({ ...card, subject: nextSubject, topic: topic || card.topic }, answer),
           24,
           48
         ),
-        notes: String(card.notes || buildFlashcardTakeaway({ ...card, subject: nextSubject, topic: topic || card.topic }, answer)),
+        notes: sanitizeLegacyReviewLanguage(
+          card.notes || buildFlashcardTakeaway({ ...card, subject: nextSubject, topic: topic || card.topic }, answer)
+        ),
       };
     }),
     (card) => card.id
@@ -1595,6 +1615,16 @@ function sanitizeFlashcards(cards, subject, difficulty, topic, usedIds, allowRep
       matchesGeneratedTopicContent(card, topic) &&
       (allowRepeat ? true : !usedIds.includes(card.id))
   );
+}
+
+function sanitizePersistedFlashcards(cards) {
+  return (Array.isArray(cards) ? cards : []).map((card) => ({
+    ...card,
+    question: cleanQuizPrompt(card.question || card.prompt || ""),
+    answer: sanitizeLegacyReviewLanguage(card.answer || ""),
+    rationale: sanitizeLegacyReviewLanguage(card.rationale || ""),
+    notes: sanitizeLegacyReviewLanguage(card.notes || ""),
+  }));
 }
 
 function sanitizeQuizQuestions(questions, subject, difficulty, topic, usedPrompts, allowRepeat, allowMultipleResponse = false) {
@@ -2110,8 +2140,9 @@ export default function App() {
     setCalendarEvents(Array.isArray(snapshot.calendarEvents) ? snapshot.calendarEvents : []);
     setPlannerItems(Array.isArray(snapshot.plannerItems) ? snapshot.plannerItems : []);
     setAdminView(["overview", "feedback", "planning", "activity", "users"].includes(snapshot.adminView) ? snapshot.adminView : "overview");
-    setFlashcards(safeArray(snapshot.flashcards));
-    setCardIdx(clamp(Number(snapshot.cardIdx || 0), 0, Math.max(safeArray(snapshot.flashcards).length - 1, 0)));
+    const restoredFlashcards = sanitizePersistedFlashcards(safeArray(snapshot.flashcards));
+    setFlashcards(restoredFlashcards);
+    setCardIdx(clamp(Number(snapshot.cardIdx || 0), 0, Math.max(restoredFlashcards.length - 1, 0)));
     setCardSchedule(safeObject(snapshot.cardSchedule));
     setFlashcardSessionRatings(safeObject(snapshot.flashcardSessionRatings));
     setFlashcardResponseTimes(safeObject(snapshot.flashcardResponseTimes));
