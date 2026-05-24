@@ -1147,12 +1147,14 @@ function toFlashcard(entry, subject) {
 function buildFlashcardRationale(entry, answer) {
   const topic = entry.topic || "this nursing concept";
   const subject = entry.subject || "nursing review";
-  return `Correct Answer Explanation: ${answer} is the key point because it supports safe nursing judgment for ${topic} in ${subject}. Key Takeaway: connect the concept to the safest assessment cue, priority intervention, or patient-teaching point.`;
+  const cue = cleanClinicalCueForPrompt(entry.q || entry.question || "");
+  const cueText = cue ? ` The review cue is: ${cue}.` : "";
+  return `Correct Answer Explanation: ${answer} fits ${topic} in ${subject} because it keeps the learner focused on the safest assessment cue, priority action, or patient-teaching point.${cueText}`;
 }
 
 function buildFlashcardTakeaway(entry, answer) {
   const topic = entry.topic || "general review";
-  return `Key takeaway: link ${topic} to the safest nursing priority, core assessment cue, or first-line intervention. Remember: ${answer}`;
+  return `Key Takeaway: For ${topic}, connect the cue to the safest nursing priority, core assessment finding, or first-line intervention. Anchor point: ${answer}`;
 }
 
 function resolveTopicSubject(subject, topic) {
@@ -1198,7 +1200,7 @@ function buildTopicFallbackEntries(topic, subject, difficulty, count, offset = 0
     `Which patient-safety point is most important for ${topicLabel}?`,
     `How should a student approach a clinical judgment question about ${topicLabel}?`,
     `Which nursing judgment best supports safe care for ${topicLabel}?`,
-    `What common exam trap should be avoided when answering about ${topicLabel}?`,
+    `What common knowledge-check trap should be avoided when answering about ${topicLabel}?`,
     `Which clinical thinking rule helps identify the best answer for ${topicLabel}?`,
     `What patient-teaching focus is important when reviewing ${topicLabel}?`,
     `Which sign of worsening status should be considered first in ${topicLabel}?`,
@@ -1315,11 +1317,13 @@ function buildFlashcardVariants(entry) {
   const answer = alignTextToPrompt(entry.q, entry.a, 20, 30) || entry.a;
   const rationale = buildFlashcardRationale(entry, answer);
   const notes = buildFlashcardTakeaway(entry, answer);
+  const cue = cleanClinicalCueForPrompt(entry.q || "");
+  const cueText = cue || `a cue related to ${topic}`;
   const prompts = [
     entry.q,
-    `In ${subject}, what should you remember about ${topic}?`,
-    `Board recall: what is the safest nursing takeaway for ${topic}?`,
-    `Which nursing priority cue should you remember first for ${topic}?`,
+    `In ${subject}, what should this ${topic} cue make you remember: ${cueText}?`,
+    `Which safe nursing takeaway best matches this ${topic} cue: ${cueText}?`,
+    `What priority idea should you connect to this ${topic} review cue: ${cueText}?`,
   ];
 
   return uniqueBy(
@@ -1349,11 +1353,13 @@ function buildFocusedFlashcardVariants(entry, requestedTopic) {
   const focusedEntry = { ...entry, topic: focusTopic };
   const rationale = buildFlashcardRationale(focusedEntry, answer);
   const notes = buildFlashcardTakeaway(focusedEntry, answer);
+  const cue = cleanClinicalCueForPrompt(entry.q || "");
+  const cueText = cue || `a cue related to ${focusTopic}`;
   const prompts = [
-    `For ${focusTopic}, what nursing priority should you remember from this review cue?`,
-    `Which assessment or safety cue matters most when reviewing ${focusTopic}?`,
-    `What is the key review takeaway for ${focusTopic} in this item?`,
-    `How should a nurse connect ${focusTopic} to safe clinical judgment?`,
+    `For ${focusTopic}, what should this review cue make you remember: ${cueText}?`,
+    `Which assessment or safety point best matches this ${focusTopic} cue: ${cueText}?`,
+    `What is the key review takeaway for ${focusTopic} from this cue: ${cueText}?`,
+    `How should a nurse connect this ${focusTopic} cue to safe clinical judgment: ${cueText}?`,
   ];
 
   return uniqueBy(
@@ -5056,7 +5062,7 @@ export default function App() {
       return;
     }
 
-    if (!validateTimerBeforeStart(activeStudyMode)) {
+    if (activeStudyMode === "simulation" && !validateTimerBeforeStart(activeStudyMode)) {
       return;
     }
 
@@ -7923,6 +7929,7 @@ export default function App() {
                       card={currentCard}
                       idx={cardIdx}
                       total={flashcards.length}
+                      rating={flashcardSessionRatings[currentCard.id]}
                       onRate={handleRate}
                     />
                     <div

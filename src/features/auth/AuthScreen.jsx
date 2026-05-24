@@ -69,7 +69,7 @@ export function AuthScreen(props) {
               <ThemeToggle mode={themeMode} onToggle={onToggleTheme} showLabel />
             </div>
             <div style={{ marginTop: 28, fontSize: stacked ? 34 : 46, lineHeight: 1.04, fontWeight: 900, letterSpacing: "-0.05em", maxWidth: 560 }}>Study smarter. Learn from mistakes. Build confidence.</div>
-            <div style={{ marginTop: 18, fontSize: 15, lineHeight: 1.85, color: C.navSubtle, maxWidth: 560 }}>Continue your flashcards, quizzes, uploads, weak-area review, and saved sessions in one supportive workspace built for real learners preparing for demanding exams.</div>
+            <div style={{ marginTop: 18, fontSize: 15, lineHeight: 1.85, color: C.navSubtle, maxWidth: 560 }}>Continue your flashcards, quizzes, uploads, weak-area review, and saved sessions in one supportive workspace built for real learners checking and strengthening knowledge.</div>
           </div>
           <div style={{ fontSize: 13, color: C.navSubtle, lineHeight: 1.7, maxWidth: 520 }}>
             {cloudSyncReady ? "Cloud sync is available, so your progress can follow you across devices once Supabase is connected." : "You can still use CareDrop locally today. Free cloud sync becomes available after Supabase keys are added."}

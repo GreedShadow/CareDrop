@@ -29,7 +29,7 @@ export function Badge({ label, color = "gray" }) {
   );
 }
 
-export function Flashcard({ card, idx, total, onRate }) {
+export function Flashcard({ card, idx, total, rating, onRate }) {
   const [flipped, setFlipped] = useState(false);
   const [flipLocked, setFlipLocked] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() =>
@@ -91,10 +91,9 @@ export function Flashcard({ card, idx, total, onRate }) {
   const isMobile = viewportWidth < 640;
   const isTablet = viewportWidth < 1024;
   const useStackedCard = true;
-  const compactDetails = viewportWidth < 1280;
   const cardMinHeight = "auto";
   const facePadding = isMobile ? "16px" : isTablet ? "18px" : "22px 22px 20px";
-  const compactNoteLimit = isMobile ? 150 : isTablet ? 190 : 230;
+  const compactNoteLimit = isMobile ? 170 : isTablet ? 220 : 280;
   const diffColor =
     card.difficulty === "hard" ? "red" : card.difficulty === "medium" ? "amber" : "green";
 
@@ -105,6 +104,16 @@ export function Flashcard({ card, idx, total, onRate }) {
     }
     return `${value.slice(0, limit).trim()}...`;
   }
+
+  function cleanStudyNote(text) {
+    return String(text || "")
+      .replace(/^\s*(Correct Answer Explanation|Key Takeaway|Short Rationale)\s*:\s*/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  const answerRationale = cleanStudyNote(card.rationale);
+  const answerTakeaway = cleanStudyNote(card.notes);
 
   function handleFlip() {
     if (flipLocked) {
@@ -230,13 +239,12 @@ export function Flashcard({ card, idx, total, onRate }) {
                 accentColor: C.muted,
                 extra: (
                   <div style={{ marginTop: isMobile ? 12 : 16, display: "grid", gap: isMobile ? 10 : 12 }}>
-                    {(compactDetails
-                      ? [{ label: "Key takeaway", text: trimStudyNote(card.notes || card.rationale) }]
-                      : [
-                          { label: "Short rationale", text: card.rationale },
-                          { label: "Key takeaway", text: card.notes },
-                        ]
-                    ).map((note) => (
+                    {[
+                      { label: "Why it matters", text: trimStudyNote(answerRationale || answerTakeaway) },
+                      { label: "Key takeaway", text: trimStudyNote(answerTakeaway || answerRationale) },
+                    ]
+                      .filter((note) => note.text)
+                      .map((note) => (
                       <div
                         key={note.label}
                         style={{
@@ -353,25 +361,30 @@ export function Flashcard({ card, idx, total, onRate }) {
           { label: "Missed it", key: "again", color: C.red, bg: C.redLight },
           { label: "Unsure", key: "hard", color: C.amber, bg: C.amberLight },
           { label: "Got it", key: "easy", color: C.accent, bg: C.accentLight },
-        ].map((button) => (
-          <button
-            key={button.key}
-            onClick={() => onRate(button.key)}
-            style={{
-              width: "100%",
-              padding: isMobile ? "12px 14px" : "11px 14px",
-              borderRadius: 12,
-              border: `1.5px solid ${button.color}`,
-              background: button.bg,
-              color: button.color,
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: "pointer",
-            }}
-          >
-            {button.label}
-          </button>
-        ))}
+        ].map((button) => {
+          const selected = rating === button.key;
+          return (
+            <button
+              key={button.key}
+              onClick={() => onRate(button.key)}
+              aria-pressed={selected}
+              style={{
+                width: "100%",
+                padding: isMobile ? "12px 14px" : "11px 14px",
+                borderRadius: 12,
+                border: `1.5px solid ${button.color}`,
+                background: selected ? button.color : button.bg,
+                color: selected ? "#fff" : button.color,
+                fontWeight: 800,
+                fontSize: 13,
+                cursor: "pointer",
+                boxShadow: selected ? "0 10px 22px rgba(15, 23, 42, 0.16)" : "none",
+              }}
+            >
+              {selected ? `${button.label} saved` : button.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

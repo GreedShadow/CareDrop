@@ -205,7 +205,7 @@ app.post("/api/claude/cards", async (req, res) => {
     const subject = String(req.body?.subject || "Mixed Review");
     const topic = String(req.body?.topic || "").trim();
     const difficulty = String(req.body?.difficulty || "medium");
-    const count = Math.max(6, Math.min(24, Number(req.body?.count || 10)));
+    const count = Math.max(1, Math.min(24, Number(req.body?.count || 10)));
     const excludeQuestions = Array.isArray(req.body?.excludeQuestions) ? req.body.excludeQuestions.slice(0, 120) : [];
     const context = buildStudyContext({ notes, subject, topic });
 
