@@ -556,6 +556,18 @@ function buildFullPnleSimulationSet(pool, usedPrompts = [], recentPrompts = []) 
   });
 }
 
+function waitForUiPaint() {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.setTimeout(resolve, 0);
+    });
+  });
+}
+
 function buildLocalSummary(text) {
   const cleaned = String(text || "").replace(/\r/g, " ").trim();
   if (!cleaned) {
@@ -2446,13 +2458,19 @@ export default function App() {
       return;
     }
 
-    persistLocalSnapshot(currentUser.id, progressSnapshot, window.localStorage);
+    const persist = () => {
+      persistLocalSnapshot(currentUser.id, progressSnapshot, window.localStorage);
+    };
+    const timeoutId = window.setTimeout(persist, mode === "simulation" ? 700 : 180);
+
     setCloudSyncState(
       supabaseConfigured && currentUser?.provider === "supabase"
         ? (isOnline ? "queued-sync" : "saved-local")
         : "saved-local"
     );
-  }, [currentUser?.id, progressSnapshot]);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [currentUser?.id, mode, progressSnapshot]);
 
   useEffect(() => {
     if (!supabaseConfigured || !supabase || !currentUser?.id || currentUser.provider !== "supabase" || !remoteProgressLoadedRef.current) {
@@ -2713,22 +2731,57 @@ export default function App() {
   const totalCards = getAllEntries().length;
   const currentCard = flashcards[clamp(cardIdx, 0, Math.max(flashcards.length - 1, 0))];
   const quizItem = quiz[quizIdx];
-  const answeredCount = quiz.filter((item) => isQuestionAnswered(item)).length;
-  const unansweredQuizNumbers = quiz
-    .map((item, index) => (!isQuestionAnswered(item) ? index + 1 : null))
-    .filter(Boolean);
-  const correctCount = quiz.filter(
-    (item) => scoreQuestion(item) === 1
-  ).length;
+  const quizStats = useMemo(() => {
+    let answered = 0;
+    let correct = 0;
+    const unanswered = [];
+
+    quiz.forEach((item, index) => {
+      if (isQuestionAnswered(item)) {
+        answered += 1;
+        if (scoreQuestion(item) === 1) {
+          correct += 1;
+        }
+      } else {
+        unanswered.push(index + 1);
+      }
+    });
+
+    return { answered, correct, unanswered };
+  }, [quiz]);
+  const answeredCount = quizStats.answered;
+  const unansweredQuizNumbers = quizStats.unanswered;
+  const correctCount = quizStats.correct;
   const simulationItem = simulationQuestions[simulationIdx];
   const simulationCurrentDomain = simulationItem?.pnleDomain || inferPnleDomain(simulationItem, simulationIdx);
   const simulationCurrentDomainDetail = getPnleDomainDetail(simulationCurrentDomain);
   const simulationBlockQuestionNumber = (simulationIdx % SIMULATION_BLOCK_SIZE) + 1;
-  const simulationAnsweredCount = simulationQuestions.filter((item) => isQuestionAnswered(item)).length;
-  const unansweredSimulationNumbers = simulationQuestions
-    .map((item, index) => (!isQuestionAnswered(item) ? index + 1 : null))
-    .filter(Boolean);
-  const simulationCorrectCount = simulationQuestions.filter((item) => scoreQuestion(item) === 1).length;
+  const simulationStats = useMemo(() => {
+    let answered = 0;
+    let correct = 0;
+    let flagged = 0;
+    const unanswered = [];
+
+    simulationQuestions.forEach((item, index) => {
+      if (item.flagged) {
+        flagged += 1;
+      }
+
+      if (isQuestionAnswered(item)) {
+        answered += 1;
+        if (scoreQuestion(item) === 1) {
+          correct += 1;
+        }
+      } else {
+        unanswered.push(index + 1);
+      }
+    });
+
+    return { answered, correct, flagged, unanswered };
+  }, [simulationQuestions]);
+  const simulationAnsweredCount = simulationStats.answered;
+  const unansweredSimulationNumbers = simulationStats.unanswered;
+  const simulationCorrectCount = simulationStats.correct;
   const simulationCurrentCorrect =
     !!simulationItem &&
     isQuestionAnswered(simulationItem) &&
@@ -2766,21 +2819,37 @@ export default function App() {
     [simulationQuestions]
   );
   const simulationNpBreakdown = useMemo(
-    () =>
-      PNLE_DOMAIN_ORDER.map((domain) => {
+    () => {
+      const byDomain = PNLE_DOMAIN_ORDER.reduce((accumulator, domain) => {
+        accumulator[domain] = { total: 0, correct: 0 };
+        return accumulator;
+      }, {});
+
+      simulationQuestions.forEach((item, index) => {
+        const domain = inferPnleDomain(item, index);
+        if (!byDomain[domain]) {
+          byDomain[domain] = { total: 0, correct: 0 };
+        }
+        byDomain[domain].total += 1;
+        if (scoreQuestion(item) === 1) {
+          byDomain[domain].correct += 1;
+        }
+      });
+
+      return PNLE_DOMAIN_ORDER.map((domain) => {
         const detail = getPnleDomainDetail(domain);
-        const questions = simulationQuestions.filter((item, index) => inferPnleDomain(item, index) === domain);
-        const correct = questions.filter((item) => scoreQuestion(item) === 1).length;
+        const stats = byDomain[domain] || { total: 0, correct: 0 };
         return {
           domain,
           label: detail.label,
           title: detail.title,
           shortTitle: detail.shortTitle,
-          total: questions.length,
-          correct,
-          percent: questions.length ? Math.round((correct / questions.length) * 100) : 0,
+          total: stats.total,
+          correct: stats.correct,
+          percent: stats.total ? Math.round((stats.correct / stats.total) * 100) : 0,
         };
-      }),
+      });
+    },
     [simulationQuestions]
   );
   const simulationCompetencyBreakdown = useMemo(
@@ -2903,7 +2972,7 @@ export default function App() {
     0,
     100
   );
-  const simulationFlaggedCount = simulationQuestions.filter((item) => item.flagged).length;
+  const simulationFlaggedCount = simulationStats.flagged;
   const remediationFocusSubject =
     remediationContext?.weakestSubject ||
     simulationWeakSubjects[0]?.subject ||
@@ -4233,9 +4302,11 @@ export default function App() {
     const aiBatchCap = Math.ceil(maxAiQuestions / SIMULATION_BATCH_SIZE);
     clearMessages();
     setApiLoading(true);
+    setStatusMessage("Preparing your simulation. CareDrop is building the full set now...");
     setSimulationSubmitted(false);
     setSimulationUsedAi(false);
     setSimulationResponseTimes({});
+    await waitForUiPaint();
 
     try {
       const localCandidates = buildLocalQuizFallback(
@@ -4243,7 +4314,7 @@ export default function App() {
         "",
         "All",
         "",
-        Math.max(finalTarget * 2, 120),
+        Math.max(finalTarget, 120),
         [],
         { includeSyntheticTopicFill: false }
       );
@@ -4321,12 +4392,13 @@ export default function App() {
         );
       }
     } catch (error) {
+      await waitForUiPaint();
       const fallbackCandidates = buildLocalQuizFallback(
         activeSimulationEntries,
         "",
         "All",
         "",
-        Math.max(finalTarget * 2, 120),
+        Math.max(finalTarget, 120),
         [],
         { includeSyntheticTopicFill: false }
       );
