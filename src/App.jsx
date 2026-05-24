@@ -3102,13 +3102,13 @@ export default function App() {
   const darkMode = C.mode === "dark";
   const softSurface = C.surfaceMuted;
   const adminModeActive = mode === "admin" && isAdminUser;
-  const successSurface = darkMode ? C.accentLight : "#F3FBF6";
+  const successSurface = C.accentLight;
   const successBorder = darkMode ? C.accentMid : "#B9E3CA";
-  const errorSurface = darkMode ? C.redLight : "#FFF1F2";
+  const errorSurface = C.redLight;
   const errorBorder = darkMode ? C.red : "#F4A8B4";
-  const warningSurface = darkMode ? C.amberLight : "#FFF7E8";
+  const warningSurface = C.amberLight;
   const warningBorder = C.amber;
-  const infoSurface = darkMode ? C.blueLight : "#EEF4FB";
+  const infoSurface = C.blueLight;
   const infoBorder = darkMode ? C.border : "#C7D6E5";
   const syncStatusTone = cloudSyncState === "sync-failed"
     ? { bg: errorSurface, border: errorBorder, label: "Sync failed" }
@@ -5247,7 +5247,7 @@ export default function App() {
   const elevatedSurface = C.surfaceRaised;
   const heroSurface = darkMode
     ? `linear-gradient(180deg, ${C.bgElevated} 0%, ${C.surface} 100%)`
-    : "linear-gradient(180deg, #FFFFFF 0%, #F6FBF8 100%)";
+    : `linear-gradient(180deg, ${C.bgElevated} 0%, ${C.surfaceRaised} 100%)`;
   const accentPanelSurface = darkMode
     ? "linear-gradient(180deg, #0d4e38 0%, #0f172a 100%)"
     : "linear-gradient(180deg, #0C6C42 0%, #0B5936 100%)";
@@ -5337,7 +5337,7 @@ export default function App() {
           padding: "12px 14px",
           borderRadius: 16,
           border: `1px solid ${C.border}`,
-          background: darkMode ? C.surfaceMuted : "#FFFFFF",
+          background: C.surfaceMuted,
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -5472,7 +5472,7 @@ export default function App() {
           border: `1px solid ${C.border}`,
           borderRadius: 20,
           padding: isMobile ? "16px" : "18px",
-          background: darkMode ? elevatedSurface : "#FBFAF7",
+          background: elevatedSurface,
           animation: "caredropFadeSlide 0.22s ease",
         }}
       >
@@ -6203,10 +6203,10 @@ export default function App() {
                   Keep your review flow organized across flashcards, quizzes, simulations, uploads, planning, and saved sessions without losing your place.
                 </div>
                 <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ padding: "10px 14px", borderRadius: 999, background: darkMode ? C.accentLight : "#F0F8F3", border: `1px solid ${darkMode ? C.border : "#D7EBDD"}`, fontSize: 12, color: darkMode ? C.accentMid : "#235B42", fontWeight: 700 }}>
+                  <div style={{ padding: "10px 14px", borderRadius: 999, background: C.accentLight, border: `1px solid ${darkMode ? C.border : "#C4DDCE"}`, fontSize: 12, color: darkMode ? C.accentMid : "#235B42", fontWeight: 700 }}>
                     {studyStreak ? `${studyStreak}-day study streak` : "Start a streak with one session today"}
                   </div>
-                  <div style={{ padding: "10px 14px", borderRadius: 999, background: darkMode ? C.blueLight : "#F7FAFD", border: `1px solid ${darkMode ? C.border : "#DCE8F1"}`, fontSize: 12, color: darkMode ? C.blue : "#355E8A", fontWeight: 700 }}>
+                  <div style={{ padding: "10px 14px", borderRadius: 999, background: C.blueLight, border: `1px solid ${darkMode ? C.border : "#C6D5E8"}`, fontSize: 12, color: darkMode ? C.blue : "#355E8A", fontWeight: 700 }}>
                     {mostRecentSession ? `Last studied ${mostRecentSession.subject}` : "Your first session will start the tracker"}
                   </div>
                 </div>
@@ -6729,7 +6729,7 @@ export default function App() {
                             marginTop: 12,
                             padding: "12px 14px",
                             borderRadius: 14,
-                            background: darkMode ? "rgba(20, 211, 154, 0.08)" : "#ECFDF3",
+                            background: darkMode ? "rgba(20, 211, 154, 0.08)" : C.accentLight,
                             border: `1px solid ${darkMode ? "rgba(20, 211, 154, 0.28)" : "#BFEBD4"}`,
                             color: C.text,
                             fontSize: 13,
@@ -8045,7 +8045,7 @@ export default function App() {
                         marginTop: 16,
                         borderRadius: 18,
                         padding: studySectionPadding,
-                        background: darkMode ? softSurface : "#FBFAF7",
+                        background: softSurface,
                         border: `1.5px solid ${C.border}`,
                       }}
                     >
@@ -8584,7 +8584,7 @@ export default function App() {
                       padding: width < 720 ? 22 : 32,
                       background: darkMode
                         ? "linear-gradient(135deg, rgba(20, 211, 154, 0.10), rgba(30, 41, 59, 0.94))"
-                        : "linear-gradient(135deg, #F2FBF6, #FBFAF7)",
+                        : `linear-gradient(135deg, ${C.bgElevated}, ${C.surfaceRaised})`,
                       minHeight: 360,
                       display: "flex",
                       flexDirection: "column",
@@ -8604,7 +8604,7 @@ export default function App() {
                           marginTop: 18,
                           padding: "14px 16px",
                           borderRadius: 16,
-                          background: darkMode ? "rgba(15, 23, 42, 0.62)" : "rgba(255, 255, 255, 0.72)",
+                          background: darkMode ? "rgba(15, 23, 42, 0.62)" : "rgba(245, 242, 234, 0.82)",
                           border: `1px solid ${C.border}`,
                           color: C.muted,
                           fontSize: 13,
@@ -8675,7 +8675,7 @@ export default function App() {
                       border: `1px dashed ${C.border}`,
                       borderRadius: 18,
                       padding: 24,
-                      background: darkMode ? softSurface : "#FBFAF7",
+                      background: softSurface,
                       color: C.muted,
                       lineHeight: 1.7,
                     }}
@@ -9044,7 +9044,7 @@ export default function App() {
                               marginTop: 14,
                               padding: "14px 16px",
                               borderRadius: 16,
-                              background: darkMode ? "rgba(20, 211, 154, 0.08)" : "#ECFDF3",
+                              background: darkMode ? "rgba(20, 211, 154, 0.08)" : C.accentLight,
                               border: `1px solid ${darkMode ? "rgba(20, 211, 154, 0.28)" : "#BFEBD4"}`,
                               fontSize: 13,
                               color: C.text,
@@ -9089,7 +9089,7 @@ export default function App() {
                                   style={{
                                     padding: "13px 14px",
                                     borderRadius: 14,
-                                    background: darkMode ? "rgba(15, 23, 42, 0.72)" : "#F8FBF8",
+                                    background: darkMode ? "rgba(15, 23, 42, 0.72)" : C.surfaceMuted,
                                     border: `1px solid ${C.border}`,
                                   }}
                                 >
@@ -9144,7 +9144,7 @@ export default function App() {
                                     alignItems: "center",
                                     padding: "10px 12px",
                                     borderRadius: 12,
-                                    background: darkMode ? "rgba(15, 23, 42, 0.72)" : "#F8FBF8",
+                                    background: darkMode ? "rgba(15, 23, 42, 0.72)" : C.surfaceMuted,
                                     border: `1px solid ${C.border}`,
                                   }}
                                 >
@@ -9386,7 +9386,7 @@ export default function App() {
                     borderRadius: 16,
                     padding: 22,
                     textAlign: "center",
-                    background: dragActive ? C.accentLight : darkMode ? softSurface : "#FBFAF7",
+                    background: dragActive ? C.accentLight : softSurface,
                   }}
                 >
                   <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: C.accent }}>DROPZONE</div>
@@ -9547,7 +9547,7 @@ export default function App() {
                 <div
                   style={{
                     marginTop: 18,
-                    background: darkMode ? softSurface : "#FBFAF7",
+                    background: softSurface,
                     borderRadius: 16,
                     border: `1px solid ${C.border}`,
                     padding: 18,
@@ -9564,7 +9564,7 @@ export default function App() {
                   <div
                     style={{
                       marginTop: 16,
-                      background: darkMode ? softSurface : "#FBFAF7",
+                      background: softSurface,
                       borderRadius: 16,
                       border: `1px solid ${C.border}`,
                       padding: 18,
